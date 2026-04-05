@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Agent(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "NotebookEdit(*)",
+      "TodoWrite(*)",
+      "mcp__Claude_in_Chrome__*(*)",
+      "mcp__Claude_Preview__*(*)",
+      "mcp__0ea23958-f42b-4f16-a318-6c2fc4392af0__*(*)",
+      "mcp__870f4e09-7600-44a6-9857-2a6088bcede9__*(*)",
+      "mcp__97ddc031-d14f-4ac1-bdb5-2d6bbb615c42__*(*)",
+      "mcp__ee423be4-962c-4db4-ba0b-d19317a654ed__*(*)",
+      "mcp__mcp-registry__*(*)",
+      "mcp__scheduled-tasks__*(*)"
+    ],
+    "deny": []
+  }
+}

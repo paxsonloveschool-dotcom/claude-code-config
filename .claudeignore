@@ -1,0 +1,8 @@
+# Keep these out of Claude's context to save tokens
+.claude/sessions/
+.claude/backups/
+.claude/shell-snapshots/
+.claude/plugins/
+node_modules/
+.git/
+*.log
