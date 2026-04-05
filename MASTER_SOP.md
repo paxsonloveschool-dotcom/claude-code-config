@@ -281,23 +281,34 @@ git add -A && git commit -m "update: description" && git push
 
 ## 11. Implementation Playbook (Condensed)
 
-### Quick Wins (do now)
-1. ✅ CLAUDE.md autopilot + efficiency rules (done)
-2. ✅ settings.json permissions (done)
-3. ✅ .claudeignore blocking noise (done)
-4. ✅ 4-file context structure (done)
-5. ✅ MASTER_SOP.md as single source of truth (done)
+### Quick Wins (done)
+1. ✅ CLAUDE.md autopilot + efficiency rules
+2. ✅ settings.json permissions
+3. ✅ .claudeignore blocking noise
+4. ✅ 4-file context structure
+5. ✅ MASTER_SOP.md as single source of truth
+6. ✅ Python 3.12.10 + pip 25.0.1 verified
+7. ✅ Obsidian v1.12.7 installed
+8. ✅ claude-squad v1.0.17 Windows binary installed (in PATH)
 
 ### Next Session Priorities
-1. Install **oh-my-claudecode** plugin (30-50% more token savings)
+1. Install **oh-my-claudecode** plugin (30-50% more token savings) — requires `/plugin` slash command in Claude Code UI, cannot install via bash
 2. Set up **obsidian-mind** vault (persistent memory across sessions)
 3. Implement **context thresholds** (auto-compact at 70%, mandatory at 90%)
 4. Add **session hooks** from GodMode (SessionStart context injection)
 5. Create **role pack** from COG (prioritize skills by your work type)
+6. **GHL HP Landscaping workflows** — Chrome must be pre-authenticated; see GHL_WORKFLOW_NOTES.md
+
+### Recently Completed (2026-04-05)
+- ✅ Python 3.12.10 — confirmed installed at `AppData/Local/Programs/Python/Python312/python.exe`, pip 25.0.1
+- ✅ Obsidian v1.12.7 — installed via winget
+- ✅ claude-squad v1.0.17 — Windows binary at `~/tools/claude-squad.exe` and `~/AppData/Local/Microsoft/WindowsApps/claude-squad.exe` (in PATH)
+- ⚠️ oh-my-claudecode — NOT installable via bash; requires `/plugin marketplace add` in Claude Code UI
+- ⚠️ GHL workflow audit — blocked by Chrome MCP timeout (GHL SPA + unauthenticated Chrome); see GHL_WORKFLOW_NOTES.md
 
 ### Future Phases
 - Deploy Khoj self-hosted second brain
-- Set up claude-squad for parallel agents
+- Set up claude-squad for parallel agents (binary ready at ~/tools/claude-squad.exe)
 - Implement heartbeat pattern (Python pre-loads data, Claude reasons)
 - Add integration modules (Gmail, Calendar, Slack)
 - Build custom skills with progressive disclosure
@@ -378,6 +389,27 @@ templates/                 # Note templates
 - Memory lives in vault `brain/` notes, not `~/.claude/`
 - Never modify `.obsidian/` directory
 - Git sync is user-controlled
+
+---
+
+---
+
+## 13. GHL (GoHighLevel) Workflows
+
+See `GHL_WORKFLOW_NOTES.md` for full details.
+
+**Agency:** Restore Marketing (restoremarketingco@gmail.com)
+**Auth:** Google SSO
+
+| Sub-Account | Location ID |
+|-------------|-------------|
+| HP Landscaping | Gqozcy4LpsUukpaWg9b3 |
+| Bison Metal Building | — |
+| Blacktop Towing | — |
+| Language Learning Center | — |
+| Restore Marketing | — |
+
+**Status (2026-04-05):** HP Landscaping workflow is built and working; minor changes needed. Chrome must be pre-authenticated before automated audit can run. GHL SPA requires 15+ seconds to load — navigate manually first.
 
 ---
 
