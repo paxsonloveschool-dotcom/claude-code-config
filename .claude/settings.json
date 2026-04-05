@@ -19,8 +19,33 @@
       "mcp__97ddc031-d14f-4ac1-bdb5-2d6bbb615c42__*(*)",
       "mcp__ee423be4-962c-4db4-ba0b-d19317a654ed__*(*)",
       "mcp__mcp-registry__*(*)",
-      "mcp__scheduled-tasks__*(*)"
+      "mcp__scheduled-tasks__*(*)",
+      "mcp__c1fc4002-5f49-5f9d-a4e5-93c4ef5d6a75__*(*)"
     ],
     "deny": []
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '=== SESSION START ===' && echo 'Date:' $(date '+%Y-%m-%d %H:%M') && echo '---' && echo 'Token budget: monitor context usage. Compact at 70%.' && echo '---' && cat ~/.claude/ARCHITECTURE_MAP.md 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '=== SESSION END CHECKLIST ===' && echo '[ ] Update brain/ notes with learnings' && echo '[ ] Update work/Index.md if new work' && echo '[ ] Check for orphan notes (no links)' && echo '[ ] Commit changes if needed'"
+          }
+        ]
+      }
+    ]
   }
 }
