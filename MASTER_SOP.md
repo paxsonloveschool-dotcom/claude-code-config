@@ -304,5 +304,82 @@ git add -A && git commit -m "update: description" && git push
 
 ---
 
+## 12. Obsidian Mind — Full Reference
+
+### 15 Slash Commands
+| Command | Purpose |
+|---------|---------|
+| `/standup` | Morning kickoff — load context, review yesterday, surface priorities |
+| `/dump` | Freeform capture — auto-classifies and routes to correct folder |
+| `/wrap-up` | Session review — verify notes, indexes, links, run brag-spotter |
+| `/humanize` | Rewrite notes to sound like you, not AI |
+| `/weekly` | Cross-session synthesis, North Star alignment, uncaptured wins |
+| `/capture-1on1` | Parse meeting notes into structured 1:1 note |
+| `/incident-capture` | Reconstruct incidents from Slack |
+| `/slack-scan` | Deep scan Slack for evidence about a person/project |
+| `/peer-scan` | Scan peer's GitHub PRs for review prep |
+| `/review-brief` | Generate review brief (manager or peer version) |
+| `/self-review` | Write self-assessment with charcount validation |
+| `/review-peer` | Write peer review with per-project feedback |
+| `/vault-audit` | Deep structural audit — orphans, links, frontmatter, stale notes |
+| `/vault-upgrade` | Import/migrate content from another vault |
+| `/project-archive` | Archive completed project, update all indexes |
+
+### 9 Subagents
+| Agent | Purpose |
+|-------|---------|
+| brag-spotter | Find uncaptured wins and competency gaps |
+| context-loader | Load all vault context about a topic |
+| cross-linker | Find missing wikilinks and orphan notes |
+| people-profiler | Bulk create person notes from Slack profiles |
+| review-fact-checker | Verify claims in review drafts against vault sources |
+| review-prep | Aggregate all performance evidence for review period |
+| slack-archaeologist | Full Slack reconstruction with timeline |
+| vault-librarian | Vault maintenance — orphans, broken links, stale notes |
+| vault-migrator | Classify and migrate content from any source vault |
+
+### 5 Session Hooks
+| Hook | What It Does |
+|------|-------------|
+| SessionStart (`session-start.sh`) | QMD re-index, inject North Star, active work, recent git changes, open tasks, file listing |
+| UserPromptSubmit (`classify-message.py`) | Auto-classify messages as decisions/incidents/wins/1:1s, inject routing hints |
+| PostToolUse (`validate-write.py`) | Validate frontmatter and wikilinks on new/edited .md files |
+| PreCompact (`pre-compact.sh`) | Backup session transcript before context compaction (keeps last 30) |
+| Stop | Print end-of-session checklist |
+
+### Vault Structure
+```
+Home.md                    # Entry point
+CLAUDE.md                  # 339-line operating manual
+brain/
+├── North Star.md          # Goals — read every session
+├── Memories.md            # Memory index
+├── Key Decisions.md
+└── Patterns.md
+work/
+├── active/                # 1-3 current projects
+├── archive/YYYY/          # Completed work
+├── incidents/
+└── 1-1/                   # Meeting notes by person
+org/
+├── people/                # One note per person
+└── teams/                 # One note per team
+perf/
+├── Brag Doc.md            # Running win log
+├── competencies/          # Framework notes
+└── evidence/              # PR scans, review artifacts
+thinking/                  # Drafts and session logs
+templates/                 # Note templates
+```
+
+### Key Rules
+- Graph-first: a note without links is a bug
+- All notes get YAML frontmatter (date, description, tags)
+- Memory lives in vault `brain/` notes, not `~/.claude/`
+- Never modify `.obsidian/` directory
+- Git sync is user-controlled
+
+---
+
 *Last updated: 2026-04-05*
 *Repo: https://github.com/paxsonloveschool-dotcom/claude-code-config*
