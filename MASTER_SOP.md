@@ -220,5 +220,89 @@ git add -A && git commit -m "update: description" && git push
 
 ---
 
+## 10. Deep Patterns Extracted From All Repos
+
+### A. Token Optimizer (claude-token-optimizer)
+- 4 essential files at startup (~800 tokens): CLAUDE.md, COMMON_MISTAKES, QUICK_START, ARCHITECTURE_MAP
+- Zero-token historical context via `.claudeignore` (sessions, archives never auto-loaded)
+- Topic-based loading: learnings files only when needed (~200-700 tokens each)
+- Keep CLAUDE.md under 200 lines; split any file over 1,000 lines
+- Include token cost estimates in docs/INDEX.md for navigation
+- No content duplication — link to detail docs instead of copying
+- Typical savings: 83-87% across 9 frameworks
+
+### B. GodMode Context Management
+- **Context thresholds**: 50% normal, 70% optimize, 80% `/compact`, 90% mandatory split, 95% emergency
+- **Per-agent budgets**: architect 30-40%, builder 20-30%, validator 15-20%, scribe 10-15%
+- **Progressive loading**: start with overview (file tree, git status), load files only when needed
+- **Offload to reports**: agents write to disk, next agent reads file not chat history
+- **Context restore prompt** after `/compact`: re-establish identity + rules + workflows in ~30 lines
+- **Parallel quality gates**: validator + tester run simultaneously (40% faster)
+- **Self-interruption triggers**: table of "if doing X, STOP and do Y"
+
+### C. COG Second Brain Patterns
+- **Integration states**: Active (use), Disabled (skip silently), Unknown (ask once)
+- **Role packs**: match user role -> prioritize relevant skills
+- **Agent modes**: Solo (one conversation) vs Team (delegate to sub-agents)
+- **Pre-flight check**: every skill checks profile exists, reads preferences, runs `date`
+- **Dedup pattern**: read last 3 briefs, extract URLs from frontmatter, skip covered stories
+- **Auto-research**: decompose into 5-7 threads, spawn all in parallel, always include contrarian view
+- **Verification-first**: 2+ sources per claim, confidence levels, 7-day freshness for news
+
+### D. Obsidian Claude PKM Patterns
+- **Goal cascade**: 3yr Vision -> Yearly -> Projects -> Monthly -> Weekly -> Daily
+- **CLAUDE.local.md**: personal overrides not committed to git
+- **GTD inbox processing**: 2-minute rule, classify as next-action/project/waiting/someday/reference
+- **Energy-based time blocking**: Morning=deep focus, Afternoon=meetings, Evening=light tasks
+- **Max 3 active high-priority goals** at once
+- **Agent team parallelization**: collector + goal-analyzer + project-scanner run simultaneously
+- **Smart review routing**: check time -> day of week -> day of month -> staleness -> override
+
+### E. Second Brain Skills Patterns
+- **"Context window is a public good"** — skills share it with everything else
+- **Challenge each paragraph**: "Does Claude really need this?" / "Does this justify its token cost?"
+- **Progressive disclosure (3 levels)**: Metadata always (~100 words) -> SKILL.md on trigger (<5k words) -> Resources on demand (unlimited)
+- **SKILL.md max 500 lines** to minimize context bloat
+- **Degrees of freedom**: High (text) / Medium (pseudocode) / Low (specific scripts)
+- **`disable-model-invocation: true`** for deterministic skills (git ops, file moves) — zero LLM cost
+- **Batch processing**: never >5 items at once, validate after each batch
+- **SOP structure**: TL;DR -> Definition of Done (checklist) -> When to Use -> Prerequisites -> Process -> Verify -> Troubleshoot
+- **Anti-patterns**: kill passive voice, "per company policy", "it is recommended that", "please ensure"
+
+### F. Second Brain Starter Architecture
+- **Memory hierarchy**: SOUL.md (personality) + USER.md (config) + MEMORY.md (decisions) = loaded every session. Daily logs = append-only short-term memory
+- **Hook lifecycle**: SessionStart (inject context) -> PreCompact (save before compression) -> SessionEnd (save on exit)
+- **Hybrid RAG**: 0.7 vector + 0.3 keyword, FastEmbed ONNX, incremental indexing
+- **Integration pattern**: each integration = Python module with dataclass -> auth -> query -> formatter -> CLI
+- **Heartbeat pattern**: Python gathers data BEFORE invoking Claude, LLM reasons over pre-loaded context, ~$0.05/run vs $0.38 with MCP
+- **Security 3 layers**: Sanitize (pattern detect + escape) -> Guardrails (pre-check + LLM eval) -> API Key Isolation (Python handles auth, LLM sees only data)
+
+---
+
+## 11. Implementation Playbook (Condensed)
+
+### Quick Wins (do now)
+1. ✅ CLAUDE.md autopilot + efficiency rules (done)
+2. ✅ settings.json permissions (done)
+3. ✅ .claudeignore blocking noise (done)
+4. ✅ 4-file context structure (done)
+5. ✅ MASTER_SOP.md as single source of truth (done)
+
+### Next Session Priorities
+1. Install **oh-my-claudecode** plugin (30-50% more token savings)
+2. Set up **obsidian-mind** vault (persistent memory across sessions)
+3. Implement **context thresholds** (auto-compact at 70%, mandatory at 90%)
+4. Add **session hooks** from GodMode (SessionStart context injection)
+5. Create **role pack** from COG (prioritize skills by your work type)
+
+### Future Phases
+- Deploy Khoj self-hosted second brain
+- Set up claude-squad for parallel agents
+- Implement heartbeat pattern (Python pre-loads data, Claude reasons)
+- Add integration modules (Gmail, Calendar, Slack)
+- Build custom skills with progressive disclosure
+
+---
+
 *Last updated: 2026-04-05*
 *Repo: https://github.com/paxsonloveschool-dotcom/claude-code-config*
