@@ -1,6 +1,6 @@
 #!/bin/bash
 # Claude Code config auto-sync
-# Pulls latest claude-code-config from GitHub and syncs files to ~/.claude/
+# Pulls latest claude-code-config from GitHub and syncs files + helper scripts to ~/.claude/
 # Runs silently on SessionStart. Non-destructive: only copies if changed.
 
 REPO="$HOME/projects/claude-code-config"
@@ -28,9 +28,21 @@ sync_file() {
   fi
 }
 
+# Config docs
 sync_file "$REPO/CLAUDE.md"                    "$HOME/.claude/CLAUDE.md"
+sync_file "$REPO/SESSION_HANDOFF.md"           "$HOME/.claude/SESSION_HANDOFF.md"
 sync_file "$REPO/.claude/COMMON_MISTAKES.md"   "$HOME/.claude/COMMON_MISTAKES.md"
 sync_file "$REPO/.claude/QUICK_START.md"       "$HOME/.claude/QUICK_START.md"
 sync_file "$REPO/.claude/ARCHITECTURE_MAP.md"  "$HOME/.claude/ARCHITECTURE_MAP.md"
+
+# Helper scripts
+sync_file "$REPO/scripts/sync-config.sh"       "$HOME/.claude/sync-config.sh"
+sync_file "$REPO/scripts/wsl-check.sh"         "$HOME/.claude/wsl-check.sh"
+sync_file "$REPO/scripts/code-map.sh"          "$HOME/.claude/code-map.sh"
+sync_file "$REPO/scripts/daily-log.sh"         "$HOME/.claude/daily-log.sh"
+
+# Ensure scripts are executable
+chmod +x "$HOME/.claude/sync-config.sh" "$HOME/.claude/wsl-check.sh" \
+         "$HOME/.claude/code-map.sh" "$HOME/.claude/daily-log.sh" 2>/dev/null
 
 exit 0

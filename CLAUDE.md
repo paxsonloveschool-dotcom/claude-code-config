@@ -7,7 +7,15 @@
 - `~/.claude/COMMON_MISTAKES.md` — Known pitfalls (read when debugging)
 - `~/.claude/QUICK_START.md` — Daily commands (read when onboarding)
 - `~/.claude/ARCHITECTURE_MAP.md` — System layout (read when exploring)
-- `~/.claude/SESSION_HANDOFF.md`  Resume state for multi-session work
+- `~/.claude/SESSION_HANDOFF.md` — Resume state for multi-session work
+- `~/.claude/memory/MEMORY.md` — Live business state (Paxson, HP Landscaping, Restore)
+- `~/.claude/memory/daily/YYYY-MM-DD.md` — Today's session log (auto-created by SessionStart hook)
+- `~/.claude/memory/clients/` — Per-client files (hp-landscaping.md, restore.md)
+- `~/.claude/memory/decisions/` — Decision log (why we made the choices we made)
+- `~/.claude/memory/code-maps/` — Per-project codebase snapshots (auto-regenerated every session)
+- `~/.claude/memory/sessions/` — Compressed session summaries (managed by claude-mem plugin)
+
+**Memory is LOCAL-ONLY by default.** Content contains real client data and never gets pushed to public GitHub. Only the tooling scripts are in the `claude-code-config` repo.
 
 ## Autopilot Mode
 - All tool permissions are pre-approved. Do not ask for confirmation on tool usage.
