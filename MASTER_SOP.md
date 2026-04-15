@@ -10,7 +10,7 @@
 ### Config Locations
 | File | Purpose | Loads |
 |------|---------|-------|
-| `~/CLAUDE.md` | Autopilot + efficiency rules | Every session (~450 tokens) |
+| `~/.claude/CLAUDE.md` | Autopilot + hybrid model + efficiency rules | Every session (~700 tokens) |
 | `~/.claude/settings.json` | Permission auto-approvals | System-level |
 | `~/.claude/COMMON_MISTAKES.md` | Known pitfalls | On demand (~350 tokens) |
 | `~/.claude/QUICK_START.md` | Daily commands | On demand (~100 tokens) |
@@ -203,8 +203,7 @@ When starting a new Claude Code session:
 ## 8. Git Workflow
 
 ```bash
-export PATH="/c/Program Files/GitHub CLI:$PATH"
-cd ~/claude-code-config
+cd ~/projects/claude-code-config
 git add -A && git commit -m "update: description" && git push
 ```
 
@@ -298,6 +297,22 @@ git add -A && git commit -m "update: description" && git push
 4. Add **session hooks** from GodMode (SessionStart context injection)
 5. Create **role pack** from COG (prioritize skills by your work type)
 6. **GHL HP Landscaping workflows** — Chrome must be pre-authenticated; see GHL_WORKFLOW_NOTES.md
+
+### Recently Completed (2026-04-15)
+- ✅ Merged Nate Herk's 18 Token Hacks + Boris's best practices into CLAUDE.md (109 lines, under 200-line ceiling)
+- ✅ Hybrid model strategy in CLAUDE.md (Opus plan / Sonnet execute / Haiku sub)
+- ✅ Self-Verification rule (prove it works before declaring done)
+- ✅ Git identity set (`Paxson Berkey <paxsonloveschool@gmail.com>`)
+- ✅ `~/projects/claude-code-config/` cloned locally, all config lives here
+- ✅ RTK v0.36.0 binary installed at `~/.local/bin/rtk.exe` + added to Windows PATH
+- ✅ Auto-sync pipeline: `sync-config.sh` + SessionStart hook pulls latest config from GitHub on every session start
+- ✅ `wsl-check.sh` armed — will auto-detect when WSL is installed and print RTK hook unlock steps
+- ✅ Stop hook reminds to push config changes
+- ✅ `.github/workflows/claude.yml` added — ready for `@claude` tagging once Claude GitHub App + API key secret are installed
+- ✅ COMMON_MISTAKES.md updated with RTK Windows gotchas (hook mode needs WSL, uninstall broken)
+- ⚠️ WSL install — BLOCKED on user (requires admin UAC + reboot)
+- ⚠️ Claude GitHub App install — BLOCKED on user (browser OAuth at github.com/apps/claude)
+- ⚠️ ANTHROPIC_API_KEY GitHub secret — BLOCKED on user (cannot paste API keys on user's behalf)
 
 ### Recently Completed (2026-04-05)
 - ✅ Python 3.12.10 — confirmed installed at `AppData/Local/Programs/Python/Python312/python.exe`, pip 25.0.1
@@ -413,5 +428,5 @@ See `GHL_WORKFLOW_NOTES.md` for full details.
 
 ---
 
-*Last updated: 2026-04-05*
+*Last updated: 2026-04-15*
 *Repo: https://github.com/paxsonloveschool-dotcom/claude-code-config*
