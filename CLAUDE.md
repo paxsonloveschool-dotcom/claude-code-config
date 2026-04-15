@@ -7,6 +7,7 @@
 - `~/.claude/COMMON_MISTAKES.md` — Known pitfalls (read when debugging)
 - `~/.claude/QUICK_START.md` — Daily commands (read when onboarding)
 - `~/.claude/ARCHITECTURE_MAP.md` — System layout (read when exploring)
+- `~/.claude/SESSION_HANDOFF.md`  Resume state for multi-session work
 
 ## Autopilot Mode
 - All tool permissions are pre-approved. Do not ask for confirmation on tool usage.
