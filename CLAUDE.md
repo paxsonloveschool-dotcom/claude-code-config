@@ -112,6 +112,15 @@ RTK v0.36.0 binary at `~/.local/bin/rtk.exe`. On native Windows, the transparent
 - `rtk git diff`, `rtk git log`, `rtk grep <pattern>`, `rtk test <cmd>` → 60–90% token savings
 - Full hook-based rewriting requires WSL. Install WSL later to unlock it.
 
+## VoxCPM Narration (Content Funnel)
+- Setup: `~/projects/VoxCPM` (Python 3.11 venv via uv)
+- Wrapper: `~/projects/VoxCPM/narrate.sh "text" output.wav`
+- Model: `openbmb/VoxCPM2` (2B params, 30 languages, 48kHz, voice cloning)
+- CPU-only on this machine (no NVIDIA CUDA). Expect ~10-20x realtime.
+- First run downloads ~4-8 GB weights to `~/.cache/huggingface/`
+- Scripts and docs committed at `tools/voxcpm/` in this repo
+- For real-time: use HF Spaces demo at https://huggingface.co/spaces/OpenBMB/VoxCPM-Demo
+
 ## Applied Learning
 Add a one-line bullet (under 15 words) whenever something fails repeatedly, I have to re-explain, or a workaround is found. No explanations.
 
