@@ -7,6 +7,21 @@
 - **HP Landscaping Location ID:** Gqozcy4LpsUukpaWg9b3
 - **Workflows URL:** https://app.gohighlevel.com/v2/location/Gqozcy4LpsUukpaWg9b3/automation/list
 
+## MCP Wiring
+Config lives in `.mcp.json` (checked in, no secrets). Claude Code expands
+`${GHL_API_KEY}` and `${GHL_LOCATION_ID}` from the shell env at launch.
+
+**One-time setup on a new machine:**
+1. `cp .env.example .env`
+2. Paste PIT token into `.env` (GHL → Settings → Private Integrations → Create)
+3. `set -a && . ./.env && set +a` (or use direnv / your shell's autoload)
+4. `./scripts/ghl-check.sh` — verifies token + probes `@highlevel/mcp-server`
+5. Restart Claude Code so it re-reads `.mcp.json`
+
+**Switching sub-accounts:** override `GHL_LOCATION_ID` in `.env` or the shell.
+Default is HP Landscaping (`Gqozcy4LpsUukpaWg9b3`).
+
+
 ## Sub-Accounts
 | Name | Address | Phone |
 |------|---------|-------|

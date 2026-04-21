@@ -1,1 +1,4 @@
 memory/
+.env
+.env.local
+*.secret
