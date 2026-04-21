@@ -26,26 +26,41 @@ fi
 
 [ $missing -eq 1 ] && exit 1
 
-# Probe the MCP package is installable
-echo "→ Probing @highlevel/mcp-server via npx..."
-if npx -y -p @highlevel/mcp-server --version >/dev/null 2>&1; then
-  echo "✓ @highlevel/mcp-server available"
-else
-  echo "⚠  npx probe failed — package may need first-time install on next MCP start"
-fi
-
-# Probe GHL API directly with PIT token
-echo "→ Probing GHL API (locations/$GHL_LOCATION_ID)..."
+# Probe GHL REST API with PIT token
+echo "→ Probing GHL REST API (locations/$GHL_LOCATION_ID)..."
 code=$(curl -s -o /tmp/ghl-probe.json -w "%{http_code}" \
   -H "Authorization: Bearer $GHL_API_KEY" \
   -H "Version: 2021-07-28" \
   "https://services.leadconnectorhq.com/locations/$GHL_LOCATION_ID")
 
 if [ "$code" = "200" ]; then
-  echo "✓ GHL API reachable, token valid for location"
+  echo "✓ GHL REST API reachable, token valid for location"
 else
-  echo "✗ GHL API returned HTTP $code"
+  echo "✗ GHL REST API returned HTTP $code"
   cat /tmp/ghl-probe.json 2>/dev/null | head -c 400 || true
   echo
   exit 1
 fi
+
+# Probe GHL MCP endpoint (Streamable HTTP transport)
+echo "→ Probing GHL MCP endpoint..."
+mcp_code=$(curl -s -o /tmp/ghl-mcp-probe.json -w "%{http_code}" \
+  -X POST \
+  -H "Authorization: Bearer $GHL_API_KEY" \
+  -H "locationId: $GHL_LOCATION_ID" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ghl-check","version":"1.0"}}}' \
+  "https://services.leadconnectorhq.com/mcp/")
+
+case "$mcp_code" in
+  200|202)
+    echo "✓ GHL MCP endpoint reachable (HTTP $mcp_code)"
+    ;;
+  *)
+    echo "✗ GHL MCP endpoint returned HTTP $mcp_code"
+    cat /tmp/ghl-mcp-probe.json 2>/dev/null | head -c 400 || true
+    echo
+    exit 1
+    ;;
+esac
