@@ -86,21 +86,32 @@ function stripRuntime($) {
     );
   });
 
-  // Point background videos at a local poster (external CDN posters are dead)
-  const POSTER = 'images/_poster.png';
-  $('.w-background-video').attr('data-poster-url', POSTER);
-  $('.w-background-video > video').each((_, el) => {
-    const v = $(el);
-    v.attr('poster', POSTER);
-    const st = (v.attr('style') || '').replace(
-      /background-image:\s*url\([^)]*\)/i,
-      `background-image:url("${POSTER}")`
-    );
-    if (st) v.attr('style', st);
-  });
+  stripMedia($);
 
   $('script[src*="d3e54v103j8qbb"], noscript').remove();
   return $;
+}
+
+// Remove all imagery and video, keeping text/layout containers intact.
+function stripMedia($) {
+  $('img, picture, video, source, .w-background-video > div').remove();
+  $('[class*="w-background-video"]').each((_, el) => {
+    const e = $(el);
+    const c = (e.attr('class') || '')
+      .split(/\s+/).filter((t) => t && !t.startsWith('w-background-video')).join(' ');
+    c ? e.attr('class', c) : e.removeAttr('class');
+    e.removeAttr('data-poster-url').removeAttr('data-video-urls');
+  });
+  $('[style]').each((_, el) => {
+    const s = $(el);
+    const cleaned = (s.attr('style') || '')
+      .replace(/background(-image)?\s*:\s*[^;]*url\([^)]*\)[^;]*;?/gi, '')
+      .replace(/;\s*;/g, ';').trim();
+    cleaned ? s.attr('style', cleaned) : s.removeAttr('style');
+  });
+  $('[srcset]').removeAttr('srcset');
+  $('[data-poster-url]').removeAttr('data-poster-url');
+  $('[data-video-urls]').removeAttr('data-video-urls');
 }
 
 // Pull the canonical header/footer out of index.html (live theme only).
