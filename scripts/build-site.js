@@ -86,6 +86,19 @@ function stripRuntime($) {
     );
   });
 
+  // Point background videos at a local poster (external CDN posters are dead)
+  const POSTER = 'images/_poster.png';
+  $('.w-background-video').attr('data-poster-url', POSTER);
+  $('.w-background-video > video').each((_, el) => {
+    const v = $(el);
+    v.attr('poster', POSTER);
+    const st = (v.attr('style') || '').replace(
+      /background-image:\s*url\([^)]*\)/i,
+      `background-image:url("${POSTER}")`
+    );
+    if (st) v.attr('style', st);
+  });
+
   $('script[src*="d3e54v103j8qbb"], noscript').remove();
   return $;
 }
