@@ -33,8 +33,10 @@ TWILIO_ACCOUNT_SID=
 # e.g. https://bot.yourdomain.com  (no trailing slash).
 PUBLIC_BASE_URL=
 
-# --- Email alerts (to email the owner on escalations) ---
-# Resend API key (resend.com). Without it, escalations still text + log, just no email.
+# --- Owner alerts WITHOUT Twilio ---
+# Email alerts via Resend (resend.com) — free tier covers thousands/month.
 RESEND_API_KEY=
-# Verified sender address for alert emails, e.g. alerts@yourdomain.com
-ALERT_EMAIL_FROM=
+ALERT_EMAIL_FROM=          # verified sender, e.g. alerts@yourdomain.com
+# Free phone push (no Twilio): install the ntfy app, pick a long topic name, and put
+# its URL here. You'll get a phone notification (like a text) on every escalation.
+PUSH_URL=                  # e.g. https://ntfy.sh/hp-landscaping-9f2c1

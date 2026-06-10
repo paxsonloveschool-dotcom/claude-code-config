@@ -23,6 +23,11 @@ export interface Env {
   // Email alerts (optional — needed to email the owner on escalations). Uses Resend.
   RESEND_API_KEY?: string;
   ALERT_EMAIL_FROM?: string; // verified sender, e.g. "alerts@yourdomain.com"
+
+  // Free phone-push alert (no Twilio). An ntfy.sh topic URL (or any endpoint that
+  // accepts a plain-text POST). Lands on your phone like a text. e.g.
+  // https://ntfy.sh/hp-landscaping-9f2c1   (pick a long, hard-to-guess name)
+  PUSH_URL?: string;
 }
 
 export type Platform = "facebook" | "instagram" | "phone" | "sms";

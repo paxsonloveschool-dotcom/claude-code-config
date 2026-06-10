@@ -48,6 +48,19 @@ export async function escalate(env: Env, it: Interaction, decision: Decision): P
     }
   }
 
+  // 2c) Free phone-push alert (no Twilio) — e.g. an ntfy.sh topic. Lands like a text.
+  if (env.PUSH_URL) {
+    try {
+      await fetch(env.PUSH_URL, {
+        method: "POST",
+        headers: { Title: `New ${decision.category} — ${profile.name}`, Priority: "high" },
+        body: alert,
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
+
   // 3) Optional push notification (Slack/Discord/email-relay webhook).
   if (env.ESCALATION_WEBHOOK_URL) {
     const summary =
