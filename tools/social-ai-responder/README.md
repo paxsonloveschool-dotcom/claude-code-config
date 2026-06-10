@@ -157,9 +157,11 @@ automatically. Send your page a test DM and comment to confirm.
 - **Watch logs:** `npm run tail`
 - **Tune behavior:** `wrangler.toml` → `CLAUDE_MODEL`, `CLAUDE_EFFORT`,
   `MIN_AUTOREPLY_CONFIDENCE`.
-- **Cost:** model is `claude-opus-4-8` at low effort by default. For high message
-  volume you can switch `CLAUDE_MODEL` to `claude-haiku-4-5` in `wrangler.toml` to cut
-  per-message cost.
+- **Cost / AI brain:** the default brain is **free** — Cloudflare Workers AI (Llama,
+  `AI_PROVIDER="workers-ai"`), running on the same account that hosts the bot. To
+  upgrade to Claude (sharper, paid per message): set `AI_PROVIDER="claude"` in
+  `wrangler.toml` and add an `ANTHROPIC_API_KEY` secret. A deterministic pricing
+  backstop force-escalates any money question even if the model tries to answer it.
 
 ## Safety notes
 

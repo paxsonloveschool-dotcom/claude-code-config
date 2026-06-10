@@ -65,9 +65,10 @@ These are private — set as Worker secrets, never committed:
 - [ ] `META_APP_SECRET` — from the FB app
 - [ ] `META_VERIFY_TOKEN` — any string we pick (also guards `/escalations` & `/leads`)
 - [ ] `META_PAGE_TOKEN` — the long-lived page token
-- [ ] `ANTHROPIC_API_KEY` — for the AI
-- [ ] `RESEND_API_KEY` + `ALERT_EMAIL_FROM` — email alerts
 - [ ] `PUSH_URL` — `https://ntfy.sh/hp-landscaping-alerts-0952f31e13`
+- [ ] (Skipped: `ANTHROPIC_API_KEY` — free brain via Workers AI is the default;
+      set this + `AI_PROVIDER="claude"` later to upgrade quality, no code changes)
+- [ ] (Optional: `RESEND_API_KEY` + `ALERT_EMAIL_FROM` — email alerts)
 - [ ] (Skipped: all `TWILIO_*` — no texts/calls for now)
 
 And in `knowledge.ts` `notify`: your **alert email(s)** (and optionally cells later).

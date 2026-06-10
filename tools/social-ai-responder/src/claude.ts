@@ -80,43 +80,122 @@ function systemPrompt(p: BusinessProfile, surface: "dm" | "comment" | "call" | "
     .join("\n");
 }
 
+/** Safe fallback when the model call or parsing fails — never auto-send junk. */
+function failSafe(reason: string): Decision {
+  return {
+    action: "escalate",
+    category: "error",
+    reply: "Thanks for reaching out — someone will get back to you shortly!",
+    confidence: 0,
+    reason,
+    crossSellPartner: "",
+    crossSellReason: "",
+  };
+}
+
 /**
- * Single Claude call: classify the interaction and draft a reply. Returns a typed
- * Decision. Falls back to a safe escalation on any error so we never auto-send junk.
+ * Open models don't honor strict JSON schemas reliably: strip code fences, grab the
+ * outermost {...}, and coerce/validate every field. Anything unusable → null.
+ */
+function parseDecision(raw: string): Decision | null {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  try {
+    const d = JSON.parse(raw.slice(start, end + 1)) as Partial<Decision>;
+    if (d.action !== "auto_reply" && d.action !== "escalate") return null;
+    if (typeof d.reply !== "string" || !d.reply.trim()) return null;
+    return {
+      action: d.action,
+      category: typeof d.category === "string" ? d.category : "general",
+      reply: d.reply,
+      confidence: typeof d.confidence === "number" ? d.confidence : 0,
+      reason: typeof d.reason === "string" ? d.reason : "",
+      crossSellPartner: typeof d.crossSellPartner === "string" ? d.crossSellPartner : "",
+      crossSellReason: typeof d.crossSellReason === "string" ? d.crossSellReason : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+const JSON_INSTRUCTION =
+  `\nRespond with ONLY a single JSON object — no prose, no markdown fences — shaped exactly like:\n` +
+  `{"action":"auto_reply"|"escalate","category":"...","reply":"...","confidence":0.0,"reason":"...","crossSellPartner":"...","crossSellReason":"..."}`;
+
+/** Free brain: Cloudflare Workers AI (open model, prompt-enforced JSON). */
+async function decideWorkersAi(env: Env, it: Interaction, system: string): Promise<Decision> {
+  if (!env.AI) return failSafe("Workers AI binding missing (set [ai] binding in wrangler.toml)");
+  const model = env.WORKERS_AI_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+  const result = (await env.AI.run(model as Parameters<Ai["run"]>[0], {
+    messages: [
+      { role: "system", content: system + JSON_INSTRUCTION },
+      {
+        role: "user",
+        content:
+          `Platform: ${it.platform} (${it.surface})\n` +
+          `From: ${it.username ?? it.senderId}\n` +
+          `Message: ${it.text}`,
+      },
+    ],
+    max_tokens: 800,
+  })) as { response?: string };
+  const parsed = parseDecision(result.response ?? "");
+  return parsed ?? failSafe("Workers AI returned unparseable output");
+}
+
+/** Paid brain: Claude with strict structured outputs. */
+async function decideClaude(env: Env, it: Interaction, system: string): Promise<Decision> {
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  // `output_config` (structured outputs + effort) is newer than the SDK's static
+  // types but is forwarded on the wire; intersect the type so the call typechecks.
+  const params: Anthropic.MessageCreateParamsNonStreaming & { output_config: unknown } = {
+    model: env.CLAUDE_MODEL || "claude-opus-4-8",
+    max_tokens: 1024,
+    // Cache the per-business system prompt across messages from the same page.
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+    output_config: {
+      effort: (env.CLAUDE_EFFORT as "low" | "medium" | "high") || "low",
+      format: { type: "json_schema", schema: DECISION_SCHEMA },
+    },
+    messages: [
+      {
+        role: "user",
+        content:
+          `Platform: ${it.platform} (${it.surface})\n` +
+          `From: ${it.username ?? it.senderId}\n` +
+          `Message: ${it.text}`,
+      },
+    ],
+  };
+  const resp = await client.messages.create(params);
+  const block = resp.content.find((b) => b.type === "text");
+  const raw = block && block.type === "text" ? block.text : "{}";
+  return JSON.parse(raw) as Decision;
+}
+
+/**
+ * Deterministic pricing backstop (model-independent): if the customer's message
+ * plainly asks about money, it MUST escalate — even if the model said auto_reply.
+ * This guards against weaker free models slipping on the no-pricing rule.
+ */
+const PRICING_RE =
+  /\b(price|prices|pricing|cost|costs|quote|quotes|estimate|estimates|rate|rates|fee|fees|charge|charges|how much|ball\s?park|budget)\b|\$\s?\d/i;
+
+/**
+ * Classify the interaction and draft a reply with the configured AI provider
+ * (free Workers AI by default; Claude when AI_PROVIDER="claude"). Falls back to a
+ * safe escalation on any error so we never auto-send junk.
  */
 export async function decide(env: Env, it: Interaction): Promise<Decision> {
   const profile = getProfile(it.pageId);
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  const system = systemPrompt(profile, it.surface);
 
   try {
-    // `output_config` (structured outputs + effort) is newer than the SDK's static
-    // types but is forwarded on the wire; intersect the type so the call typechecks.
-    const params: Anthropic.MessageCreateParamsNonStreaming & { output_config: unknown } = {
-      model: env.CLAUDE_MODEL || "claude-opus-4-8",
-      max_tokens: 1024,
-      // Cache the per-business system prompt across messages from the same page.
-      system: [
-        { type: "text", text: systemPrompt(profile, it.surface), cache_control: { type: "ephemeral" } },
-      ],
-      output_config: {
-        effort: (env.CLAUDE_EFFORT as "low" | "medium" | "high") || "low",
-        format: { type: "json_schema", schema: DECISION_SCHEMA },
-      },
-      messages: [
-        {
-          role: "user",
-          content:
-            `Platform: ${it.platform} (${it.surface})\n` +
-            `From: ${it.username ?? it.senderId}\n` +
-            `Message: ${it.text}`,
-        },
-      ],
-    };
-    const resp = await client.messages.create(params);
-
-    const block = resp.content.find((b) => b.type === "text");
-    const raw = block && block.type === "text" ? block.text : "{}";
-    const parsed = JSON.parse(raw) as Decision;
+    const parsed =
+      env.AI_PROVIDER === "claude"
+        ? await decideClaude(env, it, system)
+        : await decideWorkersAi(env, it, system);
 
     // Confidence floor: even if the model said auto_reply, escalate if it's shaky.
     const floor = Number(env.MIN_AUTOREPLY_CONFIDENCE || "0.72");
@@ -124,16 +203,17 @@ export async function decide(env: Env, it: Interaction): Promise<Decision> {
       parsed.action = "escalate";
       parsed.reason = `Below confidence floor (${parsed.confidence} < ${floor}): ${parsed.reason}`;
     }
+
+    // Hard pricing backstop: money talk always goes to a human, no exceptions.
+    if (parsed.action === "auto_reply" && PRICING_RE.test(it.text)) {
+      parsed.action = "escalate";
+      parsed.category = "pricing";
+      parsed.reply =
+        "Great question — every project's a little different, so let me grab a few details and someone from our team will get right back to you. Estimates are free!";
+      parsed.reason = `Pricing keyword backstop triggered (model tried to auto-reply): ${parsed.reason}`;
+    }
     return parsed;
   } catch (err) {
-    return {
-      action: "escalate",
-      category: "error",
-      reply: "Thanks for reaching out — someone will get back to you shortly!",
-      confidence: 0,
-      reason: `Claude call failed: ${(err as Error).message}`,
-      crossSellPartner: "",
-      crossSellReason: "",
-    };
+    return failSafe(`AI call failed: ${(err as Error).message}`);
   }
 }
