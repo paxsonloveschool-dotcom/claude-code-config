@@ -1,7 +1,32 @@
 # Go-Live Runbook — HP Landscaping
 
 The exact, in-order steps to take this from code to live. Reflects the chosen setup:
-**Facebook + Instagram only, no Twilio, alerts by email (Resend) + free phone push (ntfy).**
+**Facebook + Instagram only, no Twilio, free brain (Workers AI), free phone push (ntfy).**
+
+## ✅ PROGRESS (as of 2026-06-10)
+
+**DONE — the bot is deployed and verified:**
+- ✅ Cloudflare account created (under the higherpurpose gmail)
+- ✅ Code deployed via Workers Builds, **from the FORK** at
+  `higherpurposelandscaping-arch/claude-code-config` (root dir `tools/social-ai-responder`)
+- ✅ Live at: **https://social-ai-responder.higherpurposelandscaping.workers.dev**
+- ✅ KV namespace `STATE` created + wired (id in wrangler.toml)
+- ✅ Secrets set in the Worker: `META_VERIFY_TOKEN`, `PUSH_URL`
+- ✅ Health check OK; `/escalations?key=...` OK; ntfy phone push tested + buzzing
+- ✅ Free AI brain (Workers AI / Llama) is the default — $0 to run
+
+**⚠️ Fork note:** the deploy tracks the fork under `higherpurposelandscaping-arch`,
+not this original repo. After changes land here, open the fork on GitHub and click
+**Sync fork → Update branch** to trigger a redeploy.
+
+**NEXT UP (resume here): § 3. Connect Facebook + Instagram.**
+Values you'll need (also in Worker secrets / chat history): the verify token set as
+`META_VERIFY_TOKEN`, webhook URL
+`https://social-ai-responder.higherpurposelandscaping.workers.dev/webhook`.
+During this step, also put the real Facebook Page ID into `src/knowledge.ts`
+(replacing `REPLACE_WITH_PAGE_ID`) and sync the fork.
+
+---
 
 Most of this is one ~1-hour session together. Steps marked **(you)** need your login;
 **(me)** I do or walk you through live.
@@ -15,8 +40,8 @@ Most of this is one ~1-hour session together. Steps marked **(you)** need your l
 - [ ] **Resend** account — https://resend.com (email alerts)
 - [ ] **ntfy** app installed + subscribed to your alert channel (phone push)
 
-You already have the ntfy channel: `hp-landscaping-alerts-0952f31e13`
-(URL: `https://ntfy.sh/hp-landscaping-alerts-0952f31e13`)
+The ntfy channel name is private — it's stored as the `PUSH_URL` secret on the Worker
+(and in the owner's ntfy app). Don't write it in this file or anywhere public.
 
 ---
 
