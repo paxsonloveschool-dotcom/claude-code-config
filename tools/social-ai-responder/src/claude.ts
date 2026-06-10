@@ -18,6 +18,12 @@ const DECISION_SCHEMA = {
 function systemPrompt(p: BusinessProfile, surface: "dm" | "comment" | "call" | "text"): string {
   const faq = p.faq.map((f) => `Q: ${f.q}\nA: ${f.a}`).join("\n\n");
   const escalate = p.escalateWhen.map((e) => `- ${e}`).join("\n");
+  const examples = (p.styleExamples ?? [])
+    .map((e) => `Customer: ${e.customer}\nUs: ${e.reply}`)
+    .join("\n\n");
+  const emojiRule = p.useEmojis
+    ? `A light, natural emoji is fine when it fits — don't overdo it.`
+    : `No emojis unless the customer used them first.`;
   const channel =
     surface === "call"
       ? `You are on a LIVE PHONE CALL. Your reply is read aloud by text-to-speech: speak in plain spoken sentences, no markdown, no links, no emojis, 1-2 short sentences, and end auto-answers with a quick "Anything else I can help with?".`
@@ -30,6 +36,9 @@ function systemPrompt(p: BusinessProfile, surface: "dm" | "comment" | "call" | "
     p.services.length ? `Services we offer:\n${p.services.map((s) => `- ${s}`).join("\n")}` : "",
     p.hours ? `Hours: ${p.hours}` : "",
     faq ? `What we know (your ONLY source of facts — never invent beyond this):\n\n${faq}` : "",
+    examples
+      ? `EXACTLY how we sound — mirror this tone, length, rhythm, and word choice (these are real; copy the vibe, not the facts):\n\n${examples}`
+      : "",
     channel,
     ``,
     `HOW TO SOUND HUMAN:`,
@@ -48,7 +57,7 @@ function systemPrompt(p: BusinessProfile, surface: "dm" | "comment" | "call" | "
     `Also escalate anything ambiguous, emotionally charged, a complaint, or that you're not confident about.`,
     `CRITICAL: never quote, estimate, or hint at a price or a quote. Anything about cost/pricing/quotes/estimates is ALWAYS an escalation.`,
     ``,
-    `Set "confidence" (0-1) = how sure you are the auto_reply is correct and safe. "category" = a short tag (e.g. "fall_cleanup", "service_area", "pricing", "complaint"). No emojis unless the customer used them first.`,
+    `Set "confidence" (0-1) = how sure you are the auto_reply is correct and safe. "category" = a short tag (e.g. "fall_cleanup", "service_area", "pricing", "complaint"). ${emojiRule}`,
     p.signoff ? `If auto-replying, you may end with: "${p.signoff}"` : "",
   ]
     .filter(Boolean)

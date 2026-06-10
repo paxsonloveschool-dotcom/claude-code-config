@@ -17,6 +17,14 @@ export interface BusinessProfile {
   faq: { q: string; a: string }[];
   /** Topics that must ALWAYS be escalated to a human, never auto-answered. */
   escalateWhen: string[];
+  /**
+   * Voice tuning: real examples of how YOU reply. The model mirrors the tone,
+   * length, and phrasing of these — the single most effective way to make replies
+   * sound like you. 3-6 pairs is plenty.
+   */
+  styleExamples?: { customer: string; reply: string }[];
+  /** Light emoji use in replies? Default false (only mirror the customer's emojis). */
+  useEmojis?: boolean;
   /** Optional closing line appended to auto-replies (e.g. a booking link). */
   signoff?: string;
   /** Phase 2: phone-call settings. Omit to disable voice for this business. */
@@ -70,6 +78,18 @@ export const BUSINESSES: Record<string, BusinessProfile> = {
         a: "Send your address and the service you want and we'll get you a slot — usually within a few days.",
       },
     ],
+    // Voice tuning — replace these with REAL examples of how you reply (see README).
+    styleExamples: [
+      {
+        customer: "do you guys still have any openings for weekly mowing?",
+        reply: "Hey! Yep, we've still got a few weekly spots open. Whereabouts are you?",
+      },
+      {
+        customer: "are you insured?",
+        reply: "We sure are — fully licensed and insured. Anything you're looking to get done?",
+      },
+    ],
+    useEmojis: false,
     // Pricing, complaints, scheduling-specific commitments, and contracts go to a human.
     escalateWhen: [
       "asking for a specific price, quote, or estimate",
