@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 # Create with `npm run kv:create`, then paste the returned id below.
 [[kv_namespaces]]
 binding = "STATE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "94b8fca6b2f04f20a7743a5bc469232a"
 
 # Free AI brain: Cloudflare Workers AI (no extra account, free daily allowance).
 [ai]
