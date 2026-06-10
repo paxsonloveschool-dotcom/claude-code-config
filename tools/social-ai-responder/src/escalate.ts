@@ -1,6 +1,7 @@
 import type { Decision, Env, Interaction } from "./types";
 import { getProfile } from "./knowledge";
 import { sendSms } from "./twilio";
+import { sendEmail } from "./email";
 
 export interface EscalationRecord {
   at: string;
@@ -8,28 +9,42 @@ export interface EscalationRecord {
   decision: Decision;
 }
 
-/** Persist an escalation to KV and alert a human (owner text + optional webhook). */
+const asList = (v?: string | string[]): string[] => (v ? (Array.isArray(v) ? v : [v]) : []);
+
+/** Persist an escalation to KV and alert humans (owner texts + emails + optional webhook). */
 export async function escalate(env: Env, it: Interaction, decision: Decision): Promise<void> {
   const record: EscalationRecord = { at: new Date().toISOString(), it, decision };
   const profile = getProfile(it.pageId);
+  const channel = `${it.platform}/${it.surface}`;
 
   // 1) Persist to KV so the owner can review via /escalations.
   await env.STATE.put(`esc:${Date.now()}:${it.id}`, JSON.stringify(record), {
     expirationTtl: 60 * 60 * 24 * 30,
   });
 
-  // 2) Text the owner so a HUMAN can take over (pricing, quotes, complaints, ...).
-  if (profile.notify?.ownerSms) {
-    const channel = `${it.platform}/${it.surface}`;
-    const ownerText =
-      `${profile.name}: a customer needs you (${decision.category}, via ${channel}).\n` +
-      `From: ${it.username ?? it.senderId}\n` +
-      `They said: "${it.text}"\n` +
-      `Reply to them directly to take it over.`;
+  // 2) Alert humans so a PERSON takes over (pricing, quotes, complaints, ...).
+  const alert =
+    `${profile.name}: a customer needs you (${decision.category}, via ${channel}).\n` +
+    `From: ${it.username ?? it.senderId}\n` +
+    `They said: "${it.text}"\n` +
+    `Reply to them directly on ${it.platform} to take it over.`;
+
+  // 2a) Text every personal cell on the list.
+  for (const cell of asList(profile.notify?.ownerSms)) {
     try {
-      await sendSms(env, profile.twilioNumber, profile.notify.ownerSms, ownerText);
+      await sendSms(env, profile.twilioNumber, cell, alert);
     } catch {
-      /* non-fatal: still in KV + webhook */
+      /* non-fatal: still logged + other channels */
+    }
+  }
+
+  // 2b) Email every address on the list.
+  const emails = asList(profile.notify?.ownerEmail);
+  if (emails.length) {
+    try {
+      await sendEmail(env, emails, `New ${decision.category} inquiry — ${profile.name}`, alert);
+    } catch {
+      /* non-fatal */
     }
   }
 

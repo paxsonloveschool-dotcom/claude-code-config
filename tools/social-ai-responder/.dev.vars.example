@@ -32,3 +32,9 @@ TWILIO_ACCOUNT_SID=
 # Optional: set if a proxy/custom domain changes the URL Twilio signs against,
 # e.g. https://bot.yourdomain.com  (no trailing slash).
 PUBLIC_BASE_URL=
+
+# --- Email alerts (to email the owner on escalations) ---
+# Resend API key (resend.com). Without it, escalations still text + log, just no email.
+RESEND_API_KEY=
+# Verified sender address for alert emails, e.g. alerts@yourdomain.com
+ALERT_EMAIL_FROM=

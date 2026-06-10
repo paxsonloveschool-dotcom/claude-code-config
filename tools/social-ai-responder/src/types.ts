@@ -19,6 +19,10 @@ export interface Env {
   TWILIO_ACCOUNT_SID?: string; // required to SEND texts (owner notifications / SMS replies)
   // Optional override if a proxy rewrites the public URL Twilio signs against.
   PUBLIC_BASE_URL?: string;
+
+  // Email alerts (optional — needed to email the owner on escalations). Uses Resend.
+  RESEND_API_KEY?: string;
+  ALERT_EMAIL_FROM?: string; // verified sender, e.g. "alerts@yourdomain.com"
 }
 
 export type Platform = "facebook" | "instagram" | "phone" | "sms";

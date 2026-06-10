@@ -36,8 +36,10 @@ export interface BusinessProfile {
   };
   /** Where/how to alert a human when something escalates (pricing, complaints, etc). */
   notify?: {
-    /** Owner's cell — gets a text on every escalation so a human can take over. */
-    ownerSms?: string;
+    /** Personal cell(s) to TEXT on every escalation. One number or several (a team). */
+    ownerSms?: string | string[];
+    /** Email(s) to alert on every escalation. One address or several (a team). */
+    ownerEmail?: string | string[];
   };
   /** This business's Twilio number (E.164) — the "From" for outgoing SMS we send. */
   twilioNumber?: string;
@@ -123,9 +125,11 @@ export const BUSINESSES: Record<string, BusinessProfile> = {
         "Thanks for calling HP Landscaping! I'm the virtual assistant and can help with questions about our services. How can I help you today?",
       // transferNumber: "+15551234567", // owner's cell for warm transfers
     },
-    // When a pricing/quote/complaint comes in, text the owner so a HUMAN replies.
+    // When a pricing/quote/complaint comes in, alert a HUMAN so they reply (not the AI).
+    // Both can be a single value or a list for a small team, e.g. ["+1...", "+1..."].
     notify: {
-      // ownerSms: "+15551234567", // <-- your cell; uncomment + set to get alerts
+      // ownerSms: "+15551234567",                 // personal cell(s) to text
+      // ownerEmail: "owner@hplandscaping.com",    // email(s) to alert
     },
     // twilioNumber: "+15550000000", // the Twilio number customers text/call
   },

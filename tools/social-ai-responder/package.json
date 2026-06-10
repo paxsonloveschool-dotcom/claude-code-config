@@ -16,7 +16,8 @@
     "secret:anthropic": "wrangler secret put ANTHROPIC_API_KEY",
     "secret:escalation": "wrangler secret put ESCALATION_WEBHOOK_URL",
     "secret:twilio": "wrangler secret put TWILIO_AUTH_TOKEN",
-    "secret:twiliosid": "wrangler secret put TWILIO_ACCOUNT_SID"
+    "secret:twiliosid": "wrangler secret put TWILIO_ACCOUNT_SID",
+    "secret:resend": "wrangler secret put RESEND_API_KEY"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.0"
