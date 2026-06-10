@@ -9,8 +9,16 @@ compatibility_flags = ["nodejs_compat"]
 binding = "STATE"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
+# Free AI brain: Cloudflare Workers AI (no extra account, free daily allowance).
+[ai]
+binding = "AI"
+
 [vars]
 # Non-secret config. Secrets (tokens/keys) go via `wrangler secret put` — see README.
+# "workers-ai" = free (Llama on Cloudflare). Switch to "claude" + set ANTHROPIC_API_KEY
+# for the sharper paid brain — no code changes needed.
+AI_PROVIDER = "workers-ai"
+WORKERS_AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 CLAUDE_MODEL = "claude-opus-4-8"
 # Effort for the per-message classify+draft call. low = fast/cheap (good for short
 # social replies); raise to "medium" if escalation judgment needs to be sharper.

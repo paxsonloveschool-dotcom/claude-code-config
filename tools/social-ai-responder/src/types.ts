@@ -1,7 +1,13 @@
 export interface Env {
   STATE: KVNamespace;
+  /** Cloudflare Workers AI binding (free tier) — used when AI_PROVIDER="workers-ai". */
+  AI?: Ai;
 
   // vars
+  /** "workers-ai" (free, default) or "claude" (paid, sharper — needs ANTHROPIC_API_KEY). */
+  AI_PROVIDER?: string;
+  /** Workers AI model id used when AI_PROVIDER="workers-ai". */
+  WORKERS_AI_MODEL?: string;
   CLAUDE_MODEL: string;
   CLAUDE_EFFORT: string;
   MIN_AUTOREPLY_CONFIDENCE: string;
