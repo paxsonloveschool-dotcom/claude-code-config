@@ -27,6 +27,13 @@ export interface BusinessProfile {
   useEmojis?: boolean;
   /** Optional closing line appended to auto-replies (e.g. a booking link). */
   signoff?: string;
+  /**
+   * How to answer COMMENTS on posts:
+   * - "dm"     → reply privately (DM the commenter) only
+   * - "public" → reply publicly under the comment only
+   * - "both"   → short public "sent you a DM!" + the full answer via DM (default)
+   */
+  commentReply?: { mode?: "public" | "dm" | "both"; publicAck?: string };
   /** Phase 2: phone-call settings. Omit to disable voice for this business. */
   voice?: {
     /** Spoken when the call connects. */
@@ -110,6 +117,8 @@ export const BUSINESSES: Record<string, BusinessProfile> = {
       },
     ],
     useEmojis: false,
+    // When someone comments on a post, DM them the answer + leave a quick public note.
+    commentReply: { mode: "both", publicAck: "Just sent you a DM with the details!" },
     // Pricing, complaints, scheduling-specific commitments, and contracts go to a human.
     escalateWhen: [
       "ANY mention of price, cost, quote, estimate, rate, fee, 'how much', 'ballpark', or 'what do you charge' — always hand these to a human, never answer",

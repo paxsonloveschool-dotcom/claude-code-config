@@ -1,6 +1,6 @@
 import type { Env, Interaction } from "./types";
 import { decide } from "./claude";
-import { parseWebhook, reply, verifySignature, verifySubscription } from "./meta";
+import { parseWebhook, deliverReply, verifySignature, verifySubscription } from "./meta";
 import { escalate, listEscalations } from "./escalate";
 import { handleVoiceCall, handleVoiceCollect, handleVoicemail } from "./voice";
 import { handleSms } from "./sms";
@@ -83,8 +83,9 @@ async function processAll(env: Env, interactions: Interaction[]): Promise<void> 
       const decision = await decide(env, it);
 
       // Send the reply (auto-answer, or a friendly holding message on escalations).
+      // For comments this DMs the commenter per the business's commentReply mode.
       if (decision.reply?.trim()) {
-        await reply(env, it, decision.reply.trim());
+        await deliverReply(env, it, decision.reply.trim());
       }
 
       if (decision.action === "escalate") {
