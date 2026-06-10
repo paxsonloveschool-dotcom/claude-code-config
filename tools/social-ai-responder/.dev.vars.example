@@ -23,3 +23,10 @@ ANTHROPIC_API_KEY=
 # webhook URL, or any endpoint that accepts JSON POST. If unset, escalations are only
 # stored in KV (read them with the /escalations endpoint).
 ESCALATION_WEBHOOK_URL=
+
+# --- Phase 2: Twilio Voice (only if you enable phone calls) ---
+# Twilio account auth token (console.twilio.com). Used to verify call webhooks.
+TWILIO_AUTH_TOKEN=
+# Optional: set if a proxy/custom domain changes the URL Twilio signs against,
+# e.g. https://bot.yourdomain.com  (no trailing slash).
+PUBLIC_BASE_URL=

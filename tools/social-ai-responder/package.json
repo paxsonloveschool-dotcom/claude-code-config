@@ -14,7 +14,8 @@
     "secret:verify": "wrangler secret put META_VERIFY_TOKEN",
     "secret:pagetoken": "wrangler secret put META_PAGE_TOKEN",
     "secret:anthropic": "wrangler secret put ANTHROPIC_API_KEY",
-    "secret:escalation": "wrangler secret put ESCALATION_WEBHOOK_URL"
+    "secret:escalation": "wrangler secret put ESCALATION_WEBHOOK_URL",
+    "secret:twilio": "wrangler secret put TWILIO_AUTH_TOKEN"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.0"

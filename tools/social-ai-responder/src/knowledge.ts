@@ -19,6 +19,13 @@ export interface BusinessProfile {
   escalateWhen: string[];
   /** Optional closing line appended to auto-replies (e.g. a booking link). */
   signoff?: string;
+  /** Phase 2: phone-call settings. Omit to disable voice for this business. */
+  voice?: {
+    /** Spoken when the call connects. */
+    greeting: string;
+    /** E.164 number to warm-transfer escalations to (e.g. "+15551234567"). */
+    transferNumber?: string;
+  };
 }
 
 export const BUSINESSES: Record<string, BusinessProfile> = {
@@ -66,8 +73,28 @@ export const BUSINESSES: Record<string, BusinessProfile> = {
       "an urgent / same-day request",
     ],
     signoff: "",
+    voice: {
+      greeting:
+        "Thanks for calling HP Landscaping! I'm the virtual assistant and can help with questions about our services. How can I help you today?",
+      // transferNumber: "+15551234567", // owner's cell for warm transfers
+    },
   },
 };
+
+/**
+ * Maps a Twilio phone number (the "To" number a customer dialed, E.164) to the
+ * Page ID key in BUSINESSES above. Lets one Worker serve voice for multiple
+ * businesses. Add one entry per Twilio number you buy.
+ */
+export const VOICE_NUMBER_TO_PAGE: Record<string, string> = {
+  "+15550000000": "REPLACE_WITH_PAGE_ID",
+};
+
+/** Resolve the business profile for an inbound Twilio call by its "To" number. */
+export function getProfileByPhone(toNumber: string): { pageId: string; profile: BusinessProfile } {
+  const pageId = VOICE_NUMBER_TO_PAGE[toNumber] ?? "unknown";
+  return { pageId, profile: getProfile(pageId) };
+}
 
 /** Fallback used when a Page ID isn't in BUSINESSES (so the bot never crashes). */
 export const DEFAULT_PROFILE: BusinessProfile = {

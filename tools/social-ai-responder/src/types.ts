@@ -13,10 +13,15 @@ export interface Env {
   META_PAGE_TOKENS?: string; // JSON: { [pageId]: token }
   ANTHROPIC_API_KEY: string;
   ESCALATION_WEBHOOK_URL?: string;
+
+  // Phase 2: Twilio Voice (optional — only needed if you enable phone calls)
+  TWILIO_AUTH_TOKEN?: string;
+  // Optional override if a proxy rewrites the public URL Twilio signs against.
+  PUBLIC_BASE_URL?: string;
 }
 
-export type Platform = "facebook" | "instagram";
-export type Surface = "dm" | "comment";
+export type Platform = "facebook" | "instagram" | "phone";
+export type Surface = "dm" | "comment" | "call";
 
 /** A normalized inbound interaction, regardless of platform/surface. */
 export interface Interaction {

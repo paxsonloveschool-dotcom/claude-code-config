@@ -31,11 +31,11 @@ never auto-send something it isn't sure about.
 |----------|-----|----------|
 | Facebook Page | ✅ Messenger | ✅ Page post comments |
 | Instagram | ✅ IG Direct | ✅ Post comments |
+| Phone (Twilio) | ✅ Voice calls (speech) | — |
 
-> **Phone calls** were part of the original ask. Voice is a separate build — it needs a
-> telephony layer (Twilio + a voice agent like Vapi/Retell) rather than a webhook
-> Worker. See [Phase 2: voice](#phase-2-voice-calls) below. This repo ships the
-> messaging brain that the voice layer can reuse.
+> **Phone calls** are also supported via Twilio — the bot answers calls, speaks FAQ
+> answers, and transfers or takes a voicemail on anything uncertain. See
+> [Phase 2: voice calls](#phase-2-voice-calls-built-in) below.
 
 ---
 
@@ -130,15 +130,34 @@ automatically. Send your page a test DM and comment to confirm.
 - Signatures on every webhook are HMAC-verified against your app secret.
 - Events are de-duplicated in KV so Meta retries don't double-post.
 
-## Phase 2: voice calls
+## Phase 2: voice calls (built in)
 
-To answer phone calls, add a telephony front end and reuse `src/claude.ts`'s `decide()`
-as the brain:
+The same Worker also answers **phone calls** via Twilio, reusing `decide()` and the
+per-business knowledge base. A caller talks; Twilio transcribes; the bot answers FAQs
+out loud and keeps the conversation going, or — for pricing/complaints/scheduling —
+warm-transfers to you (if you set a `transferNumber`) or takes a voicemail. Every
+escalation and voicemail lands in the same `/escalations` queue.
 
-1. Get a number via **Twilio**.
-2. Use a realtime voice agent (**Vapi**, **Retell**, or Twilio Media Streams + a
-   speech-to-text/text-to-speech loop) that calls the same knowledge base.
-3. Apply the same hybrid rule: auto-answer FAQs, warm-transfer / take a message for
-   anything in `escalateWhen`.
+```
+Caller ──▶ Twilio (speech-to-text) ──▶ /voice/collect ──▶ decide() ──▶ <Say> answer
+                                                              │
+                                                              └─ escalate ─▶ <Dial> you  /  voicemail
+```
 
-Ask and this can be scaffolded next.
+**Routes:** `/voice` (incoming), `/voice/collect` (each speech turn), `/voice/voicemail`.
+
+### Setup
+
+1. **Configure voice in `src/knowledge.ts`:** add a `voice` block to the business
+   (greeting + optional `transferNumber` in E.164), and map your Twilio number to the
+   business in `VOICE_NUMBER_TO_PAGE` (e.g. `"+15551234567": "<your Page ID>"`).
+2. **Set the Twilio secret:** `npm run secret:twilio` (your Twilio **Auth Token** from
+   [console.twilio.com](https://console.twilio.com)). If a custom domain/proxy changes
+   the public URL, also set `PUBLIC_BASE_URL`.
+3. **Buy a number** in Twilio and, under its **Voice configuration → A call comes in**,
+   set a **Webhook (HTTP POST)** to
+   `https://social-ai-responder.<you>.workers.dev/voice`.
+4. `npm run deploy` and call the number to test.
+
+Every call webhook is validated against Twilio's `X-Twilio-Signature`. To disable voice,
+just leave `TWILIO_AUTH_TOKEN` unset — the voice routes then reject all requests.

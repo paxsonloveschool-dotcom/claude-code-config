@@ -15,16 +15,20 @@ const DECISION_SCHEMA = {
   required: ["action", "category", "reply", "confidence", "reason"],
 } as const;
 
-function systemPrompt(p: BusinessProfile): string {
+function systemPrompt(p: BusinessProfile, surface: "dm" | "comment" | "call"): string {
   const faq = p.faq.map((f) => `Q: ${f.q}\nA: ${f.a}`).join("\n\n");
   const escalate = p.escalateWhen.map((e) => `- ${e}`).join("\n");
+  const channel =
+    surface === "call"
+      ? `You are answering a LIVE PHONE CALL. Your reply will be read aloud by text-to-speech, so: speak in plain spoken sentences, no markdown, no links, no emojis, and keep it to 1-2 short sentences. End auto-answers with a brief question like "Anything else I can help with?".`
+      : `You are answering a public comment or a private message from a potential customer.`;
   return [
-    `You are the social media assistant for ${p.name}.`,
+    `You are the assistant for ${p.name}.`,
     `Voice: ${p.persona}`,
     p.services.length ? `Services offered:\n${p.services.map((s) => `- ${s}`).join("\n")}` : "",
     p.hours ? `Hours: ${p.hours}` : "",
     faq ? `Known answers (your source of truth — do not invent facts beyond these):\n\n${faq}` : "",
-    `You are answering a public comment or a private message from a potential customer.`,
+    channel,
     ``,
     `DECIDE between two actions:`,
     `1. "auto_reply" — ONLY when the message is a general question you can answer accurately from the known answers/services/hours above, AND it is NOT one of the escalation triggers below. Write a short, on-brand reply (1-3 sentences). Never quote a price, never commit to a specific date, never invent details.`,
@@ -57,7 +61,7 @@ export async function decide(env: Env, it: Interaction): Promise<Decision> {
       max_tokens: 1024,
       // Cache the per-business system prompt across messages from the same page.
       system: [
-        { type: "text", text: systemPrompt(profile), cache_control: { type: "ephemeral" } },
+        { type: "text", text: systemPrompt(profile, it.surface), cache_control: { type: "ephemeral" } },
       ],
       output_config: {
         effort: (env.CLAUDE_EFFORT as "low" | "medium" | "high") || "low",
