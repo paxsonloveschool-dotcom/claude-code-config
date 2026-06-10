@@ -1,5 +1,4 @@
 import type { Env, Interaction } from "./types";
-import { getProfile } from "./knowledge";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -142,27 +141,27 @@ export async function sendPrivateReply(env: Env, it: Interaction, text: string):
 }
 
 /**
- * Deliver a reply to the right place. DMs go straight back. Comments follow the
- * business's commentReply mode: "dm" (private reply only), "public" (reply under the
- * comment), or "both" (a short public ack + the full answer via DM). If a private
- * reply fails (outside Meta's window, or already used), we fall back to a public reply
- * so the customer still gets answered.
+ * Deliver a reply to the right place.
+ * - DMs/texts → straight back to the sender.
+ * - A comment with a BASIC question (auto-reply) → answered publicly under the comment.
+ * - A comment that's personal — pricing, quotes, "can you do mine", more detail
+ *   (escalated) → answered with a PRIVATE DM only, never publicly. If Meta's
+ *   private-reply window has closed, we fall back to a public acknowledgement so the
+ *   person isn't left hanging.
  */
-export async function deliverReply(env: Env, it: Interaction, text: string): Promise<void> {
+export async function deliverReply(
+  env: Env,
+  it: Interaction,
+  text: string,
+  escalated: boolean,
+): Promise<void> {
   if (it.surface !== "comment") return sendDirectMessage(env, it, text);
 
-  const profile = getProfile(it.pageId);
-  const mode = profile.commentReply?.mode ?? "both";
-  if (mode === "public") return replyToComment(env, it, text);
+  if (!escalated) return replyToComment(env, it, text);
 
   try {
-    if (mode === "both") {
-      const ack = profile.commentReply?.publicAck ?? "Just sent you a DM with the details!";
-      await replyToComment(env, it, ack);
-    }
     await sendPrivateReply(env, it, text);
   } catch {
-    // Private reply unavailable (window closed / already used) → answer publicly.
     await replyToComment(env, it, text);
   }
 }

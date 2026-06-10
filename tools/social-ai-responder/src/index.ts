@@ -82,10 +82,10 @@ async function processAll(env: Env, interactions: Interaction[]): Promise<void> 
 
       const decision = await decide(env, it);
 
-      // Send the reply (auto-answer, or a friendly holding message on escalations).
-      // For comments this DMs the commenter per the business's commentReply mode.
+      // Send the reply. For comments: basic questions are answered publicly, but
+      // pricing/personal ones (escalated) are sent as a private DM instead.
       if (decision.reply?.trim()) {
-        await deliverReply(env, it, decision.reply.trim());
+        await deliverReply(env, it, decision.reply.trim(), decision.action === "escalate");
       }
 
       if (decision.action === "escalate") {

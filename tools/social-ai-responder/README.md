@@ -34,11 +34,12 @@ never auto-send something it isn't sure about.
 | Phone (Twilio) | ✅ Voice calls (speech) | — |
 | SMS (Twilio) | ✅ Texts | — |
 
-**Comments can be answered by DM.** When someone comments on a post asking for more
-detail, the bot can reply *privately* (a Meta "private reply" / DM) with the full
-answer and leave a short public note — set per business via `commentReply.mode`
-(`"dm"`, `"public"`, or `"both"`; default `"both"`). If Meta's private-reply window
-has closed, it falls back to a public reply automatically.
+**Comments are routed by what's being asked.** A **basic question** the bot can answer
+is replied to **publicly** under the comment. A **personal** one — pricing, quotes,
+"can you do mine?", more detail — is **not** answered publicly; the bot sends a
+**private DM** instead (and, for pricing, alerts a human). If Meta's private-reply
+window has closed, it falls back to a public acknowledgement so the person isn't left
+hanging.
 
 **Replies are written to sound human** — the bot reads what the customer actually
 said and answers *that* specifically, in the business's own voice (first person, no
