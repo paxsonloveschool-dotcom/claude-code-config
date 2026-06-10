@@ -78,15 +78,33 @@ export const BUSINESSES: Record<string, BusinessProfile> = {
         a: "Send your address and the service you want and we'll get you a slot — usually within a few days.",
       },
     ],
-    // Voice tuning — replace these with REAL examples of how you reply (see README).
+    // Voice tuning: casual & friendly, no emojis. Swap in your own real replies anytime.
     styleExamples: [
       {
-        customer: "do you guys still have any openings for weekly mowing?",
-        reply: "Hey! Yep, we've still got a few weekly spots open. Whereabouts are you?",
+        customer: "do you guys have any openings for weekly mowing?",
+        reply: "Hey! Yeah, we've still got a couple weekly spots open. What part of town are you in?",
+      },
+      {
+        customer: "what areas do you cover?",
+        reply: "We cover most of the metro and the suburbs around it. Where are you located? Happy to check for you.",
       },
       {
         customer: "are you insured?",
-        reply: "We sure are — fully licensed and insured. Anything you're looking to get done?",
+        reply: "We are — fully licensed and insured. What are you looking to get done?",
+      },
+      {
+        customer: "do you do fall cleanups?",
+        reply: "Yeah, we do! Leaf removal, bed cleanup, a final mow, the whole thing. We start booking those up in the fall.",
+      },
+      {
+        customer: "what all do you guys do?",
+        reply:
+          "Pretty much everything outdoors — mowing, cleanups, mulch, edging, shrub trimming, leaf removal, and snow in the winter. Anything specific you need a hand with?",
+      },
+      {
+        customer: "how much would it cost to mow my yard?",
+        reply:
+          "Good question! It depends on the yard, so let me grab the details and someone from our team will text you a price real quick. What's the address?",
       },
     ],
     useEmojis: false,
