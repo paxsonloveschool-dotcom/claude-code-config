@@ -110,7 +110,7 @@ export const BUSINESSES: Record<string, BusinessProfile> = {
     useEmojis: false,
     // Pricing, complaints, scheduling-specific commitments, and contracts go to a human.
     escalateWhen: [
-      "asking for a specific price, quote, or estimate",
+      "ANY mention of price, cost, quote, estimate, rate, fee, 'how much', 'ballpark', or 'what do you charge' — always hand these to a human, never answer",
       "complaint or dissatisfaction about prior work",
       "requesting a specific appointment date/time commitment",
       "billing, refunds, or payment disputes",
