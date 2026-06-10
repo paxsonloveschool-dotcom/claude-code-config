@@ -33,6 +33,20 @@ never auto-send something it isn't sure about.
 | Instagram | ✅ IG Direct | ✅ Post comments |
 | Phone (Twilio) | ✅ Voice calls (speech) | — |
 | SMS (Twilio) | ✅ Texts | — |
+| LinkedIn DMs | ❌ No compliant API (LinkedIn restricts messaging to closed partners) | — |
+| LinkedIn Company Page comments | ⚠️ Possible via LinkedIn Marketing Developer Platform (requires app approval) | ⚠️ pending access |
+
+### LinkedIn — status & approach
+
+LinkedIn does **not** expose a public messaging API, so auto-replying to LinkedIn
+**DMs** is not possible without violating LinkedIn's ToS (unofficial login bots — which
+risk account bans and are out of scope here). Two compliant paths:
+1. **Company Page comments** — supported via LinkedIn's Marketing Developer Platform /
+   Community Management API, *after* the app is approved for that access. The platform
+   abstraction (`Platform`/`Surface` + `decide()`) is ready to plug a LinkedIn handler
+   in once access is granted.
+2. **DM alerting only** — watch LinkedIn's email notifications (e.g. via Gmail) and
+   alert a human to reply manually; no automated send-back into LinkedIn.
 
 **Comments are routed by what's being asked.** A **basic question** the bot can answer
 is replied to **publicly** under the comment. A **personal** one — pricing, quotes,
