@@ -1,6 +1,6 @@
 import type { Env, Interaction } from "./types";
 import { decide } from "./claude";
-import { escalate } from "./escalate";
+import { escalate, logCrossSell } from "./escalate";
 import { getProfileByPhone } from "./knowledge";
 import { authed, escapeXml, twiml } from "./twilio";
 
@@ -73,6 +73,10 @@ export async function handleVoiceCollect(
 
   const decision = await decide(env, it);
 
+  if (decision.crossSellPartner) {
+    ctx.waitUntil(logCrossSell(env, it, decision.crossSellPartner, decision.crossSellReason));
+  }
+
   if (decision.action === "escalate") {
     // Record the escalation out-of-band so TwiML returns fast.
     ctx.waitUntil(escalate(env, it, decision));
@@ -129,6 +133,8 @@ export async function handleVoicemail(
       reply: "",
       confidence: 0,
       reason: "Caller left a voicemail — listen and call back.",
+      crossSellPartner: "",
+      crossSellReason: "",
     }),
   );
 

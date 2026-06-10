@@ -11,8 +11,18 @@ const DECISION_SCHEMA = {
     reply: { type: "string" },
     confidence: { type: "number" },
     reason: { type: "string" },
+    crossSellPartner: { type: "string" },
+    crossSellReason: { type: "string" },
   },
-  required: ["action", "category", "reply", "confidence", "reason"],
+  required: [
+    "action",
+    "category",
+    "reply",
+    "confidence",
+    "reason",
+    "crossSellPartner",
+    "crossSellReason",
+  ],
 } as const;
 
 function systemPrompt(p: BusinessProfile, surface: "dm" | "comment" | "call" | "text"): string {
@@ -24,6 +34,9 @@ function systemPrompt(p: BusinessProfile, surface: "dm" | "comment" | "call" | "
   const emojiRule = p.useEmojis
     ? `A light, natural emoji is fine when it fits — don't overdo it.`
     : `No emojis unless the customer used them first.`;
+  const crossSell = (p.crossSell ?? [])
+    .map((c) => `- ${c.partner}: if they mention ${c.signals.join(", ")}`)
+    .join("\n");
   const channel =
     surface === "call"
       ? `You are on a LIVE PHONE CALL. Your reply is read aloud by text-to-speech: speak in plain spoken sentences, no markdown, no links, no emojis, 1-2 short sentences, and end auto-answers with a quick "Anything else I can help with?".`
@@ -57,6 +70,9 @@ function systemPrompt(p: BusinessProfile, surface: "dm" | "comment" | "call" | "
     `Also escalate anything ambiguous, emotionally charged, a complaint, or that you're not confident about.`,
     `CRITICAL: never quote, estimate, or hint at a price or a quote. Anything about cost/pricing/quotes/estimates is ALWAYS an escalation.`,
     ``,
+    crossSell
+      ? `CROSS-SELL — we also refer work to sister companies. If the customer's message hints at any of these, set "crossSellPartner" to the partner name and "crossSellReason" to what they said. Otherwise set both to "". Always still handle their actual question normally (answer or escalate) — cross-sell is a separate flag, never instead of helping them.\n${crossSell}`
+      : `Set "crossSellPartner" and "crossSellReason" to "".`,
     `Set "confidence" (0-1) = how sure you are the auto_reply is correct and safe. "category" = a short tag (e.g. "fall_cleanup", "service_area", "pricing", "complaint"). ${emojiRule}`,
     p.signoff ? `If auto-replying, you may end with: "${p.signoff}"` : "",
   ]
@@ -116,6 +132,8 @@ export async function decide(env: Env, it: Interaction): Promise<Decision> {
       reply: "Thanks for reaching out — someone will get back to you shortly!",
       confidence: 0,
       reason: `Claude call failed: ${(err as Error).message}`,
+      crossSellPartner: "",
+      crossSellReason: "",
     };
   }
 }

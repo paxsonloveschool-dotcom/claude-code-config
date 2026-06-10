@@ -43,6 +43,12 @@ export interface BusinessProfile {
   };
   /** This business's Twilio number (E.164) — the "From" for outgoing SMS we send. */
   twilioNumber?: string;
+  /**
+   * Cross-sell: sister businesses to flag leads for. If a customer's message hits any
+   * of a partner's `signals`, the team gets a "possible <partner> lead" alert — the
+   * customer's own question is still answered/escalated normally.
+   */
+  crossSell?: { partner: string; signals: string[] }[];
 }
 
 export const BUSINESSES: Record<string, BusinessProfile> = {
@@ -132,6 +138,21 @@ export const BUSINESSES: Record<string, BusinessProfile> = {
       // ownerEmail: "owner@hplandscaping.com",    // email(s) to alert
     },
     // twilioNumber: "+15550000000", // the Twilio number customers text/call
+    // Flag leads for the sister restoration company when these come up.
+    crossSell: [
+      {
+        partner: "Restore",
+        signals: [
+          "water damage",
+          "flooding or flooded",
+          "mold",
+          "storm or wind damage",
+          "fire or smoke damage",
+          "burst pipe or leak damage",
+          "basement water",
+        ],
+      },
+    ],
   },
 };
 

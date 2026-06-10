@@ -1,6 +1,6 @@
 import type { Env, Interaction } from "./types";
 import { decide } from "./claude";
-import { escalate } from "./escalate";
+import { escalate, logCrossSell } from "./escalate";
 import { getProfileByPhone } from "./knowledge";
 import { authed, escapeXml, twiml } from "./twilio";
 
@@ -45,6 +45,9 @@ export async function handleSms(request: Request, env: Env, ctx: ExecutionContex
   // Escalations: notify a human out-of-band; the customer still gets the holding text.
   if (decision.action === "escalate") {
     ctx.waitUntil(escalate(env, it, decision));
+  }
+  if (decision.crossSellPartner) {
+    ctx.waitUntil(logCrossSell(env, it, decision.crossSellPartner, decision.crossSellReason));
   }
 
   return twiml(message(decision.reply || "Thanks! Someone from our team will text you right back."));

@@ -53,4 +53,8 @@ export interface Decision {
   reply: string;
   confidence: number;
   reason: string;
+  /** Cross-sell: the partner business this is a lead for ("" if none). */
+  crossSellPartner: string;
+  /** What the customer said that signals the cross-sell lead ("" if none). */
+  crossSellReason: string;
 }

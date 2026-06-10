@@ -1,7 +1,7 @@
 import type { Env, Interaction } from "./types";
 import { decide } from "./claude";
 import { parseWebhook, deliverReply, verifySignature, verifySubscription } from "./meta";
-import { escalate, listEscalations } from "./escalate";
+import { escalate, listEscalations, listLeads, logCrossSell } from "./escalate";
 import { handleVoiceCall, handleVoiceCollect, handleVoicemail } from "./voice";
 import { handleSms } from "./sms";
 
@@ -20,6 +20,14 @@ export default {
         return new Response("forbidden", { status: 403 });
       }
       return Response.json(await listEscalations(env));
+    }
+
+    // Owner-facing: cross-sell lead queue. Protect with ?key=<META_VERIFY_TOKEN>.
+    if (request.method === "GET" && url.pathname === "/leads") {
+      if (url.searchParams.get("key") !== env.META_VERIFY_TOKEN) {
+        return new Response("forbidden", { status: 403 });
+      }
+      return Response.json(await listLeads(env));
     }
 
     // Meta webhook verification handshake
@@ -91,6 +99,11 @@ async function processAll(env: Env, interactions: Interaction[]): Promise<void> 
       if (decision.action === "escalate") {
         await escalate(env, it, decision);
       }
+
+      // Cross-sell: flag a sister-business lead (separate from helping this customer).
+      if (decision.crossSellPartner) {
+        await logCrossSell(env, it, decision.crossSellPartner, decision.crossSellReason);
+      }
     } catch (err) {
       // Last-ditch: record so nothing is silently dropped.
       await escalate(env, it, {
@@ -99,6 +112,8 @@ async function processAll(env: Env, interactions: Interaction[]): Promise<void> 
         reply: "",
         confidence: 0,
         reason: `Unhandled error: ${(err as Error).message}`,
+        crossSellPartner: "",
+        crossSellReason: "",
       });
     }
   }

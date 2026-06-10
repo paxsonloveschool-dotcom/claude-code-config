@@ -59,6 +59,12 @@ hanging.
 said and answers *that* specifically, in the business's own voice (first person, no
 "I'm an AI" disclaimers, no canned form-letters).
 
+**Cross-sell leads are flagged.** Each business can list sister companies + signal
+phrases in `crossSell` (e.g. HP Landscaping → Restore on "water damage", "flooding",
+"mold"). When a customer's message hits a signal, the team gets a "possible <partner>
+lead" alert and it's saved to the lead queue (`GET /leads?key=...`) — the customer's
+own question is still answered/escalated normally.
+
 **Pricing & quotes always go to a human.** Anything about cost/quotes/estimates (plus
 complaints and scheduling) is never answered by the AI. The customer gets a short
 "someone from our team will get right back to you" message, and **you get texted**
