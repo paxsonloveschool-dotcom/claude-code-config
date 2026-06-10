@@ -26,6 +26,13 @@ export interface BusinessProfile {
     /** E.164 number to warm-transfer escalations to (e.g. "+15551234567"). */
     transferNumber?: string;
   };
+  /** Where/how to alert a human when something escalates (pricing, complaints, etc). */
+  notify?: {
+    /** Owner's cell — gets a text on every escalation so a human can take over. */
+    ownerSms?: string;
+  };
+  /** This business's Twilio number (E.164) — the "From" for outgoing SMS we send. */
+  twilioNumber?: string;
 }
 
 export const BUSINESSES: Record<string, BusinessProfile> = {
@@ -78,21 +85,26 @@ export const BUSINESSES: Record<string, BusinessProfile> = {
         "Thanks for calling HP Landscaping! I'm the virtual assistant and can help with questions about our services. How can I help you today?",
       // transferNumber: "+15551234567", // owner's cell for warm transfers
     },
+    // When a pricing/quote/complaint comes in, text the owner so a HUMAN replies.
+    notify: {
+      // ownerSms: "+15551234567", // <-- your cell; uncomment + set to get alerts
+    },
+    // twilioNumber: "+15550000000", // the Twilio number customers text/call
   },
 };
 
 /**
- * Maps a Twilio phone number (the "To" number a customer dialed, E.164) to the
- * Page ID key in BUSINESSES above. Lets one Worker serve voice for multiple
- * businesses. Add one entry per Twilio number you buy.
+ * Maps a Twilio phone number (the "To" number a customer dialed or texted, E.164)
+ * to the Page ID key in BUSINESSES above. Lets one Worker serve voice + SMS for
+ * multiple businesses. Add one entry per Twilio number you buy.
  */
-export const VOICE_NUMBER_TO_PAGE: Record<string, string> = {
+export const NUMBER_TO_PAGE: Record<string, string> = {
   "+15550000000": "REPLACE_WITH_PAGE_ID",
 };
 
-/** Resolve the business profile for an inbound Twilio call by its "To" number. */
+/** Resolve the business profile for an inbound Twilio call/text by its "To" number. */
 export function getProfileByPhone(toNumber: string): { pageId: string; profile: BusinessProfile } {
-  const pageId = VOICE_NUMBER_TO_PAGE[toNumber] ?? "unknown";
+  const pageId = NUMBER_TO_PAGE[toNumber] ?? "unknown";
   return { pageId, profile: getProfile(pageId) };
 }
 

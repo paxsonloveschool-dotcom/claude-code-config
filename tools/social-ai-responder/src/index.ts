@@ -3,6 +3,7 @@ import { decide } from "./claude";
 import { parseWebhook, reply, verifySignature, verifySubscription } from "./meta";
 import { escalate, listEscalations } from "./escalate";
 import { handleVoiceCall, handleVoiceCollect, handleVoicemail } from "./voice";
+import { handleSms } from "./sms";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -60,6 +61,11 @@ export default {
     // Voicemail recording finished.
     if (request.method === "POST" && url.pathname === "/voice/voicemail") {
       return handleVoicemail(request, env, ctx);
+    }
+
+    // Inbound SMS (texts).
+    if (request.method === "POST" && url.pathname === "/sms") {
+      return handleSms(request, env, ctx);
     }
 
     return new Response("not found", { status: 404 });

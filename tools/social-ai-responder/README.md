@@ -32,6 +32,17 @@ never auto-send something it isn't sure about.
 | Facebook Page | ✅ Messenger | ✅ Page post comments |
 | Instagram | ✅ IG Direct | ✅ Post comments |
 | Phone (Twilio) | ✅ Voice calls (speech) | — |
+| SMS (Twilio) | ✅ Texts | — |
+
+**Replies are written to sound human** — the bot reads what the customer actually
+said and answers *that* specifically, in the business's own voice (first person, no
+"I'm an AI" disclaimers, no canned form-letters).
+
+**Pricing & quotes always go to a human.** Anything about cost/quotes/estimates (plus
+complaints and scheduling) is never answered by the AI. The customer gets a short
+"someone from our team will get right back to you" message, and **you get texted**
+(set `notify.ownerSms` + `twilioNumber` in `src/knowledge.ts`) so a real person replies.
+Everything also lands in the `/escalations` queue.
 
 > **Phone calls** are also supported via Twilio — the bot answers calls, speaks FAQ
 > answers, and transfers or takes a voicemail on anything uncertain. See

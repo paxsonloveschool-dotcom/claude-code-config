@@ -2,27 +2,10 @@ import type { Env, Interaction } from "./types";
 import { decide } from "./claude";
 import { escalate } from "./escalate";
 import { getProfileByPhone } from "./knowledge";
+import { authed, escapeXml, twiml } from "./twilio";
 
 const SAY_VOICE = "Polly.Joanna"; // Twilio neural voice; change as you like.
 const MAX_EMPTY_TRIES = 2; // hang up / take a message after this many silent turns.
-
-// ---------------------------------------------------------------------------
-// TwiML helpers
-// ---------------------------------------------------------------------------
-
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-function twiml(inner: string): Response {
-  const xml = `<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`;
-  return new Response(xml, { status: 200, headers: { "Content-Type": "text/xml" } });
-}
 
 function say(text: string): string {
   return `<Say voice="${SAY_VOICE}">${escapeXml(text)}</Say>`;
@@ -35,73 +18,6 @@ function gather(prompt: string, tries: number): string {
     `<Gather input="speech" speechTimeout="auto" language="en-US" ` +
     `action="${action}" method="POST" actionOnEmptyResult="true">${say(prompt)}</Gather>`
   );
-}
-
-// ---------------------------------------------------------------------------
-// Twilio request validation
-// ---------------------------------------------------------------------------
-
-/** Full URL Twilio signed against (honor a proxy override if configured). */
-function signedUrl(request: Request, env: Env): string {
-  const url = new URL(request.url);
-  if (env.PUBLIC_BASE_URL) {
-    return env.PUBLIC_BASE_URL.replace(/\/$/, "") + url.pathname + url.search;
-  }
-  return request.url;
-}
-
-/**
- * Verify Twilio's X-Twilio-Signature: HMAC-SHA1 of (url + sorted key+value pairs),
- * base64-encoded, keyed by the auth token. https://www.twilio.com/docs/usage/security
- */
-async function verifyTwilio(
-  url: string,
-  params: Record<string, string>,
-  signature: string | null,
-  authToken: string,
-): Promise<boolean> {
-  if (!signature) return false;
-  let data = url;
-  for (const key of Object.keys(params).sort()) data += key + params[key];
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(authToken),
-    { name: "HMAC", hash: "SHA-1" },
-    false,
-    ["sign"],
-  );
-  const mac = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
-  const expected = btoa(String.fromCharCode(...new Uint8Array(mac)));
-
-  if (expected.length !== signature.length) return false;
-  let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
-  return diff === 0;
-}
-
-/** Read a Twilio form-encoded POST body into a flat param map. */
-async function formParams(request: Request): Promise<Record<string, string>> {
-  const form = await request.formData();
-  const out: Record<string, string> = {};
-  for (const [k, v] of form.entries()) out[k] = typeof v === "string" ? v : "";
-  return out;
-}
-
-async function authed(
-  request: Request,
-  env: Env,
-): Promise<{ ok: boolean; params: Record<string, string> }> {
-  const params = await formParams(request);
-  // No token configured → voice is effectively disabled; reject.
-  if (!env.TWILIO_AUTH_TOKEN) return { ok: false, params };
-  const ok = await verifyTwilio(
-    signedUrl(request, env),
-    params,
-    request.headers.get("x-twilio-signature"),
-    env.TWILIO_AUTH_TOKEN,
-  );
-  return { ok, params };
 }
 
 // ---------------------------------------------------------------------------

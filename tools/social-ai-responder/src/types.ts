@@ -14,14 +14,15 @@ export interface Env {
   ANTHROPIC_API_KEY: string;
   ESCALATION_WEBHOOK_URL?: string;
 
-  // Phase 2: Twilio Voice (optional — only needed if you enable phone calls)
+  // Twilio (optional — needed for phone calls, inbound SMS, and owner-notify texts)
   TWILIO_AUTH_TOKEN?: string;
+  TWILIO_ACCOUNT_SID?: string; // required to SEND texts (owner notifications / SMS replies)
   // Optional override if a proxy rewrites the public URL Twilio signs against.
   PUBLIC_BASE_URL?: string;
 }
 
-export type Platform = "facebook" | "instagram" | "phone";
-export type Surface = "dm" | "comment" | "call";
+export type Platform = "facebook" | "instagram" | "phone" | "sms";
+export type Surface = "dm" | "comment" | "call" | "text";
 
 /** A normalized inbound interaction, regardless of platform/surface. */
 export interface Interaction {
