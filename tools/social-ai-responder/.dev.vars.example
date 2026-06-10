@@ -1,0 +1,25 @@
+# Copy to `.dev.vars` for local `wrangler dev`. In production these are set with
+# `wrangler secret put <NAME>` (NEVER commit real values — .dev.vars is gitignored).
+
+# Meta app secret (App Dashboard > Settings > Basic). Used to verify webhook HMAC.
+META_APP_SECRET=
+
+# A string you invent. Must match what you type into the Meta webhook config UI.
+META_VERIFY_TOKEN=
+
+# Page access token with pages_messaging, pages_manage_metadata,
+# instagram_manage_messages, instagram_manage_comments. See README for how to mint
+# a long-lived token. For multiple pages, use META_PAGE_TOKENS (JSON) instead — see README.
+META_PAGE_TOKEN=
+
+# Optional: JSON map of pageId -> token if you run more than one page/business.
+# Example: {"123456":"EAA...","789012":"EAB..."}
+META_PAGE_TOKENS=
+
+# Anthropic API key (https://console.anthropic.com).
+ANTHROPIC_API_KEY=
+
+# Optional: where to send escalations (anything uncertain). A Slack/Discord incoming
+# webhook URL, or any endpoint that accepts JSON POST. If unset, escalations are only
+# stored in KV (read them with the /escalations endpoint).
+ESCALATION_WEBHOOK_URL=
