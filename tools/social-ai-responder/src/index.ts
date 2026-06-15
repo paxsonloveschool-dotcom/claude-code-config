@@ -213,7 +213,6 @@ Phone: (979) 701-2229<br>
 Email: higherpurposelandscaping@gmail.com</p>
 </body></html>`;
 
-<<<<<<< HEAD
 // The HP Landscaping profile is keyed by this id in knowledge.ts; the demo forces it
 // so visitors see HP's real answers regardless of the (not-yet-set) live Page ID.
 const HP_DEMO_PAGE_KEY = "REPLACE_WITH_PAGE_ID";
@@ -256,8 +255,6 @@ catch(_){add("(error reaching the bot)","bot","");}
 b.disabled=false;q.focus();};
 </script></body></html>`;
 
-=======
->>>>>>> origin/main
 const DATA_DELETION_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
