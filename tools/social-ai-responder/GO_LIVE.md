@@ -3,28 +3,47 @@
 The exact, in-order steps to take this from code to live. Reflects the chosen setup:
 **Facebook + Instagram only, no Twilio, free brain (Workers AI), free phone push (ntfy).**
 
-## ✅ PROGRESS (as of 2026-06-10)
+## ✅ PROGRESS (as of 2026-06-15)
 
-**DONE — the bot is deployed and verified:**
-- ✅ Cloudflare account created (under the higherpurpose gmail)
-- ✅ Code deployed via Workers Builds, **from the FORK** at
-  `higherpurposelandscaping-arch/claude-code-config` (root dir `tools/social-ai-responder`)
+**DONE — deployed, configured, demo working, Meta submission underway:**
 - ✅ Live at: **https://social-ai-responder.higherpurposelandscaping.workers.dev**
-- ✅ KV namespace `STATE` created + wired (id in wrangler.toml)
-- ✅ Secrets set in the Worker: `META_VERIFY_TOKEN`, `PUSH_URL`
-- ✅ Health check OK; `/escalations?key=...` OK; ntfy phone push tested + buzzing
-- ✅ Free AI brain (Workers AI / Llama) is the default — $0 to run
+  (deployed via Workers Builds from the FORK `higherpurposelandscaping-arch/claude-code-config`)
+- ✅ KV `STATE` wired. Worker secrets set: `META_VERIFY_TOKEN`, `PUSH_URL`,
+  `META_APP_SECRET`, `META_PAGE_TOKEN`.
+- ✅ Free AI brain (Workers AI / Llama) working — fixed the response-shape bug.
+- ✅ Real HP Landscaping knowledge loaded (services, FAQ, voice).
+- ✅ Public pages live: `/privacy`, `/data-deletion`.
+- ✅ **Working demo:** `/demo?key=<META_VERIFY_TOKEN>` — talk to the bot, no Facebook needed.
+- ✅ Facebook app created ("HP Landscaping Assistant"; NOTE: 2 empty duplicate apps
+  exist — delete later). App basics (icon, category, privacy URL, data-deletion,
+  contact email) all filled = **Gate 1 done**.
+- ✅ **Gate 2 — Business Verification SUBMITTED, in Meta review** (~few days).
+- ⚠️ The Messenger webhook callback verifies (green) but messages do NOT reach the
+  worker yet — page-permission wall (me/subscribed_apps → permission error, me/accounts
+  empty). This is expected to clear once Business Verification is approved.
 
-**⚠️ Fork note:** the deploy tracks the fork under `higherpurposelandscaping-arch`,
-not this original repo. After changes land here, open the fork on GitHub and click
-**Sync fork → Update branch** to trigger a redeploy.
+**⚠️ Fork redeploy:** changes land on this repo's `main`; the live worker runs from the
+fork. To deploy: open the fork on GitHub (as **higherpurpose**) → **Sync fork → Update
+branch** → wait ~2 min.
 
-**NEXT UP (resume here): § 3. Connect Facebook + Instagram.**
-Values you'll need (also in Worker secrets / chat history): the verify token set as
-`META_VERIFY_TOKEN`, webhook URL
-`https://social-ai-responder.higherpurposelandscaping.workers.dev/webhook`.
-During this step, also put the real Facebook Page ID into `src/knowledge.ts`
-(replacing `REPLACE_WITH_PAGE_ID`) and sync the fork.
+**Account map:** Cloudflare = higherpurpose gmail · Facebook app = paxson ·
+GitHub code/fork = higherpurpose.
+
+**NEXT UP (resume when verification approves — "verification approved"):**
+1. Finish connecting the real Page: subscribe `messages`/`feed` webhook fields (should
+   work once verified), put the real **Page ID** into `src/knowledge.ts`
+   (replace `REPLACE_WITH_PAGE_ID`), sync fork.
+2. Complete **App Review** for `pages_messaging`, `pages_manage_metadata`,
+   `instagram_manage_messages`, `instagram_manage_comments` (needs a screencast of the
+   bot replying — record once #1 works).
+3. Confirm Instagram business account is linked to the Page.
+
+**PENDING DECISIONS (owner, next session):**
+- Alert recipients requested: text to **979-777-8851**, email to
+  **higherpurposelandscaping@gmail.com**. Not yet wired. Email needs a free **Resend**
+  account; real SMS needs paid **Twilio** (or just install ntfy on that phone, free).
+  Store these as Cloudflare **secrets** (env), NOT in committed code (public repo).
+- Free vs paid (Claude) brain — revisit after voice testing.
 
 ---
 
