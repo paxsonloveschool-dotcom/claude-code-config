@@ -62,6 +62,7 @@ export default {
         action: decision.action,
         category: decision.category,
         crossSellPartner: decision.crossSellPartner,
+        reason: decision.reason,
       });
     }
 
