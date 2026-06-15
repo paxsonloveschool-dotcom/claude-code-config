@@ -97,7 +97,9 @@ function failSafe(reason: string): Decision {
  * Open models don't honor strict JSON schemas reliably: strip code fences, grab the
  * outermost {...}, and coerce/validate every field. Anything unusable → null.
  */
-function parseDecision(raw: string): Decision | null {
+function parseDecision(input: unknown): Decision | null {
+  // Workers AI may return the answer as a string, or already as an object — coerce.
+  const raw = typeof input === "string" ? input : JSON.stringify(input ?? "");
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start === -1 || end <= start) return null;
@@ -139,9 +141,13 @@ async function decideWorkersAi(env: Env, it: Interaction, system: string): Promi
       },
     ],
     max_tokens: 800,
-  })) as { response?: string };
-  const parsed = parseDecision(result.response ?? "");
-  return parsed ?? failSafe("Workers AI returned unparseable output");
+  })) as { response?: unknown };
+  // Some models put the text in `.response`; others return the object directly.
+  const payload = result?.response ?? result;
+  const parsed = parseDecision(payload);
+  const snippet =
+    typeof payload === "string" ? payload.slice(0, 160) : JSON.stringify(payload).slice(0, 160);
+  return parsed ?? failSafe(`Workers AI unparseable output: ${snippet}`);
 }
 
 /** Paid brain: Claude with strict structured outputs. */
