@@ -16,7 +16,7 @@ var TIMEZONE = 'America/Chicago';
 var BUSINESS_START_HOUR = 8;    // 8 AM
 var BUSINESS_END_HOUR   = 19;   // 7 PM (exclusive)
 var DRAFT_LABEL = '📝 Email In Draft';
-var GEMINI_MODEL = 'gemini-2.0-flash'; // free-tier model. Swap to 'gemini-2.5-flash' or 'gemini-1.5-flash' if needed.
+var GEMINI_MODEL = 'gemini-2.5-flash'; // free-tier model that works on new keys. Swap to 'gemini-2.0-flash-lite' if quota errors.
 var MAX_THREADS_PER_RUN = 25;
 
 // Senders we never draft for (automated / billing / marketing / personal notifications).
