@@ -7,6 +7,7 @@
  *   - labels the thread "📝 Email In Draft" + a per-client/company name label
  * Skips spam, marketing, automated notifications, bills/receipts, and personal mail.
  *
+ * Uses Google's FREE Gemini AI (key from aistudio.google.com — no card, no bill).
  * One-time setup: see SETUP.md. After adding your API key, run setup() once.
  */
 
@@ -15,7 +16,7 @@ var TIMEZONE = 'America/Chicago';
 var BUSINESS_START_HOUR = 8;    // 8 AM
 var BUSINESS_END_HOUR   = 19;   // 7 PM (exclusive)
 var DRAFT_LABEL = '📝 Email In Draft';
-var CLAUDE_MODEL = 'claude-haiku-4-5-20251001'; // cheap + fast. Swap to 'claude-sonnet-4-6' for higher quality.
+var GEMINI_MODEL = 'gemini-2.0-flash'; // free-tier model. Swap to 'gemini-2.5-flash' or 'gemini-1.5-flash' if needed.
 var MAX_THREADS_PER_RUN = 25;
 
 // Senders we never draft for (automated / billing / marketing / personal notifications).
@@ -26,11 +27,11 @@ var SKIP_SENDER_PATTERNS = [
   'procoretech', 'texasmutual', 'mailchimp', 'sendgrid', 'e-email', 'mkt.intuit'
 ];
 
-/** Run this ONCE after setting ANTHROPIC_API_KEY. Sets the start cutoff + installs the 30-min trigger. */
+/** Run this ONCE after setting GEMINI_API_KEY. Sets the start cutoff + installs the 30-min trigger. */
 function setup() {
   var props = PropertiesService.getScriptProperties();
-  if (!props.getProperty('ANTHROPIC_API_KEY')) {
-    throw new Error('Add ANTHROPIC_API_KEY in Project Settings → Script Properties first, then run setup() again.');
+  if (!props.getProperty('GEMINI_API_KEY')) {
+    throw new Error('Add GEMINI_API_KEY in Project Settings → Script Properties first, then run setup() again.');
   }
   // Only handle mail received from now on (never touches the existing backlog):
   props.setProperty('CUTOFF_EPOCH', String(Math.floor(Date.now() / 1000)));
@@ -48,8 +49,8 @@ function runAutoDrafter() {
   if (hour < BUSINESS_START_HOUR || hour >= BUSINESS_END_HOUR) return; // outside business hours: do nothing
 
   var props = PropertiesService.getScriptProperties();
-  var apiKey = props.getProperty('ANTHROPIC_API_KEY');
-  if (!apiKey) { Logger.log('No ANTHROPIC_API_KEY set.'); return; }
+  var apiKey = props.getProperty('GEMINI_API_KEY');
+  if (!apiKey) { Logger.log('No GEMINI_API_KEY set.'); return; }
   var cutoff = props.getProperty('CUTOFF_EPOCH') || '0';
 
   var draftLabel = getOrCreateLabel(DRAFT_LABEL);
@@ -64,8 +65,8 @@ function runAutoDrafter() {
       if (/higherpurposelandscaping@gmail\.com/i.test(from)) return;   // we sent the last message
       if (isSkippedSender(from)) return;                               // automated / marketing / spam
 
-      var result = draftWithClaude(apiKey, from, last.getSubject(), last.getPlainBody());
-      if (!result || !result.actionable || !result.body) return;       // Claude judged it non-actionable
+      var result = draftWithAI(apiKey, from, last.getSubject(), last.getPlainBody());
+      if (!result || !result.actionable || !result.body) return;       // judged non-actionable
 
       last.createDraftReply(result.body);                              // creates a DRAFT only — never sends
       thread.addLabel(draftLabel);
@@ -77,8 +78,8 @@ function runAutoDrafter() {
   });
 }
 
-/** Calls the Claude API to classify + draft. Returns {actionable, clientName, body} or null. */
-function draftWithClaude(apiKey, from, subject, body) {
+/** Calls Google's free Gemini API to classify + draft. Returns {actionable, clientName, body} or null. */
+function draftWithAI(apiKey, from, subject, body) {
   var system =
     'You draft email replies for HP Landscaping (Higher Purpose Landscaping), a landscaping & construction ' +
     'company in the Bryan/College Station, TX area. You write in the owner\'s real voice.\n\n' +
@@ -98,29 +99,31 @@ function draftWithClaude(apiKey, from, subject, body) {
 
   var user = 'From: ' + from + '\nSubject: ' + subject + '\n\nBody:\n' + (body || '').slice(0, 4000);
 
-  var resp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL +
+            ':generateContent?key=' + encodeURIComponent(apiKey);
+
+  var resp = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'application/json',
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     payload: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 700,
-      system: system,
-      messages: [{ role: 'user', content: user }]
+      system_instruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text: user }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 800, responseMimeType: 'application/json' }
     }),
     muteHttpExceptions: true
   });
 
   if (resp.getResponseCode() !== 200) {
-    Logger.log('Claude API error ' + resp.getResponseCode() + ': ' + resp.getContentText());
+    Logger.log('Gemini API error ' + resp.getResponseCode() + ': ' + resp.getContentText());
     return null;
   }
   var data = JSON.parse(resp.getContentText());
-  var text = (data.content && data.content[0] && data.content[0].text) ? data.content[0].text : '';
-  return parseClaudeJson(text);
+  var text = '';
+  try { text = data.candidates[0].content.parts[0].text; } catch (e) { text = ''; }
+  return parseJsonLoose(text);
 }
 
-function parseClaudeJson(text) {
+function parseJsonLoose(text) {
   try {
     var s = text.indexOf('{'), e = text.lastIndexOf('}');
     if (s < 0 || e < 0) return null;
