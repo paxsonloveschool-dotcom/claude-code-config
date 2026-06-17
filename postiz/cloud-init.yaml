@@ -1,0 +1,39 @@
+#cloud-config
+# ============================================================================
+# Postiz — hands-off Oracle Cloud install (NO SSH, NO typed commands)
+#
+# HOW TO USE:
+#   1. Edit the three values in the "write_files" block below:
+#        DUCK_SUB, DUCK_TOKEN  (your free DuckDNS subdomain + token)
+#   2. When creating the Oracle instance, expand
+#        "Show advanced options" -> Management -> "User data" ->
+#        "Paste cloud-init script", and paste this entire file.
+#   3. Create the instance. It installs Docker, opens the firewall, points
+#      your domain, and launches Postiz automatically (~3-5 min after boot).
+#
+# STILL REQUIRED in the console (Oracle control-plane, can't be scripted):
+#   Add ingress rules for TCP 80 and 443 in your VCN's Security List.
+#   (See ORACLE_FREE_SETUP.md, Part 1.)
+# ============================================================================
+package_update: true
+packages:
+  - git
+  - curl
+
+write_files:
+  - path: /etc/postiz-install.env
+    permissions: "0600"
+    content: |
+      # ---- EDIT THESE TWO LINES ----
+      DUCK_SUB=CHANGE_ME
+      DUCK_TOKEN=CHANGE_ME
+      # ------------------------------
+      # ARM (A1) hosts: optionally pin a specific arm64 image tag.
+      # POSTIZ_IMAGE_TAG=v2.21.0-arm64
+
+runcmd:
+  - set -eux
+  - git clone https://github.com/paxsonloveschool-dotcom/claude-code-config.git /opt/postiz-repo
+  - chmod +x /opt/postiz-repo/postiz/setup.sh
+  # Run the bootstrap headlessly using the values written above.
+  - cd /opt/postiz-repo/postiz && set -a && . /etc/postiz-install.env && set +a && ./setup.sh

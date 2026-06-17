@@ -1,0 +1,63 @@
+name: Postiz — schedule content
+
+# Trigger a batch of posts from anywhere (incl. your phone via the GitHub app):
+# Actions tab -> "Postiz — schedule content" -> Run workflow.
+# Reliable & repeat-safe: it only schedules when you click Run.
+# (To run automatically, uncomment the `schedule` block — but note it would
+#  re-post the same file each time unless you rotate the content.)
+on:
+  workflow_dispatch:
+    inputs:
+      content_file:
+        description: "Content file to schedule"
+        required: true
+        default: "postiz/automation/content/hp-landscaping.json"
+      channels:
+        description: "Comma-separated Postiz integration (channel) ids"
+        required: true
+      days:
+        description: "Posting weekdays"
+        required: true
+        default: "mon,wed,fri"
+      time:
+        description: "Time of day HH:MM"
+        required: true
+        default: "09:00"
+      utc_offset:
+        description: "Hours offset from UTC for the time (e.g. -4 for EDT)"
+        required: true
+        default: "0"
+      dry_run:
+        description: "Preview only (do not send)"
+        type: boolean
+        default: true
+  # schedule:
+  #   - cron: "0 13 * * 1"   # Mondays 13:00 UTC — uncomment to auto-run weekly
+
+jobs:
+  schedule:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Build calendar
+        run: |
+          python3 postiz/automation/plan_calendar.py \
+            "${{ inputs.content_file }}" \
+            --days "${{ inputs.days }}" \
+            --time "${{ inputs.time }}" \
+            --utc-offset "${{ inputs.utc_offset }}" \
+            --channels "${{ inputs.channels }}" \
+            --out planned.json
+          echo "----- planned.json -----"; cat planned.json
+      - name: Schedule posts
+        if: ${{ inputs.dry_run == false }}
+        env:
+          POSTIZ_API_URL: ${{ secrets.POSTIZ_API_URL }}
+          POSTIZ_API_KEY: ${{ secrets.POSTIZ_API_KEY }}
+        run: python3 postiz/automation/schedule_posts.py planned.json
+      - name: Dry-run notice
+        if: ${{ inputs.dry_run == true }}
+        run: echo "Dry-run only — set dry_run=false to actually schedule."

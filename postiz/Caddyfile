@@ -1,0 +1,6 @@
+# Caddy reads {$DOMAIN} from the environment (set in your .env file).
+# It automatically gets + renews a free HTTPS certificate and proxies
+# all traffic to the Postiz container on port 5000.
+{$DOMAIN} {
+	reverse_proxy postiz:5000
+}
