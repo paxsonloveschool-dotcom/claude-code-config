@@ -21,11 +21,16 @@ All code lives in `social-suite/`. Main PR: **#21** (branch `claude/social-suite
   prompt-cached, defensive JSON parsing
 - `publish/poster.py` — Postiz public API (`POST /public/v1/posts`, all channels
   in one call), HTTP error handling, dry-run
-- `clip/` auto-clipper + full orchestrator wiring — **finishing in background
-  tonight** (branch `claude/social-suite-clipper`); merge + retest on resume
-- Docs: `RESEARCH.md` (verified stack/licenses), `ARCHITECTURE.md`,
-  `PLATFORM_SETUP.md` (per-platform dev-app guide), `REVIEW_SUBMISSIONS.md`,
-  `legal/PRIVACY_POLICY.md`, `legal/TERMS.md`
+- `clip/clipper.py` — auto-clipper: transcript highlight selection +
+  ffmpeg 9:16 reframe (optional Claude re-ranking via `CLIP_USE_LLM`)
+- `orchestrator/pipeline.py` — **full end-to-end chain wired**: ingest → clip →
+  transcribe → caption → write → publish, with a no-keys `dry_run` mode
+- Docs: `RESEARCH.md`, `ARCHITECTURE.md`, `QUICKSTART.md` (run it locally),
+  `PLATFORM_SETUP.md`, `REVIEW_SUBMISSIONS.md`, `legal/PRIVACY_POLICY.md`,
+  `legal/TERMS.md`
+
+**Code is feature-complete. 48 tests pass. Pipeline dry-run runs all 5 stages
+end-to-end (1 video → 2 clips → captioned → written → scheduled).**
 
 ## ✅ Done — user actions this session
 - HP + Restore Instagram → **Business accounts**, linked to Facebook Pages
@@ -34,10 +39,10 @@ All code lives in `social-suite/`. Main PR: **#21** (branch `claude/social-suite
 - **App ID + App Secret saved** (in user's own notes — never shared)
 - Meta **Business Verification** started; was uploading the **business license**
 
-## 🔲 Remaining — ON ME (no user action)
-1. Merge the clipper + orchestrator branch, re-run all tests, push (auto tonight)
-2. Write a `QUICKSTART.md` for running the suite locally once keys exist
-3. Final pass: ensure `pyproject.toml` deps are complete for a real install
+## ✅ Remaining — ON ME — DONE overnight
+1. ✅ Merged clipper + orchestrator, all 48 tests green, pushed
+2. ✅ `QUICKSTART.md` written
+3. Codebase feature-complete — nothing else needed from me until hosting/keys
 
 ## 🟡 Remaining — NEEDS USER (can't be done without you)
 1. **Finish Meta Business Verification** — upload the clear license photo (guide
