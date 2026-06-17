@@ -124,6 +124,39 @@ def test_auto_language_omitted():
     assert "language" not in model.transcribe_kwargs
 
 
+def test_missing_word_timestamps_map_to_zero_without_crashing():
+    """A word with None start/end (or a segment with words=None) must not crash."""
+    mod = types.ModuleType("faster_whisper")
+
+    class _NoneTimingModel:
+        def __init__(self, *a, **k):
+            pass
+
+        def transcribe(self, video_path, **kwargs):
+            def _gen():
+                # Word with None timings + segment whose `words` is None.
+                yield _FakeSegment(
+                    "partial",
+                    1.0,
+                    2.0,
+                    [_FakeWord("partial", None, None)],
+                )
+                yield _FakeSegment("no list", 3.0, 4.0, None)
+
+            return _gen(), _FakeInfo()
+
+    mod.WhisperModel = _NoneTimingModel
+    sys.modules["faster_whisper"] = mod
+    os.environ["WHISPER_LANGUAGE"] = "auto"
+
+    segs = transcribe("/tmp/x.mp4")
+    assert len(segs) == 2
+    # None timings coerced to 0.0, not an exception.
+    assert segs[0].words[0].start_seconds == 0.0
+    assert segs[0].words[0].end_seconds == 0.0
+    assert segs[1].words == []
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):

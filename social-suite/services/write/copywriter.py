@@ -114,22 +114,47 @@ def _extract_text(resp) -> str:
 
 
 def _parse_json_object(text: str) -> dict:
-    """Parse a JSON object from model text, tolerating code fences / prose."""
-    text = text.strip()
-    if text.startswith("```"):
-        # Strip ```json ... ``` fences.
-        if text.count("```") >= 2:
-            text = text.split("```", 2)[1]
-        if text.lstrip().lower().startswith("json"):
-            text = text.lstrip()[4:]
+    """Parse a JSON *object* from model text, tolerating code fences / prose.
+
+    Raises ``ValueError`` with the offending text when no JSON object can be
+    recovered (empty reply, a JSON array/scalar, or unparseable prose) — rather
+    than letting a later ``.get`` blow up with an obscure ``AttributeError``.
+    """
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("Empty response from the model (no copy generated).")
+
+    candidate = text
+    if candidate.startswith("```"):
+        # Strip ```json ... ``` (or plain ```) fences, keeping the inner body.
+        if candidate.count("```") >= 2:
+            candidate = candidate.split("```", 2)[1]
+        else:
+            candidate = candidate[3:]
+        candidate = candidate.lstrip()
+        if candidate.lower().startswith("json"):
+            candidate = candidate[4:]
+        candidate = candidate.strip()
+
+    parsed = None
     try:
-        return json.loads(text)
+        parsed = json.loads(candidate)
     except json.JSONDecodeError:
-        start = text.find("{")
-        end = text.rfind("}")
+        # Defensive: extract the first {...} object embedded in prose.
+        start = candidate.find("{")
+        end = candidate.rfind("}")
         if start != -1 and end != -1 and end > start:
-            return json.loads(text[start : end + 1])
-        raise
+            try:
+                parsed = json.loads(candidate[start : end + 1])
+            except json.JSONDecodeError:
+                parsed = None
+
+    if not isinstance(parsed, dict):
+        raise ValueError(
+            "Could not parse a JSON object from the model response: "
+            f"{text[:200]!r}"
+        )
+    return parsed
 
 
 def generate_caption(context: dict) -> GeneratedCopy:

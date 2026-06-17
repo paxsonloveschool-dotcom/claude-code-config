@@ -64,6 +64,68 @@ def test_brace_escaping():
     assert "(braces)" in ass
 
 
+def _parse_dialogue_times(ass: str):
+    """Return [(start, end), ...] for each Dialogue line in the script."""
+    out = []
+    for line in ass.splitlines():
+        if line.startswith("Dialogue:"):
+            fields = line.split(",", 9)
+            out.append((fields[1], fields[2]))
+    return out
+
+
+def test_empty_segments_produce_valid_ass():
+    ass = build_ass([])
+    for section in ("[Script Info]", "[V4+ Styles]", "[Events]"):
+        assert section in ass
+    assert ass.count("Dialogue:") == 0
+    # Ends cleanly on the events Format line (no dangling blank Dialogue).
+    assert ass.endswith("Effect, Text\n")
+
+
+def test_zero_and_negative_duration_segment_clamped():
+    segs = [Segment(text="oops", start_seconds=5.0, end_seconds=2.0, words=[])]
+    ass = build_ass(segs)
+    (start, end), = _parse_dialogue_times(ass)
+    assert start == _fmt_time(5.0)
+    assert end >= start  # clamped to start, never before it
+
+
+def test_out_of_order_words_do_not_emit_bad_tags():
+    segs = [
+        Segment(
+            text="a b c",
+            start_seconds=0.0,
+            end_seconds=2.0,
+            words=[
+                Word("a", 0.0, 1.0),
+                Word("b", 0.5, 0.5),   # starts before a ends + zero duration
+                Word("c", 0.4, 0.4),   # fully out of order + zero duration
+            ],
+        )
+    ]
+    ass = build_ass(segs)
+    # No negative \k hold and no \kf0 (both invalid / break libass timing).
+    assert "\\k-" not in ass
+    assert "\\kf0}" not in ass
+    assert "\\kf-" not in ass
+    for w in ("a", "b", "c"):
+        assert f"}}{w} " in ass or ass.rstrip().endswith(w)
+
+
+def test_empty_word_text_falls_back_to_segment_text():
+    segs = [
+        Segment(
+            text="real text",
+            start_seconds=0.0,
+            end_seconds=1.0,
+            words=[Word("", 0.0, 0.5), Word("   ", 0.5, 1.0)],
+        )
+    ]
+    ass = build_ass(segs)
+    assert "real text" in ass
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):
