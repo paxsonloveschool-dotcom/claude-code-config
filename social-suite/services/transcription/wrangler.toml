@@ -1,0 +1,23 @@
+name = "transcription"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Free ASR brain: Cloudflare Workers AI Whisper (no extra account, free daily allowance).
+[ai]
+binding = "AI"
+
+[vars]
+# Non-secret config. The AUTH_KEY secret (gates POST /transcribe) goes via
+# `wrangler secret put AUTH_KEY` — see README.
+#
+# Whisper model. "turbo" is the fast large-v3 variant (best timestamps + segments).
+# Swap to "@cf/openai/whisper" for the smaller/cheaper base model.
+WHISPER_MODEL = "@cf/openai/whisper-large-v3-turbo"
+# Cue shaping for caption/burn-in. When we have word-level timing we re-chunk into
+# readable cues bounded by these limits (the caption/burn-in service consumes these).
+MAX_CUE_CHARS = "42"
+MAX_CUE_SECONDS = "6"
+# Hard ceiling on accepted audio (bytes). Workers request bodies and Whisper both
+# cap out; reject early with a clear error rather than a vague 413 downstream.
+MAX_AUDIO_BYTES = "26214400"

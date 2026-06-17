@@ -1,0 +1,19 @@
+{
+  "name": "transcription",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ASR/transcription service for the social suite: audio/video in, timed transcripts (SRT/VTT/JSON) out. Cloudflare Workers + Workers AI Whisper.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "typecheck": "tsc --noEmit",
+    "secret:authkey": "wrangler secret put AUTH_KEY"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260101.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  }
+}
