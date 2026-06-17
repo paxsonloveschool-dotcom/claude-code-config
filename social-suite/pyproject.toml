@@ -21,10 +21,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Real implementations drop these in as they're built.
-clip = ["clipsai"]               # auto-clip long video -> 9:16 shorts
-transcribe = ["faster-whisper"]  # or whisperx for word-level alignment
-queue = ["redis>=5.0", "rq>=1.16"]
+# faster-whisper powers BOTH transcription (captions) and the clipper's
+# transcript-driven highlight selection. ffmpeg (system binary) does the
+# cutting/reframe/burn-in. clipsai/whisperx are optional alternatives.
+transcribe = ["faster-whisper"]
+queue = ["redis>=5.0", "rq>=1.16"]  # optional: auto-watch orchestration
 dev = ["ruff", "mypy", "pytest"]
 
 [tool.setuptools]

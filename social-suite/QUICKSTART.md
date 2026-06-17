@@ -13,8 +13,10 @@ run the **dry-run** (no keys, no external calls) to watch the whole flow work.
 ```bash
 cd social-suite
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e .            # core (fastapi, etc.)
-pip install -e ".[media,ai,cloud]"   # heavy extras: whisper, anthropic, dropbox
+pip install -e .                 # core (fastapi, anthropic, dropbox, postiz client)
+pip install -e ".[transcribe]"   # faster-whisper — real transcription + clip selection
+pip install -e ".[queue]"        # optional: redis/rq for the auto-watcher
+# ffmpeg is a system install, not pip: `brew install ffmpeg`
 ```
 
 ## 2. Configure
