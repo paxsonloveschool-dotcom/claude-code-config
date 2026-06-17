@@ -3,34 +3,51 @@
 Given context about a clip (its transcript, title, platform, etc.), generate a
 scroll-stopping hook, a platform-appropriate caption, and a set of hashtags.
 
-TODO(impl): fill in with the Anthropic Python SDK (`anthropic`).
-    - Model: claude-opus-4-8 (do not downgrade unless explicitly required).
-    - Use adaptive thinking: thinking={"type": "adaptive"}.
-    - Prefer structured outputs (output_config.format with a json_schema, or
-      client.messages.parse with a Pydantic model) so hook/caption/hashtags come
-      back already separated — assistant prefill is NOT supported on this model.
-    - Read ANTHROPIC_API_KEY / ANTHROPIC_MODEL from the environment.
+The ``anthropic`` package is imported lazily *inside* ``generate_caption`` so the
+module (and the wider package) imports cleanly without the SDK installed.
 
-Reference shape of a real call (left commented so the skeleton imports without
-the anthropic package installed):
+Reference call shape (model ``claude-opus-4-8``):
 
     import anthropic
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
     resp = client.messages.create(
-        model=os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8"),
+        model="claude-opus-4-8",
         max_tokens=1024,
-        thinking={"type": "adaptive"},
-        output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
-        messages=[{"role": "user", "content": _build_prompt(context)}],
+        system=[{"type": "text", "text": BRAND_SYSTEM_PROMPT,
+                 "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": _build_user_prompt(context)}],
     )
 """
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8")
+
+# Stable brand/system prompt. Kept module-level and constant so prompt caching
+# (cache_control) gives a real hit across calls.
+BRAND_SYSTEM_PROMPT = """\
+You are a world-class short-form social copywriter for an in-house content team.
+You write hooks, captions, and hashtags for vertical video clips (TikTok, Reels,
+Shorts, etc.). Your copy is punchy, native to each platform, and engineered to
+stop the scroll in the first second.
+
+Rules:
+- The HOOK is one short line (max ~12 words) that creates curiosity or tension.
+  It is what appears on-screen and as the first line of the caption.
+- The CAPTION is the post body: 1-3 short sentences, conversational, with a
+  light call-to-action. Do NOT restate the hook verbatim. No markdown.
+- HASHTAGS: 4-10 relevant, lowercase, specific (mix broad + niche). Return them
+  WITHOUT the leading '#'. No spaces inside a tag.
+- Match the requested platform and tone. Never invent facts not in the context.
+- Respond with ONLY a single JSON object, no prose, no code fences.
+
+Output JSON schema (exactly these keys):
+{"hook": str, "caption": str, "hashtags": [str, ...]}
+"""
 
 
 @dataclass
@@ -50,6 +67,71 @@ class GeneratedCopy:
     model: str = MODEL
 
 
+def _build_user_prompt(context: dict) -> str:
+    """Render the per-clip context into the user-turn instruction string."""
+    transcript = (context.get("transcript") or "").strip()
+    title = (context.get("title") or "").strip()
+    platform = (context.get("platform") or "tiktok").strip()
+    tone = (context.get("tone") or "energetic").strip()
+
+    lines = [
+        f"Platform: {platform}",
+        f"Tone: {tone}",
+    ]
+    if title:
+        lines.append(f"Title: {title}")
+    if transcript:
+        lines.append("Clip transcript:\n" + transcript)
+    lines.append(
+        "\nWrite the hook, caption, and hashtags for THIS clip. "
+        "Return only the JSON object."
+    )
+    return "\n".join(lines)
+
+
+def _normalize_hashtags(raw) -> list[str]:
+    """Coerce model hashtag output into a clean list (no leading '#')."""
+    if isinstance(raw, str):
+        raw = raw.replace(",", " ").split()
+    tags: list[str] = []
+    for t in raw or []:
+        t = str(t).strip().lstrip("#").strip()
+        if t:
+            tags.append(t)
+    return tags
+
+
+def _extract_text(resp) -> str:
+    """Pull the concatenated text from an Anthropic Messages response."""
+    parts: list[str] = []
+    for block in getattr(resp, "content", []) or []:
+        text = getattr(block, "text", None)
+        if text is None and isinstance(block, dict):
+            text = block.get("text")
+        if text:
+            parts.append(text)
+    return "".join(parts).strip()
+
+
+def _parse_json_object(text: str) -> dict:
+    """Parse a JSON object from model text, tolerating code fences / prose."""
+    text = text.strip()
+    if text.startswith("```"):
+        # Strip ```json ... ``` fences.
+        if text.count("```") >= 2:
+            text = text.split("```", 2)[1]
+        if text.lstrip().lower().startswith("json"):
+            text = text.lstrip()[4:]
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(text[start : end + 1])
+        raise
+
+
 def generate_caption(context: dict) -> GeneratedCopy:
     """Generate a hook, caption, and hashtags for a clip.
 
@@ -59,10 +141,29 @@ def generate_caption(context: dict) -> GeneratedCopy:
 
     Returns:
         A ``GeneratedCopy`` with hook + caption + hashtags.
-
-    TODO(impl): call the Anthropic SDK (model=claude-opus-4-8, adaptive thinking,
-        structured outputs). See module docstring for the reference call.
     """
-    raise NotImplementedError(
-        "Call the Anthropic SDK (claude-opus-4-8) to generate hook/caption/hashtags."
+    import anthropic  # lazy: keep module import dep-free
+
+    model = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8")
+    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+
+    resp = client.messages.create(
+        model=model,
+        max_tokens=1024,
+        system=[
+            {
+                "type": "text",
+                "text": BRAND_SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        messages=[{"role": "user", "content": _build_user_prompt(context)}],
+    )
+
+    data = _parse_json_object(_extract_text(resp))
+    return GeneratedCopy(
+        hook=str(data.get("hook", "")).strip(),
+        caption=str(data.get("caption", "")).strip(),
+        hashtags=_normalize_hashtags(data.get("hashtags")),
+        model=model,
     )
