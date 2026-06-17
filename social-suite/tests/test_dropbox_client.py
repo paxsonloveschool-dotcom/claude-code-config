@@ -192,6 +192,58 @@ def test_access_token_fallback():
     os.environ.pop("DROPBOX_ACCESS_TOKEN", None)
 
 
+class RateLimitError(Exception):
+    """Mimics dropbox.exceptions.RateLimitError (matched by class name)."""
+
+    def __init__(self, backoff):
+        super().__init__("too_many_requests")
+        self.backoff = backoff
+
+
+def test_rate_limit_retries_and_honors_backoff():
+    import time as _time
+
+    import services.ingest.dropbox_client as dc
+
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise RateLimitError(backoff=0.01)
+        return "ok"
+
+    slept: list = []
+    orig_sleep = _time.sleep
+    _time.sleep = lambda s: slept.append(s)
+    try:
+        result = dc._call_with_retry(flaky)
+    finally:
+        _time.sleep = orig_sleep
+
+    assert result == "ok"
+    assert calls["n"] == 3
+    assert slept == [0.01, 0.01]  # honored the backoff hint each retry
+
+
+def test_non_rate_limit_error_not_retried():
+    import services.ingest.dropbox_client as dc
+
+    calls = {"n": 0}
+
+    def boom():
+        calls["n"] += 1
+        raise ValueError("real bug")
+
+    try:
+        dc._call_with_retry(boom)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("non-rate-limit error must propagate")
+    assert calls["n"] == 1  # not retried
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):

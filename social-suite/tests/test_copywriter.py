@@ -119,6 +119,53 @@ def test_build_user_prompt_defaults():
     assert "Tone: energetic" in prompt
 
 
+def test_parse_extracts_json_object_embedded_in_prose():
+    store: dict = {}
+    reply = (
+        "Sure! Here is your copy:\n"
+        '{"hook":"H","caption":"C","hashtags":["x"]}\n'
+        "Let me know if you want changes."
+    )
+    _install_fake_anthropic(store, reply)
+    result = generate_caption({"transcript": "x", "platform": "x"})
+    assert result.hook == "H"
+    assert result.hashtags == ["x"]
+
+
+def test_empty_response_raises_clear_error():
+    store: dict = {}
+    _install_fake_anthropic(store, "")
+    try:
+        generate_caption({"transcript": "x", "platform": "x"})
+    except ValueError as e:
+        assert "Empty response" in str(e)
+    else:
+        raise AssertionError("expected ValueError on empty response")
+
+
+def test_non_object_json_raises_clear_error():
+    # Model returns a JSON array, not an object -> must not AttributeError.
+    store: dict = {}
+    _install_fake_anthropic(store, '["a", "b"]')
+    try:
+        generate_caption({"transcript": "x", "platform": "x"})
+    except ValueError as e:
+        assert "JSON object" in str(e)
+    else:
+        raise AssertionError("expected ValueError on non-object JSON")
+
+
+def test_unparseable_prose_raises_clear_error():
+    store: dict = {}
+    _install_fake_anthropic(store, "I cannot help with that request.")
+    try:
+        generate_caption({"transcript": "x", "platform": "x"})
+    except ValueError as e:
+        assert "JSON object" in str(e)
+    else:
+        raise AssertionError("expected ValueError on unparseable prose")
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):

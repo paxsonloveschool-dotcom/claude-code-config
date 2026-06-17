@@ -134,7 +134,7 @@ def test_post_json_uses_raw_authorization_header():
         def read(self):
             return b'{"id":"x"}'
 
-    def _fake_urlopen(req):
+    def _fake_urlopen(req, timeout=None):
         captured["headers"] = req.headers
         captured["method"] = req.get_method()
         captured["url"] = req.full_url
@@ -150,6 +150,82 @@ def test_post_json_uses_raw_authorization_header():
     # urllib title-cases header keys.
     assert captured["headers"]["Authorization"] == "RAWKEY"
     assert captured["method"] == "POST"
+
+
+def test_post_json_raises_with_body_on_http_error():
+    """Non-2xx must raise a clear error that includes Postiz's response body."""
+    import io
+    import urllib.error
+    import urllib.request
+
+    def _fake_urlopen(req, timeout=None):
+        raise urllib.error.HTTPError(
+            url=req.full_url,
+            code=400,
+            msg="Bad Request",
+            hdrs=None,
+            fp=io.BytesIO(b'{"error":"missing integration"}'),
+        )
+
+    orig = urllib.request.urlopen
+    urllib.request.urlopen = _fake_urlopen
+    try:
+        poster._post_json("https://h/public/v1/posts", {"a": 1}, "K")
+    except RuntimeError as e:
+        msg = str(e)
+        assert "400" in msg
+        assert "missing integration" in msg  # body surfaced
+    else:
+        raise AssertionError("expected RuntimeError on HTTP 400")
+    finally:
+        urllib.request.urlopen = orig
+
+
+def test_post_json_raises_on_connection_error():
+    import urllib.error
+    import urllib.request
+
+    def _fake_urlopen(req, timeout=None):
+        raise urllib.error.URLError("connection refused")
+
+    orig = urllib.request.urlopen
+    urllib.request.urlopen = _fake_urlopen
+    try:
+        poster._post_json("https://h/public/v1/posts", {"a": 1}, "K")
+    except RuntimeError as e:
+        assert "connection refused" in str(e)
+    else:
+        raise AssertionError("expected RuntimeError on URLError")
+    finally:
+        urllib.request.urlopen = orig
+
+
+def test_post_json_passes_timeout():
+    import urllib.request
+
+    captured: dict = {}
+
+    class _FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b"{}"
+
+    def _fake_urlopen(req, timeout=None):
+        captured["timeout"] = timeout
+        return _FakeResp()
+
+    orig = urllib.request.urlopen
+    urllib.request.urlopen = _fake_urlopen
+    try:
+        poster._post_json("https://h/public/v1/posts", {"a": 1}, "K")
+    finally:
+        urllib.request.urlopen = orig
+    assert captured["timeout"] is not None and captured["timeout"] > 0
 
 
 def _run():

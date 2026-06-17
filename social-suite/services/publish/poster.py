@@ -116,8 +116,13 @@ def build_payload(
     }
 
 
-def _post_json(url: str, body: dict, api_key: str) -> dict:
-    """POST ``body`` as JSON to ``url`` with the raw Postiz auth header."""
+def _post_json(url: str, body: dict, api_key: str, timeout: float = 30.0) -> dict:
+    """POST ``body`` as JSON to ``url`` with the raw Postiz auth header.
+
+    Raises ``RuntimeError`` with the response body on any non-2xx status (so the
+    caller sees Postiz's error message, like the schedule_posts.py reference),
+    and on connection/timeout failures.
+    """
     import urllib.error  # lazy, stdlib
     import urllib.request
 
@@ -131,8 +136,19 @@ def _post_json(url: str, body: dict, api_key: str) -> dict:
             "Authorization": api_key,  # raw key, no "Bearer"
         },
     )
-    with urllib.request.urlopen(req) as resp:  # noqa: S310 (trusted self-hosted URL)
-        raw = resp.read().decode("utf-8")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (trusted self-hosted URL)
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:  # non-2xx — surface the body
+        try:
+            err_body = e.read().decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001
+            err_body = ""
+        raise RuntimeError(
+            f"Postiz POST {url} failed: HTTP {e.code} {e.reason}: {err_body}"
+        ) from e
+    except urllib.error.URLError as e:  # DNS/connection/timeout
+        raise RuntimeError(f"Postiz POST {url} failed: {e.reason}") from e
     return json.loads(raw) if raw else {}
 
 

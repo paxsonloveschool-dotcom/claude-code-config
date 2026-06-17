@@ -62,6 +62,41 @@ def _client():
     )
 
 
+def _retry_after_seconds(exc: Exception) -> float | None:
+    """Extract a Dropbox rate-limit backoff (seconds) from an exception, if any.
+
+    Dropbox raises ``dropbox.exceptions.RateLimitError`` (HTTP 429) carrying
+    ``backoff`` / ``retry_after``. We detect it duck-typed so the SDK never has
+    to be imported at module level. Returns None when ``exc`` is not a rate limit.
+    """
+    if type(exc).__name__ != "RateLimitError":
+        return None
+    for attr in ("backoff", "retry_after"):
+        val = getattr(exc, attr, None)
+        if val is not None:
+            try:
+                return max(0.0, float(val))
+            except (TypeError, ValueError):
+                pass
+    return 0.0  # rate-limited but no hint — caller applies a default
+
+
+def _call_with_retry(fn, *args, _max_retries: int = 5, **kwargs):
+    """Call ``fn``; on a Dropbox 429 sleep for Retry-After and retry."""
+    import time  # lazy, stdlib
+
+    attempt = 0
+    while True:
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            wait = _retry_after_seconds(exc)
+            if wait is None or attempt >= _max_retries:
+                raise
+            time.sleep(wait if wait > 0 else 1.0)
+            attempt += 1
+
+
 def _to_files(entries) -> list[DropboxFile]:
     """Map raw SDK entries to ``DropboxFile``, keeping only actual files."""
     files: list[DropboxFile] = []
@@ -93,16 +128,16 @@ def list_new_files(cursor: str | None = None) -> tuple[list[DropboxFile], str | 
     dbx = _client()
 
     if cursor:
-        result = dbx.files_list_folder_continue(cursor)
+        result = _call_with_retry(dbx.files_list_folder_continue, cursor)
     else:
         folder = os.getenv("DROPBOX_WATCH_FOLDER", "/raw-video")
-        result = dbx.files_list_folder(folder)
+        result = _call_with_retry(dbx.files_list_folder, folder)
 
     files = _to_files(result.entries)
 
     # Drain pagination so the returned cursor reflects everything seen.
     while getattr(result, "has_more", False):
-        result = dbx.files_list_folder_continue(result.cursor)
+        result = _call_with_retry(dbx.files_list_folder_continue, result.cursor)
         files.extend(_to_files(result.entries))
 
     return files, getattr(result, "cursor", None)
@@ -134,5 +169,5 @@ def download(file: DropboxFile, dest_dir: str | None = None) -> str:
     local_path = os.path.join(dest_dir, file.name)
 
     dbx = _client()
-    dbx.files_download_to_file(local_path, file.path)
+    _call_with_retry(dbx.files_download_to_file, local_path, file.path)
     return os.path.abspath(local_path)

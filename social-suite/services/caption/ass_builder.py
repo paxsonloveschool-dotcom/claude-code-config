@@ -81,12 +81,22 @@ def _karaoke_text(segment: "Segment") -> str:
     parts: list[str] = []
     prev_end = segment.start_seconds
     for word in segment.words:
-        gap = word.start_seconds - prev_end
+        word_text = _escape(word.text)
+        if not word_text:
+            continue
+        # Clamp: tolerate missing/zero/out-of-order timings without emitting a
+        # negative \k hold or a zero/negative \kf duration (both -> invalid ASS).
+        start = max(word.start_seconds, prev_end)
+        end = max(word.end_seconds, start)
+        gap = start - prev_end
         if gap > 0.02:
             parts.append(f"{{\\k{int(round(gap * 100))}}}")
-        dur_cs = max(1, int(round((word.end_seconds - word.start_seconds) * 100)))
-        parts.append(f"{{\\kf{dur_cs}}}{_escape(word.text)} ")
-        prev_end = word.end_seconds
+        dur_cs = max(1, int(round((end - start) * 100)))
+        parts.append(f"{{\\kf{dur_cs}}}{word_text} ")
+        prev_end = end
+    if not parts:
+        # Every word was empty/escaped away — fall back to the segment text.
+        return _escape(segment.text)
     return "".join(parts).rstrip()
 
 
@@ -125,8 +135,15 @@ def build_ass(
     )
     lines: list[str] = []
     for seg in segments:
-        start = _fmt_time(seg.start_seconds)
-        end = _fmt_time(seg.end_seconds)
         body = _karaoke_text(seg)
+        if not body:
+            # Skip empty/blank segments — an empty Dialogue body is useless and
+            # an all-whitespace one renders nothing.
+            continue
+        start = _fmt_time(seg.start_seconds)
+        # Clamp end >= start so a zero/negative-duration segment never produces
+        # a Dialogue line whose End precedes its Start (invalid ASS).
+        end = _fmt_time(max(seg.end_seconds, seg.start_seconds))
         lines.append(f"Dialogue: 0,{start},{end},Caption,,0,0,0,,{body}")
-    return header + styles + events_header + "\n".join(lines) + "\n"
+    body = ("\n".join(lines) + "\n") if lines else ""
+    return header + styles + events_header + body
