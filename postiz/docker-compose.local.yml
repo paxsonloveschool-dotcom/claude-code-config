@@ -10,7 +10,10 @@ services:
   postiz:
     # Apple Silicon (M1/M2/M3) Macs run this amd64 image via emulation — works,
     # just a little slower on first boot. No change needed.
-    image: ${POSTIZ_IMAGE:-ghcr.io/gitroomhq/postiz-app:latest}
+    # Pinned to v2.11.2 — the last single-container release before Postiz
+    # required an external Temporal stack (v2.12+). Newer ":latest" images will
+    # 502 here because the backend can't reach Temporal. Override via POSTIZ_IMAGE.
+    image: ${POSTIZ_IMAGE:-ghcr.io/gitroomhq/postiz-app:v2.11.2}
     container_name: postiz-local
     restart: always
     environment:
