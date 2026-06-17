@@ -1,61 +1,91 @@
 [
   {
     "text": "❄️ First snow is coming — is your driveway ready? HP Landscaping snow removal & plowing keeps your property clear, safe, and accessible all winter long. Reliable crews, no missed mornings. Book your season now before the flakes fly. 🚜\n\n#SnowRemoval #Plowing #HPLandscaping #WinterReady #SnowSeason",
-    "channels": ["REPLACE_WITH_CHANNEL_ID"],
+    "channels": [
+      "hp-instagram",
+      "hp-facebook"
+    ],
     "schedule": null,
     "image": null
   },
   {
     "text": "✨ Make your home the brightest on the block. 🎄 HP Landscaping installs, maintains, AND takes down your holiday lighting — no wobbly ladders, no tangled cords, just magic. Spots fill fast this time of year. Call to reserve your install date! 💡\n\n#HolidayLighting #ChristmasLights #HPLandscaping #HolidayDecor #CurbAppeal",
-    "channels": ["REPLACE_WITH_CHANNEL_ID"],
+    "channels": [
+      "hp-instagram",
+      "hp-facebook"
+    ],
     "schedule": null,
     "image": null
   },
   {
     "text": "Pro tip 🌳: Winter is brutal on young trees and shrubs. Wrap trunks, mulch the roots, and shield evergreens from drying winds before the deep freeze. Don't lose the plants you invested in. Let HP Landscaping winterize your landscape the right way. ❄️\n\n#WinterTreeCare #PlantProtection #HPLandscaping #LawnTips #Winterize",
-    "channels": ["REPLACE_WITH_CHANNEL_ID"],
+    "channels": [
+      "hp-instagram",
+      "hp-facebook"
+    ],
     "schedule": null,
     "image": null
   },
   {
     "text": "🧊 Icy walkways = slip hazards & liability. Keep your steps, sidewalks, and entryways safe with HP Landscaping's salt & de-icing service. We treat before the freeze so no one takes a fall. Protect your family and your guests this winter. 🧂\n\n#DeIcing #SaltService #HPLandscaping #WinterSafety #IceControl",
-    "channels": ["REPLACE_WITH_CHANNEL_ID"],
+    "channels": [
+      "hp-instagram",
+      "hp-facebook"
+    ],
     "schedule": null,
     "image": null
   },
   {
     "text": "Clogged gutters + freezing temps = ice dams, leaks, and costly damage. 🍂 Before the first hard freeze, let HP Landscaping clear every gutter and downspout so meltwater flows where it should. A small job now saves a big headache later. 📋\n\n#GutterCleaning #IceDams #HPLandscaping #WinterPrep #HomeMaintenance",
-    "channels": ["REPLACE_WITH_CHANNEL_ID"],
+    "channels": [
+      "hp-instagram",
+      "hp-facebook"
+    ],
     "schedule": null,
     "image": null
   },
   {
     "text": "🌷 Dreaming of spring already? Smart move. The clients who book spring cleanups & projects in winter get first pick of dates AND beat the rush pricing. Lock in your spot with HP Landscaping now and thank yourself in April. 📅\n\n#SpringPlanning #BookEarly #HPLandscaping #LawnCare #PlanAhead",
-    "channels": ["REPLACE_WITH_CHANNEL_ID"],
+    "channels": [
+      "hp-instagram",
+      "hp-facebook"
+    ],
     "schedule": null,
     "image": null
   },
   {
     "text": "From all of us at HP Landscaping — thank you. 🙏 To every customer who trusted us with their property this year, you made our season. We're grateful for you and can't wait to keep your home looking its best in the year ahead. Happy holidays! 💚\n\n#ThankYou #HPLandscaping #Grateful #HappyHolidays #LocalBusiness",
-    "channels": ["REPLACE_WITH_CHANNEL_ID"],
+    "channels": [
+      "hp-instagram",
+      "hp-facebook"
+    ],
     "schedule": null,
     "image": null
   },
   {
     "text": "🏢 Business owners & property managers: don't let snow shut you down. HP Landscaping commercial snow contracts mean priority plowing, salted lots, and clear walkways so your customers and staff stay safe. Lock in your seasonal contract today. ☎️\n\n#CommercialSnow #SnowContract #HPLandscaping #PropertyManagement #SnowRemoval",
-    "channels": ["REPLACE_WITH_CHANNEL_ID"],
+    "channels": [
+      "hp-instagram",
+      "hp-facebook"
+    ],
     "schedule": null,
     "image": null
   },
   {
     "text": "🔥 Cozy nights start here. HP Landscaping now offers seasoned firewood delivery & stacking — clean-burning, ready-to-go, dropped right where you want it. Plus winter cleanups and seasonal services to keep your property sharp. Order before the cold snap! 🪵\n\n#Firewood #SeasonalServices #HPLandscaping #WinterWarmth #Delivered",
-    "channels": ["REPLACE_WITH_CHANNEL_ID"],
+    "channels": [
+      "hp-instagram",
+      "hp-facebook"
+    ],
     "schedule": null,
     "image": null
   },
   {
     "text": "Why winter is the BEST time to plan your hardscaping. 🪨 Crews have open schedules, you get the design dialed in now, and your patio or retaining wall is built and ready the moment spring hits. Beat the spring rush — let's design your project this winter. 🛠️\n\n#Hardscaping #PaverPatio #HPLandscaping #WinterPlanning #OutdoorLiving",
-    "channels": ["REPLACE_WITH_CHANNEL_ID"],
+    "channels": [
+      "hp-instagram",
+      "hp-facebook"
+    ],
     "schedule": null,
     "image": null
   }

@@ -4,3 +4,6 @@
 # Python
 __pycache__/
 *.pyc
+
+# Your real channel-id map (instance-specific). Ship channels.example.json instead.
+automation/channels.json

@@ -42,17 +42,41 @@ export POSTIZ_API_KEY="paste-your-key-here"
 
 The script appends `/public/v1/posts` itself — don't include it in the URL.
 
-## 3. Find your channel (integration) IDs
+## 3. Map your accounts to friendly labels (`channels.json`)
 
-Each post targets one or more connected accounts by **integration id**. Get them with:
+So you never mix up which business a post goes to, content files reference
+accounts by **readable labels** (`hp-instagram`, `restore-facebook`, …) instead
+of cryptic ids. You map those labels to real ids **once**, in `channels.json`.
+
+First, list your connected accounts and their integration ids:
 
 ```bash
 curl -H "Authorization: $POSTIZ_API_KEY" \
      "$POSTIZ_API_URL/public/v1/integrations"
 ```
 
-Copy the `id` of each channel you want to post to and paste it into the JSON,
-replacing every `"REPLACE_WITH_CHANNEL_ID"`.
+Then copy the template and fill in the ids:
+
+```bash
+cp channels.example.json channels.json
+# edit channels.json — paste each account's id next to its label
+```
+
+```json
+{
+  "hp-instagram": "the-id-of-HP-Landscaping-instagram",
+  "hp-facebook": "the-id-of-HP-Landscaping-facebook",
+  "restore-instagram": "the-id-of-Restore-instagram",
+  "restore-facebook": "the-id-of-Restore-facebook"
+}
+```
+
+`channels.json` is **gitignored** (it's specific to your instance). Only the
+`.example` template is committed. Don't have Facebook (or an account)? Just
+delete that label from both `channels.json` and the content files.
+
+**Safety:** a label that isn't in `channels.json` is *skipped*, never guessed —
+so a missing/typo'd mapping can't accidentally post to the wrong account.
 
 ## 4. Edit the content files
 
@@ -61,13 +85,16 @@ In `content/*.json`, each post object is:
 ```json
 {
   "text": "caption with #hashtags and emojis",
-  "channels": ["INTEGRATION_ID_1", "INTEGRATION_ID_2"],
+  "channels": ["hp-instagram", "hp-facebook"],
   "schedule": "2026-07-01T14:00:00Z",
   "image": "https://yourcdn.com/photo.jpg"
 }
 ```
 
-- `channels` — one or more integration ids (required).
+- `channels` — one or more **labels** (from `channels.json`) or raw integration
+  ids. This is how you target a post at ONE business and not the other: the
+  HP files use `hp-*` labels, the Restore files use `restore-*` labels, so they
+  stay separate. Want a post on just one account? List only that one label.
 - `schedule` — ISO 8601 UTC time to post; use `null` to post immediately.
 - `image` — public media URL, or `null` for text-only. (See note below.)
 
