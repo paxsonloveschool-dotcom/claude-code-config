@@ -21,7 +21,9 @@ services:
       - postiz
 
   postiz:
-    image: ghcr.io/gitroomhq/postiz-app:latest
+    # amd64 servers: leave default. ARM servers (e.g. Oracle A1): set
+    # POSTIZ_IMAGE to a published -arm64 tag in your .env (see .env.example).
+    image: ${POSTIZ_IMAGE:-ghcr.io/gitroomhq/postiz-app:latest}
     container_name: postiz
     restart: always
     environment:
