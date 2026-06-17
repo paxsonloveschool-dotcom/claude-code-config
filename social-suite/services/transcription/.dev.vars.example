@@ -1,0 +1,7 @@
+# Copy to `.dev.vars` for local `wrangler dev`. In production set with
+# `wrangler secret put AUTH_KEY` (NEVER commit real values — .dev.vars is gitignored).
+
+# A string you invent. Callers must pass it as ?key=<AUTH_KEY> (or the
+# `x-auth-key` header) on POST /transcribe. If left unset, the endpoint is OPEN —
+# fine for local dev, do NOT deploy without it.
+AUTH_KEY=
