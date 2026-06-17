@@ -19,6 +19,18 @@ cd "$(dirname "$0")"
 say() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 ask() { local p="$1" d="${2:-}" v; read -rp "$p${d:+ [$d]}: " v; echo "${v:-$d}"; }
 
+# Interactive when run from a terminal; headless (cloud-init) otherwise.
+# In headless mode, values come from env vars: DUCK_SUB, DUCK_TOKEN,
+# and optionally POSTIZ_IMAGE_TAG.
+INTERACTIVE=1; [ -t 0 ] || INTERACTIVE=0
+need() {  # need VAR_NAME "prompt text"
+  local cur="${!1:-}"
+  if [ -n "$cur" ]; then echo "$cur"; return; fi
+  if [ "$INTERACTIVE" = 1 ]; then ask "$2"; else
+    echo "ERROR: env var $1 is required in non-interactive mode" >&2; exit 1
+  fi
+}
+
 # --- 0. sudo check ---------------------------------------------------------
 SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
 
@@ -53,8 +65,8 @@ fi
 # --- 3. DuckDNS ------------------------------------------------------------
 say "DuckDNS free domain setup"
 echo "  Create a subdomain + grab your token at https://duckdns.org (sign in, free)."
-DUCK_SUB=$(ask "  DuckDNS subdomain (just the name, e.g. 'hplandscaping')")
-DUCK_TOKEN=$(ask "  DuckDNS token")
+DUCK_SUB=$(need DUCK_SUB "  DuckDNS subdomain (just the name, e.g. 'hplandscaping')")
+DUCK_TOKEN=$(need DUCK_TOKEN "  DuckDNS token")
 DOMAIN="${DUCK_SUB}.duckdns.org"
 
 say "Pointing $DOMAIN at this server + installing auto-updater (every 5 min)..."
@@ -80,7 +92,13 @@ EOF
   # ARM servers need a pinned arm64 image tag
   if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
     echo ""; echo "  Detected ARM (aarch64)."
-    TAG=$(ask "  Postiz arm64 image tag (find newest '-arm64' tag at github.com/gitroomhq/postiz-app/pkgs/container/postiz-app)" "v2.21.0-arm64")
+    if [ -n "${POSTIZ_IMAGE_TAG:-}" ]; then
+      TAG="$POSTIZ_IMAGE_TAG"
+    elif [ "$INTERACTIVE" = 1 ]; then
+      TAG=$(ask "  Postiz arm64 image tag (newest '-arm64' tag at github.com/gitroomhq/postiz-app/pkgs/container/postiz-app)" "v2.21.0-arm64")
+    else
+      TAG="v2.21.0-arm64"
+    fi
     echo "POSTIZ_IMAGE=ghcr.io/gitroomhq/postiz-app:${TAG}" >> .env
   fi
   echo "  .env created."

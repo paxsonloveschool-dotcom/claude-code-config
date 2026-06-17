@@ -50,6 +50,19 @@ domain at your server and keeps it updated automatically.
 
 ## Part 3 — Install Postiz
 
+### Option A — Zero-SSH (cloud-init, fully hands-off)
+
+Best if you'd rather not touch a terminal at all. **Before** clicking "Create
+Instance" in Part 1, expand **Show advanced options → Management → User data →
+Paste cloud-init script**, and paste the contents of
+[`cloud-init.yaml`](./cloud-init.yaml) with your DuckDNS `DUCK_SUB` and
+`DUCK_TOKEN` filled in at the top. The server installs Docker, opens its
+firewall, points your domain, and launches Postiz automatically (~3–5 min after
+it boots). You still must add the VCN ingress rules (Part 1). Then skip straight
+to opening `https://yourname.duckdns.org`.
+
+### Option B — SSH and run the script
+
 SSH into the server (from your machine, using the private key you downloaded):
 ```bash
 ssh -i /path/to/private-key ubuntu@<YOUR_PUBLIC_IP>
