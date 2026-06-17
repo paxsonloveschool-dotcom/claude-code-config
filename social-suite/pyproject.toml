@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "social-suite"
+version = "0.1.0"
+description = "Automated social-media content pipeline: Dropbox -> clip -> caption -> AI copy -> publish."
+requires-python = ">=3.10"
+
+# Loosely pinned; nothing exotic. Heavy/optional deps are extras so the
+# skeleton imports without installing them.
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2.6",
+    "python-dotenv>=1.0",
+    "httpx>=0.27",        # Postiz public API calls
+    "anthropic>=0.40",    # AI copywriting (model claude-opus-4-8)
+    "dropbox>=11.36",     # ingest
+]
+
+[project.optional-dependencies]
+# Real implementations drop these in as they're built.
+clip = ["clipsai"]               # auto-clip long video -> 9:16 shorts
+transcribe = ["faster-whisper"]  # or whisperx for word-level alignment
+queue = ["redis>=5.0", "rq>=1.16"]
+dev = ["ruff", "mypy", "pytest"]
+
+[tool.setuptools]
+packages = ["services"]
+
+[tool.setuptools.package-dir]
+services = "services"
