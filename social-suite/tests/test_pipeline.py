@@ -28,11 +28,44 @@ def _patch(stage_overrides: dict):
     return restore
 
 
-def test_dry_run_does_not_touch_stages():
-    out = pipeline.run_pipeline(dry_run=True)
+def test_dry_run_full_chain_no_externals():
+    """A full dry-run pass: 1 fake file -> 2 fake clips -> 2 scheduled posts.
+
+    Make the REAL stage functions explode so we prove the dry-run path never
+    calls them (no Dropbox, ffmpeg, whisper, Claude, or Postiz).
+    """
+    def _boom(name):
+        def _f(*a, **k):
+            raise AssertionError(f"dry-run must not call real {name}")
+
+        return _f
+
+    restore = _patch(
+        {
+            "list_new_files": _boom("list_new_files"),
+            "download": _boom("download"),
+            "clip": _boom("clip"),
+            "transcribe": _boom("transcribe"),
+            "burn_captions": _boom("burn_captions"),
+            "generate_caption": _boom("generate_caption"),
+            "schedule_post": _boom("schedule_post"),
+        }
+    )
+    try:
+        out = pipeline.run_pipeline(dry_run=True)
+    finally:
+        restore()
+
     assert out["status"] == "ok"
     assert out["dry_run"] is True
-    assert out["processed"] == 0
+    counts = out["counts"]
+    assert counts["files"] == 1
+    assert counts["clips"] == 2
+    assert counts["captioned"] == 2
+    assert counts["written"] == 2
+    assert counts["scheduled"] == 2
+    assert out["processed"] == 2
+    assert out["published"] == 2
 
 
 def test_no_new_files_publishes_nothing():
