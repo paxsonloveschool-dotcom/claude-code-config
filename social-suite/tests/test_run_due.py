@@ -276,6 +276,112 @@ def test_brand_with_missing_creds_marks_failed():
     assert not fb_calls
 
 
+# --- New-platform adapter routing (X / TikTok / YouTube / GBP) ---------------
+
+_MULTI_BRANDS_JSON = (
+    '{"acme": {'
+    '  "meta_access_token": "mTOK", "ig_user_id": "mIG", "fb_page_id": "mFB",'
+    '  "x": {"access_token": "xTOK"},'
+    '  "tiktok": {"access_token": "tkTOK", "privacy_level": "PUBLIC_TO_EVERYONE"},'
+    '  "youtube": {"access_token": "ytTOK"},'
+    '  "gbp": {"access_token": "gbpTOK", "account_id": "ACC", "location_id": "LOC"}'
+    '}}'
+)
+
+
+def _patch_new_adapters(recorder):
+    """Monkeypatch each new platform's poster to record calls and not hit network."""
+    from services.publish.direct import gbp, tiktok, x, youtube
+
+    orig = {
+        "x": x.post_x,
+        "tiktok": tiktok.post_tiktok,
+        "youtube": youtube.post_youtube,
+        "gbp": gbp.post_gbp,
+    }
+    x.post_x = lambda **kw: recorder.setdefault("x", []).append(kw)
+    tiktok.post_tiktok = lambda **kw: recorder.setdefault("tiktok", []).append(kw) or "pub1"
+    youtube.post_youtube = lambda **kw: recorder.setdefault("youtube", []).append(kw)
+    gbp.post_gbp = lambda **kw: recorder.setdefault("gbp", []).append(kw)
+    return orig
+
+
+def _restore_new_adapters(orig):
+    from services.publish.direct import gbp, tiktok, x, youtube
+
+    x.post_x = orig["x"]
+    tiktok.post_tiktok = orig["tiktok"]
+    youtube.post_youtube = orig["youtube"]
+    gbp.post_gbp = orig["gbp"]
+
+
+def test_routes_to_each_new_platform_adapter():
+    rec: dict = {}
+    orig = _patch_new_adapters(rec)
+    _clear_env()
+    os.environ["BRANDS_JSON"] = _MULTI_BRANDS_JSON
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "queue.json")
+            save_queue(path, [
+                QueuedPost(id="px", text="tweet", media_url=None,
+                           platforms=["x"], brand="acme"),
+                QueuedPost(id="ptk", text="tok", media_url="https://v/t.mp4",
+                           platforms=["tiktok"], brand="acme"),
+                QueuedPost(id="pyt", text="yt", media_url="https://v/y.mp4",
+                           platforms=["youtube"], brand="acme"),
+                QueuedPost(id="pgbp", text="gbp", media_url="https://i/g.jpg",
+                           platforms=["gbp"], brand="acme"),
+            ])
+            summary = run_due.run(path, now_iso=NOW)
+    finally:
+        _restore_new_adapters(orig)
+        _clear_env()
+
+    assert summary == {"posted": 4, "failed": 0, "skipped": 0}
+    assert rec["x"][0]["access_token"] == "xTOK"
+    assert rec["x"][0]["text"] == "tweet"
+    assert rec["tiktok"][0]["access_token"] == "tkTOK"
+    assert rec["tiktok"][0]["video_url"] == "https://v/t.mp4"
+    assert rec["tiktok"][0]["privacy_level"] == "PUBLIC_TO_EVERYONE"
+    assert rec["youtube"][0]["access_token"] == "ytTOK"
+    assert rec["youtube"][0]["video_path_or_url"] == "https://v/y.mp4"
+    assert rec["gbp"][0]["access_token"] == "gbpTOK"
+    assert rec["gbp"][0]["account_id"] == "ACC"
+    assert rec["gbp"][0]["location_id"] == "LOC"
+
+
+def test_brand_missing_platform_creds_fails_only_that_post():
+    rec: dict = {}
+    orig = _patch_new_adapters(rec)
+    _clear_env()
+    # "acme" has X creds but NO youtube block -> the youtube post fails alone.
+    os.environ["BRANDS_JSON"] = (
+        '{"acme": {"meta_access_token": "m", "x": {"access_token": "xTOK"}}}'
+    )
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "queue.json")
+            save_queue(path, [
+                QueuedPost(id="noyt", text="yt", media_url="https://v/y.mp4",
+                           platforms=["youtube"], brand="acme"),
+                QueuedPost(id="okx", text="tweet", media_url=None,
+                           platforms=["x"], brand="acme"),
+            ])
+            summary = run_due.run(path, now_iso=NOW)
+            reloaded = {p.id: p for p in load_queue(path)}
+    finally:
+        _restore_new_adapters(orig)
+        _clear_env()
+
+    assert summary == {"posted": 1, "failed": 1, "skipped": 0}
+    assert reloaded["noyt"].status == "failed"
+    assert "youtube.access_token" in reloaded["noyt"].error
+    assert reloaded["okx"].status == "sent"
+    assert len(rec.get("x", [])) == 1
+    assert "youtube" not in rec  # the failing post never reached the poster
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):
