@@ -1,0 +1,32 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Real per-brand Meta credentials (tokens) — never commit; example ships instead
+content/brands.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local dev databases (portal dev SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# Media / output artifacts
+media/
+*.mp4
+*.mov
+*.mkv
+*.wav
+*.mp3
+*.ass
+*.srt

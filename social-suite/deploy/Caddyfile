@@ -1,0 +1,4 @@
+# Auto-HTTPS for your domain -> Postiz. Caddy fetches + renews the certificate.
+{$DOMAIN} {
+	reverse_proxy postiz:5000
+}
