@@ -21,8 +21,8 @@ venv/
 *.sqlite
 *.sqlite3
 
-# Media / output artifacts
-media/
+# Media / output artifacts (top-level output dir only — NOT services/media/ code)
+/media/
 *.mp4
 *.mov
 *.mkv
