@@ -51,43 +51,137 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _post_one(post: QueuedPost, creds: BrandCreds) -> None:
-    """Route a single post to each of its target platforms using ``creds``.
+# --- Platform adapters -------------------------------------------------------
+# Each adapter takes (post, creds) and fires that ONE platform, raising a clear
+# RuntimeError when the brand is missing the creds that platform needs. The
+# ADAPTERS registry maps a platform name to its adapter; ``_post_one`` routes
+# each of a post's platforms through it. Posters are imported lazily inside the
+# adapters so importing this module needs no network and no third-party deps.
 
-    Raises on the first platform error so the caller can mark the post failed.
-    Posters are looked up lazily so importing this module needs no network.
-    """
+
+def _adapt_facebook(post: QueuedPost, creds: BrandCreds) -> None:
     from services.publish.direct import meta  # lazy
 
     token = creds.meta_access_token
     if not token:
-        raise RuntimeError("meta_access_token is not set for this brand.")
+        raise RuntimeError("meta_access_token is not set for this brand (needed for facebook).")
+    page_id = creds.fb_page_id
+    if not page_id:
+        raise RuntimeError("fb_page_id is not set for this brand (needed for facebook).")
+    meta.post_facebook(
+        page_id=page_id,
+        access_token=token,
+        message=post.text,
+        image_url=post.media_url,
+    )
 
+
+def _adapt_instagram(post: QueuedPost, creds: BrandCreds) -> None:
+    from services.publish.direct import meta  # lazy
+
+    token = creds.meta_access_token
+    if not token:
+        raise RuntimeError("meta_access_token is not set for this brand (needed for instagram).")
+    ig_user_id = creds.ig_user_id
+    if not ig_user_id:
+        raise RuntimeError("ig_user_id is not set for this brand (needed for instagram).")
+    if not post.media_url:
+        raise RuntimeError("instagram requires a public media_url.")
+    meta.post_instagram(
+        ig_user_id=ig_user_id,
+        access_token=token,
+        caption=post.text,
+        image_url=post.media_url,
+    )
+
+
+def _adapt_x(post: QueuedPost, creds: BrandCreds) -> None:
+    from services.publish.direct import x  # lazy
+
+    token = creds.x.get("access_token")
+    if not token:
+        raise RuntimeError("x.access_token is not set for this brand (needed for x).")
+    media_urls = [post.media_url] if post.media_url else None
+    x.post_x(text=post.text, access_token=token, media_urls=media_urls)
+
+
+def _adapt_tiktok(post: QueuedPost, creds: BrandCreds) -> None:
+    from services.publish.direct import tiktok  # lazy
+
+    token = creds.tiktok.get("access_token")
+    if not token:
+        raise RuntimeError("tiktok.access_token is not set for this brand (needed for tiktok).")
+    if not post.media_url:
+        raise RuntimeError("tiktok requires a public video media_url.")
+    privacy = creds.tiktok.get("privacy_level", "SELF_ONLY")
+    tiktok.post_tiktok(
+        access_token=token,
+        caption=post.text,
+        video_url=post.media_url,
+        privacy_level=privacy,
+    )
+
+
+def _adapt_youtube(post: QueuedPost, creds: BrandCreds) -> None:
+    from services.publish.direct import youtube  # lazy
+
+    token = creds.youtube.get("access_token")
+    if not token:
+        raise RuntimeError("youtube.access_token is not set for this brand (needed for youtube).")
+    if not post.media_url:
+        raise RuntimeError("youtube requires a video media_url (path or URL).")
+    title = creds.youtube.get("title") or post.text[:100]
+    youtube.post_youtube(
+        access_token=token,
+        title=title,
+        description=post.text,
+        video_path_or_url=post.media_url,
+    )
+
+
+def _adapt_gbp(post: QueuedPost, creds: BrandCreds) -> None:
+    from services.publish.direct import gbp  # lazy
+
+    token = creds.gbp.get("access_token")
+    account_id = creds.gbp.get("account_id")
+    location_id = creds.gbp.get("location_id")
+    if not token:
+        raise RuntimeError("gbp.access_token is not set for this brand (needed for gbp).")
+    if not account_id or not location_id:
+        raise RuntimeError(
+            "gbp.account_id and gbp.location_id are required for this brand (needed for gbp)."
+        )
+    gbp.post_gbp(
+        access_token=token,
+        account_id=account_id,
+        location_id=location_id,
+        summary=post.text,
+        media_url=post.media_url,
+    )
+
+
+# Adapter registry: platform name -> adapter callable. Generalizes the old
+# if-ladder so adding a platform is one entry here plus its adapter module.
+ADAPTERS = {
+    "facebook": _adapt_facebook,
+    "instagram": _adapt_instagram,
+    "x": _adapt_x,
+    "tiktok": _adapt_tiktok,
+    "youtube": _adapt_youtube,
+    "gbp": _adapt_gbp,
+}
+
+
+def _post_one(post: QueuedPost, creds: BrandCreds) -> None:
+    """Route a single post to each of its target platforms using ``creds``.
+
+    Raises on the first platform error so the caller can mark the post failed.
+    """
     for platform in post.platforms:
-        if platform == "facebook":
-            page_id = creds.fb_page_id
-            if not page_id:
-                raise RuntimeError("fb_page_id is not set for this brand (needed for facebook).")
-            meta.post_facebook(
-                page_id=page_id,
-                access_token=token,
-                message=post.text,
-                image_url=post.media_url,
-            )
-        elif platform == "instagram":
-            ig_user_id = creds.ig_user_id
-            if not ig_user_id:
-                raise RuntimeError("ig_user_id is not set for this brand (needed for instagram).")
-            if not post.media_url:
-                raise RuntimeError("instagram requires a public media_url.")
-            meta.post_instagram(
-                ig_user_id=ig_user_id,
-                access_token=token,
-                caption=post.text,
-                image_url=post.media_url,
-            )
-        else:
+        adapter = ADAPTERS.get(platform)
+        if adapter is None:
             raise RuntimeError(f"Unsupported platform: {platform!r}")
+        adapter(post, creds)
 
 
 def run(queue_path: str, *, dry_run: bool = False, now_iso: str | None = None) -> dict:

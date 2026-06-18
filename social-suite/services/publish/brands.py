@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 DEFAULT_BRANDS_FILE = "content/brands.json"
 DEFAULT_BRAND = "default"
@@ -33,17 +33,40 @@ DEFAULT_BRAND = "default"
 
 @dataclass
 class BrandCreds:
-    """The three Meta values a single brand needs to post.
+    """The credentials a single brand needs to post across all platforms.
+
+    Meta fields are top-level (backward-compatible with the original
+    single-account shape). Each non-Meta platform carries its own optional
+    sub-dict so a brand only needs creds for the platforms it actually posts to.
 
     Attributes:
         meta_access_token: Long-lived Meta Page token (FB + IG publishing).
         ig_user_id: Instagram Professional account id (for "instagram").
         fb_page_id: Facebook Page id (for "facebook").
+        x: Optional ``{"access_token": ...}`` — X (Twitter) OAuth2 bearer token.
+        tiktok: Optional ``{"access_token": ...}`` — TikTok OAuth token.
+        youtube: Optional ``{"access_token": ...}`` — YouTube OAuth token.
+        gbp: Optional ``{"access_token", "account_id", "location_id"}`` for
+            Google Business Profile.
     """
 
     meta_access_token: str = ""
     ig_user_id: str = ""
     fb_page_id: str = ""
+    x: dict = field(default_factory=dict)
+    tiktok: dict = field(default_factory=dict)
+    youtube: dict = field(default_factory=dict)
+    gbp: dict = field(default_factory=dict)
+
+
+def _sub(raw: dict, key: str) -> dict:
+    """Return a per-platform sub-dict, normalizing missing/null to ``{}``."""
+    val = raw.get(key)
+    if val is None:
+        return {}
+    if not isinstance(val, dict):
+        raise ValueError(f"Brand {key!r} credentials must be an object.")
+    return dict(val)
 
 
 def _coerce(name: str, raw: dict) -> BrandCreds:
@@ -56,6 +79,10 @@ def _coerce(name: str, raw: dict) -> BrandCreds:
         meta_access_token=raw.get("meta_access_token", "") or "",
         ig_user_id=raw.get("ig_user_id", "") or "",
         fb_page_id=raw.get("fb_page_id", "") or "",
+        x=_sub(raw, "x"),
+        tiktok=_sub(raw, "tiktok"),
+        youtube=_sub(raw, "youtube"),
+        gbp=_sub(raw, "gbp"),
     )
 
 
