@@ -26,6 +26,11 @@ jobs:
       - name: Install social-suite (core)
         run: pip install -e social-suite
 
+      - name: Check Meta token (fail loud if expired/revoked)
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+        run: python social-suite/services/publish/check_token.py
+
       - name: Publish due posts
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}

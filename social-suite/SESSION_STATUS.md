@@ -44,10 +44,24 @@ end-to-end (1 video → 2 clips → captioned → written → scheduled).**
 2. ✅ `QUICKSTART.md` written
 3. Codebase feature-complete — nothing else needed from me until hosting/keys
 
+## 🟢 KEY FINDING — Meta needs NO verification for own-account posting
+Posting to **our own** IG Professional account + **our own** FB Page via the
+Graph API only needs **Development Mode + Standard Access** — **NO App Review and
+NO Business Verification**. Those only gate **Advanced Access** (serving *other*
+people's accounts), which we never request. So Meta is **not** the long pole and
+there is nothing to wait on. The only remaining human step is **generating the
+dev-mode token** (short-lived user token → long-lived exchange → Page token from
+`/me/accounts`), fully documented in **`META_SETUP.md`**. Direct posting
+(`services/publish/direct/meta.py` + `run_due.py` + the GitHub Actions cron)
+bypasses Postiz entirely for IG/FB.
+
 ## 🟡 Remaining — NEEDS USER (can't be done without you)
-1. **Finish Meta Business Verification** — upload the clear license photo (guide
-   given: flat, well-lit, all corners, text readable, name/address match form)
-2. **Second Meta app for Restore** — same steps, under "Restore Marketing Co"
+1. **Generate the Meta dev-mode Page token** — follow `META_SETUP.md` (no
+   verification, ~10 min), then set the `META_ACCESS_TOKEN`, `IG_USER_ID`,
+   `FB_PAGE_ID` GitHub Secrets. (Replaces the old "finish Business Verification"
+   item — verification is NOT required for this path.)
+2. **Second Meta app for Restore** — same `META_SETUP.md` steps, under "Restore
+   Marketing Co"
 3. **Decide where Postiz/the suite is hosted** — needs a public HTTPS URL for the
    social OAuth + Meta App Review. (Local Mac alone can't do OAuth without a
    tunnel; a small always-on host is cleaner.)
