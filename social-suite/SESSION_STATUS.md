@@ -1,7 +1,40 @@
 # Social Suite — Session Status & Resume
 
-> Saved end of session 2026-06-17. Say **"continue the social suite"** next
+> Saved end of session **2026-06-18**. Say **"continue the social suite"** next
 > session and start here. Everything below is committed + pushed.
+
+## ⏸️ PAUSED — nothing posts until the owner says "go" (set 2026-06-18)
+Two safety layers are in place so **no post fires to any account**:
+1. **Auto-scheduler OFF** — the `schedule:` cron in `.github/workflows/social-post.yml`
+   is commented out. No automatic runs happen at all.
+2. **Queue paused** — every post in `content/queue.json` is `status: "paused"`
+   (the poster only ever fires `status: "pending"`), so even a manual
+   "Run workflow" posts nothing.
+
+### ▶️ To RESUME later (when the owner says go)
+1. Uncomment the two `schedule:` lines in `social-post.yml` (re-enables cron).
+2. Flip the posts you want live from `"paused"` → `"pending"` (or rerun
+   `python automation/build_queue.py` after setting them pending, to re-stamp
+   fresh future schedules so nothing back-fires).
+3. `hp-001` is already `"sent"` (it really posted live) — leave it; never re-post it.
+
+## ✅ 2026-06-18 progress
+- **HP Landscaping posted LIVE to Facebook** via the GitHub Actions robot —
+  full pipeline proven end-to-end (token check → publish). Log: `[sent] hp-001`.
+- Merged the whole suite to **`main`** (PR #21) so the workflow can run.
+- `BRANDS_JSON` GitHub Secret set with **HP**'s Meta creds (token validated:
+  resolves to "Higher Purpose Landscaping", page id 103729542328773).
+- Built `automation/build_queue.py` → merged HP+Restore content into a scheduled
+  `content/queue.json` (per-brand separation enforced).
+- **GBP API allowlist submitted** — case `5-2465000041539`, ~7–10 biz days.
+- Then **paused everything** (above) at the owner's request.
+
+### Next session options (owner picks)
+- **Add Restore**: generate Restore's Meta token (2nd app, same `META_SETUP.md`
+  steps) → extend `BRANDS_JSON` to `{"hp":{...},"restore":{...}}`.
+- **Add Instagram for HP**: needs images at a public URL (FB was text-only).
+- **Resume HP** auto-posting (steps above).
+- **Other platforms**: start X / TikTok / YouTube one-time approvals.
 
 ## What this project is
 An **in-house, self-owned automated social media content suite** (no SaaS).

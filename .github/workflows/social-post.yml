@@ -2,9 +2,15 @@ name: Social post (cron)
 
 # The free always-on robot: fires due posts from social-suite/content/queue.json
 # at the Instagram + Facebook APIs every 30 minutes. No server, no card, no Mac.
+#
+# ⏸️  PAUSED 2026-06-18 at the owner's request — the auto-schedule (cron) below is
+# disabled so NOTHING posts automatically. To resume auto-posting, uncomment the
+# two `schedule:` lines. Manual runs still work via the "Run workflow" button, but
+# the queue is also paused (all posts status="paused"), so a manual run posts
+# nothing until those are flipped back to "pending".
 on:
-  schedule:
-    - cron: "*/30 * * * *"
+  # schedule:
+  #   - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
 # Allow the job to push the updated queue back to the branch.
