@@ -10,7 +10,9 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY services ./services
 
-RUN pip install --no-cache-dir -e .
+# Install with the transcribe extra so the clip + caption stages work in the
+# container (faster-whisper). Drop the extra for a lighter API-only image.
+RUN pip install --no-cache-dir -e ".[transcribe]"
 
 EXPOSE 8000
 
