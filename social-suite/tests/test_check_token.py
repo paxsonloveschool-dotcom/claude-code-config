@@ -144,6 +144,32 @@ def test_main_returns_0_for_valid_and_1_for_invalid(monkeypatch=None):
             os.environ["META_ACCESS_TOKEN"] = orig_env
 
 
+def test_main_validates_every_brand_when_brands_json_set():
+    import os
+
+    orig_get = check_token._get_json
+    orig_brands = os.environ.get("BRANDS_JSON")
+    # Two brands; both tokens resolve -> exit 0.
+    os.environ["BRANDS_JSON"] = (
+        '{"hp": {"meta_access_token": "hpT", "ig_user_id": "i", "fb_page_id": "f"},'
+        ' "restore": {"meta_access_token": "rT", "ig_user_id": "i", "fb_page_id": "f"}}'
+    )
+    check_token._get_json = lambda url, timeout=30.0: {"id": "1", "name": "P"}
+    try:
+        assert check_token.main(["--quiet"]) == 0
+        # One brand has an empty token -> that check fails -> exit 1.
+        os.environ["BRANDS_JSON"] = (
+            '{"hp": {"meta_access_token": "", "ig_user_id": "i", "fb_page_id": "f"}}'
+        )
+        assert check_token.main(["--quiet"]) == 1
+    finally:
+        check_token._get_json = orig_get
+        if orig_brands is None:
+            os.environ.pop("BRANDS_JSON", None)
+        else:
+            os.environ["BRANDS_JSON"] = orig_brands
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):

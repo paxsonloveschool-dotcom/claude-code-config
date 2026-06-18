@@ -26,13 +26,20 @@ jobs:
       - name: Install social-suite (core)
         run: pip install -e social-suite
 
-      - name: Check Meta token (fail loud if expired/revoked)
+      - name: Check Meta token(s) (fail loud if expired/revoked)
+        # When BRANDS_JSON is set, this validates EVERY brand's token (loop);
+        # otherwise it validates the single legacy META_ACCESS_TOKEN.
         env:
+          BRANDS_JSON: ${{ secrets.BRANDS_JSON }}
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
         run: python social-suite/services/publish/check_token.py
 
       - name: Publish due posts
+        # BRANDS_JSON (one secret holding every brand's creds) drives multi-brand
+        # routing. The single-account secrets stay for backward compatibility:
+        # posts with no "brand" use the "default" brand built from them.
         env:
+          BRANDS_JSON: ${{ secrets.BRANDS_JSON }}
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}

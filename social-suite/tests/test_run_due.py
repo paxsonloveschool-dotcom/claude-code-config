@@ -23,7 +23,7 @@ def _set_env():
 
 
 def _clear_env():
-    for k in ("META_ACCESS_TOKEN", "IG_USER_ID", "FB_PAGE_ID"):
+    for k in ("META_ACCESS_TOKEN", "IG_USER_ID", "FB_PAGE_ID", "BRANDS_JSON", "BRANDS_FILE"):
         os.environ.pop(k, None)
 
 
@@ -153,6 +153,127 @@ def test_failing_poster_marks_failed_without_aborting_others():
     assert "boom" in by_id["bad"].error
     assert by_id["good"].status == "sent"
     assert len(ig_calls) == 1
+
+
+_BRANDS_JSON = (
+    '{"hp": {"meta_access_token": "hpTOK", "ig_user_id": "hpIG", "fb_page_id": "hpFB"},'
+    ' "restore": {"meta_access_token": "rTOK", "ig_user_id": "rIG", "fb_page_id": "rFB"}}'
+)
+
+
+def test_multibrand_routes_each_post_to_its_own_creds():
+    fb_calls, ig_calls = [], []
+    orig = _patch_posters(fb_calls, ig_calls)
+    _clear_env()
+    os.environ["BRANDS_JSON"] = _BRANDS_JSON
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "queue.json")
+            save_queue(path, [
+                QueuedPost(id="hp1", text="hp", media_url="https://i/hp.jpg",
+                           platforms=["instagram"], brand="hp"),
+                QueuedPost(id="r1", text="rs", media_url="https://i/r.jpg",
+                           platforms=["facebook"], brand="restore"),
+            ])
+            summary = run_due.run(path, now_iso=NOW)
+            reloaded = {p.id: p for p in load_queue(path)}
+    finally:
+        _restore(orig)
+        _clear_env()
+
+    assert summary == {"posted": 2, "failed": 0, "skipped": 0}
+    # HP post -> instagram with HP creds.
+    assert len(ig_calls) == 1
+    assert ig_calls[0]["ig_user_id"] == "hpIG"
+    assert ig_calls[0]["access_token"] == "hpTOK"
+    # Restore post -> facebook with Restore creds.
+    assert len(fb_calls) == 1
+    assert fb_calls[0]["page_id"] == "rFB"
+    assert fb_calls[0]["access_token"] == "rTOK"
+    assert reloaded["hp1"].status == "sent"
+    assert reloaded["r1"].status == "sent"
+
+
+def test_unknown_brand_marks_only_that_post_failed():
+    fb_calls, ig_calls = [], []
+    orig = _patch_posters(fb_calls, ig_calls)
+    _clear_env()
+    os.environ["BRANDS_JSON"] = _BRANDS_JSON
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "queue.json")
+            save_queue(path, [
+                QueuedPost(id="ghost", text="x", media_url="https://i/g.jpg",
+                           platforms=["instagram"], brand="nope"),
+                QueuedPost(id="hp1", text="hp", media_url="https://i/hp.jpg",
+                           platforms=["instagram"], brand="hp"),
+            ])
+            summary = run_due.run(path, now_iso=NOW)
+            reloaded = {p.id: p for p in load_queue(path)}
+    finally:
+        _restore(orig)
+        _clear_env()
+
+    assert summary == {"posted": 1, "failed": 1, "skipped": 0}
+    assert reloaded["ghost"].status == "failed"
+    assert "nope" in reloaded["ghost"].error
+    # The good HP post still went out with HP creds.
+    assert reloaded["hp1"].status == "sent"
+    assert len(ig_calls) == 1 and ig_calls[0]["ig_user_id"] == "hpIG"
+
+
+def test_no_brand_uses_default_from_legacy_env():
+    fb_calls, ig_calls = [], []
+    orig = _patch_posters(fb_calls, ig_calls)
+    _clear_env()
+    # No BRANDS_JSON -> "default" brand built from legacy env vars.
+    os.environ["META_ACCESS_TOKEN"] = "TOKEN"
+    os.environ["IG_USER_ID"] = "ig1"
+    os.environ["FB_PAGE_ID"] = "fb1"
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "queue.json")
+            save_queue(path, [
+                QueuedPost(id="legacy", text="t", media_url="https://i/x.jpg",
+                           platforms=["facebook"]),  # brand=None
+            ])
+            summary = run_due.run(path, now_iso=NOW)
+            reloaded = load_queue(path)
+    finally:
+        _restore(orig)
+        _clear_env()
+
+    assert summary == {"posted": 1, "failed": 0, "skipped": 0}
+    assert fb_calls[0]["page_id"] == "fb1"
+    assert fb_calls[0]["access_token"] == "TOKEN"
+    assert reloaded[0].status == "sent"
+
+
+def test_brand_with_missing_creds_marks_failed():
+    fb_calls, ig_calls = [], []
+    orig = _patch_posters(fb_calls, ig_calls)
+    _clear_env()
+    # "hp" exists but has an empty fb_page_id -> facebook post fails cleanly.
+    os.environ["BRANDS_JSON"] = (
+        '{"hp": {"meta_access_token": "hpTOK", "ig_user_id": "hpIG", "fb_page_id": ""}}'
+    )
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "queue.json")
+            save_queue(path, [
+                QueuedPost(id="hpfb", text="t", media_url="https://i/x.jpg",
+                           platforms=["facebook"], brand="hp"),
+            ])
+            summary = run_due.run(path, now_iso=NOW)
+            reloaded = load_queue(path)
+    finally:
+        _restore(orig)
+        _clear_env()
+
+    assert summary == {"posted": 0, "failed": 1, "skipped": 0}
+    assert reloaded[0].status == "failed"
+    assert "fb_page_id" in reloaded[0].error
+    assert not fb_calls
 
 
 def _run():

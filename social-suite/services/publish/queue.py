@@ -22,6 +22,9 @@ class QueuedPost:
         media_url: PUBLIC media URL (image or video), or None for a text post.
         platforms: Target platforms, e.g. ["instagram", "facebook"].
         schedule: ISO-8601 UTC time to post at, or None to post as soon as due.
+        brand: Which brand's Meta credentials to post with, e.g. "hp" /
+            "restore". None falls back to the "default" brand (legacy single
+            account) for backward compatibility.
         status: "pending" (default) -> "sent" or "failed".
         error: Failure reason when status == "failed", else None.
     """
@@ -31,6 +34,7 @@ class QueuedPost:
     media_url: str | None = None
     platforms: list[str] = None  # type: ignore[assignment]
     schedule: str | None = None
+    brand: str | None = None
     status: str = "pending"
     error: str | None = None
 

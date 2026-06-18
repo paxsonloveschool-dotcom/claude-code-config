@@ -77,12 +77,55 @@ def check_token(access_token: str) -> dict:
     return {"ok": True, "id": account_id, "name": body.get("name")}
 
 
+def _brands_configured() -> bool:
+    """True when a multi-brand map is configured (BRANDS_JSON or a brands file)."""
+    import os
+
+    if os.environ.get("BRANDS_JSON", "").strip():
+        return True
+    path = os.environ.get("BRANDS_FILE", "content/brands.json")
+    return bool(path) and os.path.exists(path)
+
+
+def _check_all_brands(quiet: bool) -> int:
+    """Validate every brand's token from the brands map. Exit 0 iff all OK."""
+    from services.publish.brands import load_brands  # lazy
+
+    brands = load_brands()
+    if not brands:
+        print("No brands found in BRANDS_JSON / brands file.")
+        return 1
+
+    bad = 0
+    for name in sorted(brands):
+        creds = brands[name]
+        result = check_token(creds.meta_access_token)
+        if result["ok"]:
+            if not quiet:
+                who = result.get("name") or result["id"]
+                print(f"[{name}] OK — resolves to {who} (id {result['id']}).")
+        else:
+            bad += 1
+            print(f"[{name}] INVALID — {result['error']}")
+
+    if bad:
+        print(
+            f"\n{bad} brand token(s) invalid. Generate fresh non-expiring Page "
+            "token(s) (see social-suite/META_SETUP.md) and update BRANDS_JSON."
+        )
+        return 1
+    if not quiet:
+        print(f"\nAll {len(brands)} brand token(s) OK.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
     import os
 
     parser = argparse.ArgumentParser(
-        description="Check the META_ACCESS_TOKEN is valid (exit 0=ok, 1=bad)."
+        description="Check Meta token(s) are valid (exit 0=ok, 1=bad). "
+        "Validates every brand in BRANDS_JSON when set, else META_ACCESS_TOKEN."
     )
     parser.add_argument(
         "--quiet",
@@ -91,6 +134,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    # Multi-brand: loop over each brand's token when a brands map is configured.
+    if _brands_configured():
+        return _check_all_brands(args.quiet)
+
+    # Single-account backward-compatible path.
     token = os.environ.get("META_ACCESS_TOKEN", "")
     result = check_token(token)
 

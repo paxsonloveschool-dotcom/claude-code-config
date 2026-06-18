@@ -1,14 +1,24 @@
 """Publish all due posts from the queue — the script GitHub Actions runs.
 
-Reads ``content/queue.json`` (overridable), finds posts that are due now, routes
-each to the right platform poster using env-provided Meta credentials, marks
-``sent``/``failed`` per post, and writes the queue back. One failing post never
-aborts the rest.
+Reads ``content/queue.json`` (overridable), finds posts that are due now,
+resolves each post's ``brand`` to its Meta credentials, routes it to the right
+platform poster, marks ``sent``/``failed`` per post, and writes the queue back.
+One failing post never aborts the rest.
 
-Env:
+Multi-brand: each queued post may carry a ``brand`` (e.g. "hp" / "restore");
+``services.publish.brands`` maps that to per-brand credentials. A post with no
+``brand`` uses the ``"default"`` brand (legacy single account), so the original
+single-account path keeps working unchanged.
+
+Env (single-account / "default" brand fallback):
     META_ACCESS_TOKEN  Long-lived Meta token (FB Page + IG publishing).
     IG_USER_ID         Instagram Professional account id (for "instagram").
     FB_PAGE_ID         Facebook Page id (for "facebook").
+Env (multi-brand):
+    BRANDS_JSON        JSON object {brand: {meta_access_token, ig_user_id,
+                       fb_page_id}} — one secret holding every brand's creds.
+    BRANDS_FILE        Optional path to a brands JSON file (default
+                       content/brands.json) used when BRANDS_JSON is unset.
     QUEUE_PATH         Optional queue file path (default content/queue.json).
 
 Usage:
@@ -25,6 +35,7 @@ from datetime import datetime, timezone
 # it by path), so ``services.publish.*`` imports resolve either way.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from services.publish.brands import BrandCreds  # noqa: E402
 from services.publish.queue import (  # noqa: E402
     QueuedPost,
     due_posts,
@@ -33,29 +44,30 @@ from services.publish.queue import (  # noqa: E402
 )
 
 DEFAULT_QUEUE_PATH = "content/queue.json"
+DEFAULT_BRAND = "default"
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _post_one(post: QueuedPost) -> None:
-    """Route a single post to each of its target platforms.
+def _post_one(post: QueuedPost, creds: BrandCreds) -> None:
+    """Route a single post to each of its target platforms using ``creds``.
 
     Raises on the first platform error so the caller can mark the post failed.
     Posters are looked up lazily so importing this module needs no network.
     """
     from services.publish.direct import meta  # lazy
 
-    token = os.environ.get("META_ACCESS_TOKEN", "")
+    token = creds.meta_access_token
     if not token:
-        raise RuntimeError("META_ACCESS_TOKEN is not set.")
+        raise RuntimeError("meta_access_token is not set for this brand.")
 
     for platform in post.platforms:
         if platform == "facebook":
-            page_id = os.environ.get("FB_PAGE_ID", "")
+            page_id = creds.fb_page_id
             if not page_id:
-                raise RuntimeError("FB_PAGE_ID is not set (needed for facebook).")
+                raise RuntimeError("fb_page_id is not set for this brand (needed for facebook).")
             meta.post_facebook(
                 page_id=page_id,
                 access_token=token,
@@ -63,9 +75,9 @@ def _post_one(post: QueuedPost) -> None:
                 image_url=post.media_url,
             )
         elif platform == "instagram":
-            ig_user_id = os.environ.get("IG_USER_ID", "")
+            ig_user_id = creds.ig_user_id
             if not ig_user_id:
-                raise RuntimeError("IG_USER_ID is not set (needed for instagram).")
+                raise RuntimeError("ig_user_id is not set for this brand (needed for instagram).")
             if not post.media_url:
                 raise RuntimeError("instagram requires a public media_url.")
             meta.post_instagram(
@@ -89,28 +101,47 @@ def run(queue_path: str, *, dry_run: bool = False, now_iso: str | None = None) -
     Returns:
         {"posted": int, "failed": int, "skipped": int} counts.
     """
+    from services.publish import brands as brands_mod  # lazy, stdlib-only
+
     now = now_iso or _now_iso()
     posts = load_queue(queue_path)
     due = due_posts(posts, now)
     due_ids = {id(p) for p in due}
 
+    # Load the brand -> credentials map once. A bad BRANDS_JSON/file fails the
+    # whole run loudly (CI should surface it), like a missing token used to.
+    brand_map = brands_mod.load_brands()
+
     posted = failed = 0
+    # Per-brand tallies for the summary, keyed by the resolved brand name.
+    per_brand: dict[str, dict[str, int]] = {}
+
+    def _tally(name: str, key: str) -> None:
+        per_brand.setdefault(name, {"posted": 0, "failed": 0})[key] += 1
+
     for post in due:
+        brand_name = post.brand or DEFAULT_BRAND
         targets = ",".join(post.platforms)
         if dry_run:
-            print(f"[dry-run] WOULD post {post.id} -> [{targets}]: {post.text[:60]!r}")
+            print(
+                f"[dry-run] WOULD post {post.id} (brand={brand_name}) "
+                f"-> [{targets}]: {post.text[:60]!r}"
+            )
             continue
         try:
-            _post_one(post)
+            creds = brands_mod.get_brand(post.brand, brand_map)
+            _post_one(post, creds)
             post.status = "sent"
             post.error = None
             posted += 1
-            print(f"[sent] {post.id} -> [{targets}]")
+            _tally(brand_name, "posted")
+            print(f"[sent] {post.id} (brand={brand_name}) -> [{targets}]")
         except Exception as e:  # noqa: BLE001 — isolate per-post failures
             post.status = "failed"
             post.error = str(e)
             failed += 1
-            print(f"[failed] {post.id} -> [{targets}]: {e}")
+            _tally(brand_name, "failed")
+            print(f"[failed] {post.id} (brand={brand_name}) -> [{targets}]: {e}")
 
     skipped = sum(1 for p in posts if id(p) not in due_ids and p.status == "pending")
 
@@ -118,6 +149,11 @@ def run(queue_path: str, *, dry_run: bool = False, now_iso: str | None = None) -
         save_queue(queue_path, posts)
 
     summary = {"posted": posted, "failed": failed, "skipped": skipped}
+    if per_brand and not dry_run:
+        print("\nPer-brand:")
+        for name in sorted(per_brand):
+            b = per_brand[name]
+            print(f"  {name}: posted={b['posted']} failed={b['failed']}")
     print(
         f"\nSummary: posted={posted} failed={failed} "
         f"skipped(not-due)={skipped} (dry_run={dry_run})"

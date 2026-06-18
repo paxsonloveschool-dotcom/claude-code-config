@@ -1,28 +1,41 @@
 [
   {
-    "id": "2026-06-18-mowing-tip",
+    "id": "2026-06-18-hp-mowing-tip",
     "text": "Spring mowing tip: keep your blade high and your grass happy. #lawncare #landscaping",
     "media_url": "https://raw.githubusercontent.com/paxsonloveschool-dotcom/claude-code-config/claude/social-suite/social-suite/content/media/mowing-tip.jpg",
     "platforms": ["instagram", "facebook"],
     "schedule": null,
+    "brand": "hp",
     "status": "pending",
     "error": null
   },
   {
-    "id": "2026-06-19-before-after",
+    "id": "2026-06-19-restore-before-after",
     "text": "Before & after on a full backyard restore. Swipe to see the transformation.",
     "media_url": "https://raw.githubusercontent.com/paxsonloveschool-dotcom/claude-code-config/claude/social-suite/social-suite/content/media/before-after.jpg",
     "platforms": ["instagram"],
     "schedule": "2026-06-19T14:00:00+00:00",
+    "brand": "restore",
     "status": "pending",
     "error": null
   },
   {
-    "id": "2026-06-20-fb-announcement",
+    "id": "2026-06-20-hp-fb-announcement",
     "text": "Now booking summer cleanups — message us for a free quote!",
     "media_url": null,
     "platforms": ["facebook"],
     "schedule": "2026-06-20T13:30:00+00:00",
+    "brand": "hp",
+    "status": "pending",
+    "error": null
+  },
+  {
+    "id": "2026-06-21-restore-fb-announcement",
+    "text": "Storm damage cleanup and full property restoration — book your assessment today.",
+    "media_url": null,
+    "platforms": ["facebook"],
+    "schedule": "2026-06-21T13:30:00+00:00",
+    "brand": "restore",
     "status": "pending",
     "error": null
   }

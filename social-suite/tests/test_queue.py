@@ -39,6 +39,19 @@ def test_round_trip_load_save():
     assert loaded[1].media_url is None
 
 
+def test_brand_field_round_trips_and_defaults_none():
+    posts = [
+        QueuedPost(id="hp", text="t", platforms=["facebook"], brand="hp"),
+        QueuedPost(id="legacy", text="t", platforms=["facebook"]),
+    ]
+    with tempfile.TemporaryDirectory() as d:
+        path = str(Path(d) / "queue.json")
+        save_queue(path, posts)
+        loaded = load_queue(path)
+    assert loaded[0].brand == "hp"
+    assert loaded[1].brand is None  # backward-compatible default
+
+
 def test_load_missing_file_is_empty():
     with tempfile.TemporaryDirectory() as d:
         assert load_queue(str(Path(d) / "nope.json")) == []

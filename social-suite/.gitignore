@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Real per-brand Meta credentials (tokens) — never commit; example ships instead
+content/brands.json
+
 # Python
 __pycache__/
 *.py[cod]
