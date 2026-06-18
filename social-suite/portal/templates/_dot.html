@@ -1,0 +1,9 @@
+{# Renders a single channel-health dot. Expects `ch` (Channel or None) and
+   `p` (Platform enum) plus `health_colors`. #}
+{% set status = ch.health_status.value if ch else "disconnected" %}
+{% set color = health_colors.get(status, "bg-gray-300") %}
+<span class="inline-flex items-center justify-center w-7"
+      title="{{ p.value }}: {{ status }}{{ ' (disabled)' if ch and not ch.enabled else '' }}">
+  <span class="w-3 h-3 rounded-full {{ color }}
+               {{ 'ring-2 ring-offset-1 ring-gray-300 opacity-50' if ch and not ch.enabled else '' }}"></span>
+</span>

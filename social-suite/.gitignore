@@ -13,6 +13,11 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
+# Local dev databases (portal dev SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
 # Media / output artifacts
 media/
 *.mp4
