@@ -14,6 +14,11 @@ job that fires your finished posts straight at the Instagram + Facebook APIs.
   build content on the Mac, append entries, commit, and push.
 - **Secrets = your keys, kept safe.** Your Meta tokens/ids live in GitHub
   repository **Secrets**, never in the code or the queue.
+- **No Meta verification needed.** Posting to your *own* IG Professional account
+  and *own* FB Page only needs **Development Mode + Standard Access** — **no App
+  Review, no Business Verification** (those gate Advanced Access / serving other
+  people's accounts, which we never request). Full setup:
+  [`../../../META_SETUP.md`](../../../META_SETUP.md).
 - **Media must be a PUBLIC URL.** Meta fetches your image/video server-side, so
   it must be reachable on the open internet. Easiest: commit the rendered clip
   into the repo and use its `raw.githubusercontent.com/...` URL, or use any
@@ -35,7 +40,7 @@ Repo → Settings → Secrets and variables → Actions → **New repository sec
 
 | Secret | What it is |
 |---|---|
-| `META_ACCESS_TOKEN` | Long-lived Meta token with `pages_manage_posts` + `instagram_content_publish`. Drives both FB and IG. |
+| `META_ACCESS_TOKEN` | **Non-expiring Page access token** (the `access_token` from `GET /me/accounts`, derived from a long-lived user token) with `pages_manage_posts` + `instagram_content_publish`. Drives both FB and IG. See [`META_SETUP.md`](../../../META_SETUP.md) step (d). |
 | `IG_USER_ID` | Your Instagram **Professional** account user id (required for `instagram` posts). |
 | `FB_PAGE_ID` | Your Facebook **Page** id (required for `facebook` posts). |
 
