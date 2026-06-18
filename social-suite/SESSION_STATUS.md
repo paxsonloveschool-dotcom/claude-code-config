@@ -29,12 +29,31 @@ Two safety layers are in place so **no post fires to any account**:
 - **GBP API allowlist submitted** — case `5-2465000041539`, ~7–10 biz days.
 - Then **paused everything** (above) at the owner's request.
 
+## 🌙 Overnight autonomous build (2026-06-18, while owner away — NOTHING posted)
+All additive, all tests green (25 test files), all on `main`. Posting stayed
+OFF the entire time.
+- **CI**: `.github/workflows/tests.yml` runs the full offline suite on every
+  push/PR (no secrets, can't post). Green.
+- **Portal calendar**: `GET /calendar` shows every queued post per brand with
+  schedule + live color-coded status — reads `content/queue.json` read-only.
+  (`python -m uvicorn portal.app:app` then open `/calendar` to see it.)
+- **Image-card generator**: `services/media/card.py` turns a caption into a
+  branded Instagram-ready PNG (themes, auto-fit text, brand footer). CLI:
+  `python -m services.media.card "text" out.png --brand "HP Landscaping"`.
+  This is the path to **unblock Instagram** for text-first posts.
+- **`RESTORE_SETUP.md`**: dead-simple checklist to add Restore as brand #2.
+- **Packaging**: `pyproject` now declares `portal` + `automation` packages and
+  `portal`/`cards` extras (`pip install -e "social-suite[portal,cards]"`).
+
 ### Next session options (owner picks)
-- **Add Restore**: generate Restore's Meta token (2nd app, same `META_SETUP.md`
-  steps) → extend `BRANDS_JSON` to `{"hp":{...},"restore":{...}}`.
-- **Add Instagram for HP**: needs images at a public URL (FB was text-only).
-- **Resume HP** auto-posting (steps above).
+- **Add Restore**: follow `RESTORE_SETUP.md` (2nd Meta app + token) → extend
+  `BRANDS_JSON` to `{"hp":{...},"restore":{...}}`.
+- **Add Instagram for HP**: use the new card generator to make images, commit
+  them so they have a public `raw.githubusercontent.com` URL, set `media_url`
+  + add `"instagram"` to those posts' platforms.
+- **Resume HP** auto-posting (uncomment cron + flip posts paused→pending).
 - **Other platforms**: start X / TikTok / YouTube one-time approvals.
+- **See the dashboard**: run the portal locally and open `/calendar`.
 
 ## What this project is
 An **in-house, self-owned automated social media content suite** (no SaaS).
