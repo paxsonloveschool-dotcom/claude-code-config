@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ brand.name }} · Content Portal{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <a href="/" class="text-xs text-indigo-600 hover:underline">&larr; All clients</a>
+  <h1 class="text-2xl font-bold mt-1">{{ brand.name }}</h1>
+  <p class="text-sm text-gray-500">{{ brand.status.value }}</p>
+</div>
+
+<div class="grid md:grid-cols-2 gap-6">
+  <section class="bg-white rounded-lg border border-gray-200 p-5">
+    <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Channels</h2>
+    <ul class="divide-y divide-gray-100">
+      {% for p in platforms %}
+      {% set ch = channels.get(p.value) %}
+      <li class="flex items-center justify-between py-2.5">
+        <span class="flex items-center gap-3">
+          {% include "_dot.html" with context %}
+          <span class="font-medium">{{ p.value }}</span>
+        </span>
+        <span class="text-xs text-gray-500">
+          {% if ch %}
+            {{ ch.health_status.value }}{% if not ch.enabled %} · disabled{% endif %}
+            {% if ch.external_account_id %}<span class="text-gray-300 ml-1">({{ ch.external_account_id }})</span>{% endif %}
+          {% else %}
+            <span class="text-gray-300">not connected</span>
+          {% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="bg-white rounded-lg border border-gray-200 p-5">
+    <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Settings</h2>
+    <dl class="text-sm space-y-3">
+      <div class="flex justify-between gap-4">
+        <dt class="text-gray-500">Timezone</dt>
+        <dd class="text-right">{{ brand.timezone }}</dd>
+      </div>
+      <div class="flex justify-between gap-4">
+        <dt class="text-gray-500">Default schedule</dt>
+        <dd class="text-right">{{ brand.default_schedule or "—" }}</dd>
+      </div>
+      <div class="flex justify-between gap-4">
+        <dt class="text-gray-500">Brand voice</dt>
+        <dd class="text-right max-w-xs">{{ brand.brand_voice or "—" }}</dd>
+      </div>
+      <div class="flex justify-between gap-4">
+        <dt class="text-gray-500">Default hashtags</dt>
+        <dd class="text-right max-w-xs">{{ brand.default_hashtags or "—" }}</dd>
+      </div>
+      <div class="flex justify-between gap-4">
+        <dt class="text-gray-500">GBP CTA default</dt>
+        <dd class="text-right">{{ brand.gbp_cta_default or "—" }}</dd>
+      </div>
+    </dl>
+  </section>
+</div>
+{% endblock %}
