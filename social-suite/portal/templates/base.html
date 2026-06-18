@@ -10,10 +10,16 @@
 <body class="bg-gray-50 text-gray-900 min-h-screen">
   <header class="bg-white border-b border-gray-200">
     <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-      <a href="/" class="text-lg font-semibold tracking-tight">
-        Content Distribution Portal
-      </a>
-      <span class="text-xs text-gray-400">Phase 0 · read-only</span>
+      <div class="flex items-center gap-6">
+        <a href="/" class="text-lg font-semibold tracking-tight">
+          Content Distribution Portal
+        </a>
+        <nav class="flex items-center gap-4 text-sm text-gray-500">
+          <a href="/" class="hover:text-gray-900">Clients</a>
+          <a href="/calendar" class="hover:text-gray-900">Calendar</a>
+        </nav>
+      </div>
+      <span class="text-xs text-gray-400">read-only</span>
     </div>
   </header>
   <main class="max-w-6xl mx-auto px-6 py-8">
