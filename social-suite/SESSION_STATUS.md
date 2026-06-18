@@ -75,7 +75,25 @@ bypasses Postiz entirely for IG/FB.
 - #17 `claude/postiz-channel-labels` — Postiz per-account label safety (draft)
 - Merged: #16 (Postiz core), #18 (Mac local), #19 (pin v2.11.2)
 
+## Platform approval tracker
+| Platform | Status | Detail |
+|---|---|---|
+| Facebook/IG | ✅ proven live | dev-mode token path; needs BRANDS_JSON secret set to automate |
+| Google Business Profile | 🟡 in review | **Case `5-2465000041539`**, submitted 2026-06-18, ~7–10 biz days. Project `social-suite-499821` (num `289827224158`), unlocked via verified **HP Landscaping** profile. All profiles unlock once project is approved. |
+| X / TikTok / YouTube | ⬜ not started | one-time per-app approvals |
+
+### GBP notes
+- Cloud project created under a **personal Gmail** (to bypass the Workspace org's
+  forced-billing wall). Access form must be submitted from an account that
+  **manages a verified Business Profile** — used HP Landscaping (verified).
+- **Restore Marketing** profile is **"Verification required"** → verify it later so
+  it can post via the API too (separate task, doesn't block the allowlist).
+- Allowlist is **project-level**: once approved, every brand connects via its own
+  OAuth regardless of which Google account owns the listing.
+
 ## How to resume tomorrow
 1. "continue the social suite" → I merge the clipper, confirm all tests green.
 2. If verification is done: pick a host, deploy Postiz, set redirect URLs.
 3. Otherwise: finish the license upload, then proceed to hosting.
+4. GBP: wait for case `5-2465000041539` email (~7–10 biz days), then enable the
+   Google My Business API + wire OAuth per brand.
