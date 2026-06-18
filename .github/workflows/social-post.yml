@@ -1,0 +1,46 @@
+name: Social post (cron)
+
+# The free always-on robot: fires due posts from social-suite/content/queue.json
+# at the Instagram + Facebook APIs every 30 minutes. No server, no card, no Mac.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+# Allow the job to push the updated queue back to the branch.
+permissions:
+  contents: write
+
+jobs:
+  post-due:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install social-suite (core)
+        run: pip install -e social-suite
+
+      - name: Publish due posts
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+        run: python social-suite/services/publish/run_due.py social-suite/content/queue.json
+
+      - name: Commit updated queue (if changed)
+        run: |
+          if git diff --quiet -- social-suite/content/queue.json; then
+            echo "Queue unchanged — nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add social-suite/content/queue.json
+          git commit -m "chore(social): update post queue statuses [skip ci]"
+          git push
