@@ -1,0 +1,12 @@
+{
+  "hp": {
+    "meta_access_token": "REPLACE_WITH_HP_LANDSCAPING_PAGE_TOKEN",
+    "ig_user_id": "REPLACE_WITH_HP_IG_USER_ID",
+    "fb_page_id": "REPLACE_WITH_HP_FB_PAGE_ID"
+  },
+  "restore": {
+    "meta_access_token": "REPLACE_WITH_RESTORE_PAGE_TOKEN",
+    "ig_user_id": "REPLACE_WITH_RESTORE_IG_USER_ID",
+    "fb_page_id": "REPLACE_WITH_RESTORE_FB_PAGE_ID"
+  }
+}

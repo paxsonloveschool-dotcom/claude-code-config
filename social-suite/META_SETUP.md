@@ -14,6 +14,11 @@ The result of this guide is three values you paste into GitHub repo Secrets:
 `META_ACCESS_TOKEN`, `IG_USER_ID`, `FB_PAGE_ID`. After that the cron workflow
 posts on its own.
 
+> **Running MORE than one brand?** (e.g. HP Landscaping **and** Restore, each
+> with its own IG + FB.) Get the three values above **for each brand**, then see
+> **[`MULTI_BRAND.md`](MULTI_BRAND.md)** — you put all brands into one
+> `BRANDS_JSON` secret instead of the three single secrets.
+
 ---
 
 ## (a) Confirm Instagram is Professional + linked to its Facebook Page
