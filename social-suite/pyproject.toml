@@ -26,10 +26,16 @@ dependencies = [
 # cutting/reframe/burn-in. clipsai/whisperx are optional alternatives.
 transcribe = ["faster-whisper"]
 queue = ["redis>=5.0", "rq>=1.16"]  # optional: auto-watch orchestration
+# The multi-brand portal (FastAPI + HTMX dashboard, encrypted token storage).
+portal = ["sqlalchemy>=2.0", "cryptography>=42", "jinja2>=3.1"]
+# Branded image-card rendering (turns post text into an Instagram-ready image).
+cards = ["pillow>=10.0"]
 dev = ["ruff", "mypy", "pytest"]
 
 [tool.setuptools]
-packages = ["services"]
+packages = ["services", "portal", "automation"]
 
 [tool.setuptools.package-dir]
 services = "services"
+portal = "portal"
+automation = "automation"

@@ -1,0 +1,51 @@
+name: Tests
+
+# Runs the social-suite test suite on every push and PR. This workflow has NO
+# secrets and makes NO network calls — it only imports modules and runs the
+# offline tests, so it can never post to any account.
+on:
+  push:
+    paths:
+      - "social-suite/**"
+      - ".github/workflows/tests.yml"
+  pull_request:
+    paths:
+      - "social-suite/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install (core + portal + cards extras)
+        run: pip install -e "social-suite[portal,cards]"
+
+      - name: Run the full test suite
+        # Each tests/test_*.py has a no-network __main__ runner. Run them all;
+        # fail the job if any file errors. Pure offline — no tokens, no posting.
+        working-directory: social-suite
+        run: |
+          set -e
+          fail=0
+          for f in tests/test_*.py; do
+            echo "::group::$f"
+            if python "$f"; then
+              echo "ok"
+            else
+              echo "::error::$f failed"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $fail
