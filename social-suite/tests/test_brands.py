@@ -27,6 +27,9 @@ _ENV_KEYS = (
 def _clear_env():
     for k in _ENV_KEYS:
         os.environ.pop(k, None)
+    # Also clear any flat BRAND_* vars so they never leak between tests.
+    for k in [k for k in os.environ if k.startswith("BRAND_")]:
+        os.environ.pop(k, None)
 
 
 def test_brands_json_env_takes_priority():
@@ -125,6 +128,49 @@ def test_get_brand_default_name_when_none():
     finally:
         _clear_env()
     assert creds.meta_access_token == "tok"
+
+
+def test_flat_brand_env_vars_build_brands():
+    _clear_env()
+    os.environ["BRAND_HP_META_ACCESS_TOKEN"] = "hpTOK"
+    os.environ["BRAND_HP_FB_PAGE_ID"] = "hpFB"
+    os.environ["BRAND_RESTORE_META_ACCESS_TOKEN"] = "rTOK"
+    os.environ["BRAND_RESTORE_FB_PAGE_ID"] = "rFB"
+    try:
+        brands = load_brands()
+    finally:
+        _clear_env()
+    assert set(brands) == {"hp", "restore"}
+    assert brands["hp"].meta_access_token == "hpTOK"
+    assert brands["hp"].fb_page_id == "hpFB"
+    assert brands["restore"].meta_access_token == "rTOK"
+
+
+def test_flat_env_takes_priority_over_brands_json():
+    _clear_env()
+    os.environ["BRAND_HP_META_ACCESS_TOKEN"] = "flatTOK"
+    os.environ["BRAND_HP_FB_PAGE_ID"] = "flatFB"
+    # A (even malformed) BRANDS_JSON must be ignored when flat vars are present.
+    os.environ["BRANDS_JSON"] = "{not valid json"
+    try:
+        brands = load_brands()
+    finally:
+        _clear_env()
+    assert set(brands) == {"hp"}
+    assert brands["hp"].meta_access_token == "flatTOK"
+
+
+def test_flat_env_strips_whitespace_and_newlines():
+    _clear_env()
+    # A copied token often carries a trailing newline/spaces — must be stripped.
+    os.environ["BRAND_HP_META_ACCESS_TOKEN"] = "  hpTOK\n"
+    os.environ["BRAND_HP_FB_PAGE_ID"] = "hpFB\n"
+    try:
+        brands = load_brands()
+    finally:
+        _clear_env()
+    assert brands["hp"].meta_access_token == "hpTOK"
+    assert brands["hp"].fb_page_id == "hpFB"
 
 
 def _run():

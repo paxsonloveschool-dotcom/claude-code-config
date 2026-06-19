@@ -75,10 +75,11 @@ def _coerce(name: str, raw: dict) -> BrandCreds:
         raise ValueError(
             f"Brand {name!r} credentials must be an object, got {type(raw).__name__}."
         )
+    # ``.strip()`` defends against stray spaces/newlines a copied token can carry.
     return BrandCreds(
-        meta_access_token=raw.get("meta_access_token", "") or "",
-        ig_user_id=raw.get("ig_user_id", "") or "",
-        fb_page_id=raw.get("fb_page_id", "") or "",
+        meta_access_token=(raw.get("meta_access_token") or "").strip(),
+        ig_user_id=(raw.get("ig_user_id") or "").strip(),
+        fb_page_id=(raw.get("fb_page_id") or "").strip(),
         x=_sub(raw, "x"),
         tiktok=_sub(raw, "tiktok"),
         youtube=_sub(raw, "youtube"),
@@ -92,8 +93,46 @@ def _from_mapping(data: dict) -> dict[str, BrandCreds]:
     return {name: _coerce(name, creds) for name, creds in data.items()}
 
 
+# Flat per-brand env vars: BRAND_<NAME>_<FIELD>. No JSON to mangle — each secret
+# is a single pasted value. Far more robust than hand-edited BRANDS_JSON.
+#   BRAND_HP_META_ACCESS_TOKEN, BRAND_HP_FB_PAGE_ID, BRAND_HP_IG_USER_ID, ...
+_FLAT_PREFIX = "BRAND_"
+_FLAT_FIELDS = {
+    "META_ACCESS_TOKEN": "meta_access_token",
+    "FB_PAGE_ID": "fb_page_id",
+    "IG_USER_ID": "ig_user_id",
+}
+
+
+def _from_flat_env() -> dict[str, BrandCreds]:
+    """Build the brand map from ``BRAND_<NAME>_<FIELD>`` env vars, or ``{}``.
+
+    Returns an empty dict when no such vars are set, so callers can treat it as
+    "not configured this way" and fall through to the other sources.
+    """
+    raw: dict[str, dict] = {}
+    for key, value in os.environ.items():
+        if not key.startswith(_FLAT_PREFIX):
+            continue
+        for suffix, field in _FLAT_FIELDS.items():
+            if key.endswith("_" + suffix):
+                name = key[len(_FLAT_PREFIX): -(len(suffix) + 1)].lower()
+                if name:
+                    raw.setdefault(name, {})[field] = value
+                break
+    return _from_mapping(raw)
+
+
 def load_brands() -> dict[str, BrandCreds]:
     """Load the brand -> credentials map using the source-priority chain.
+
+    Source priority:
+        1. Flat ``BRAND_<NAME>_<FIELD>`` env vars (one secret per value — no JSON
+           to mangle). Checked first so a leftover malformed ``BRANDS_JSON`` can't
+           block this simpler, more robust path.
+        2. ``BRANDS_JSON`` (one secret holding every brand's creds).
+        3. ``BRANDS_FILE`` (local JSON file).
+        4. Legacy single ``"default"`` brand from META_ACCESS_TOKEN/IG/FB.
 
     Returns:
         A dict mapping brand name to ``BrandCreds``. Always returns at least the
@@ -104,6 +143,10 @@ def load_brands() -> dict[str, BrandCreds]:
         ValueError: If ``BRANDS_JSON`` / ``BRANDS_FILE`` holds invalid JSON or an
             unexpected shape.
     """
+    flat = _from_flat_env()
+    if flat:
+        return flat
+
     raw_json = os.environ.get("BRANDS_JSON", "").strip()
     if raw_json:
         try:
