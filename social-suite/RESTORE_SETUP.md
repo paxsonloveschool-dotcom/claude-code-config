@@ -35,15 +35,24 @@ type → Switch to Professional** → link it to Restore's Facebook Page.
    **`fb_page_id`**. (Ignore the `1784…` number — that's Instagram, for later.)
 
 ## Step 4 — add Restore to the secret (next to HP)
-Go to **repo → Settings → Secrets and variables → Actions → `BRANDS_JSON` →
-Update**, and change the value from HP-only to **both brands**:
+**EASIEST METHOD — flat secrets (no JSON, nothing to mangle).** Each secret is
+**one pasted value** — no braces, quotes, or commas. Go to **repo → Settings →
+Secrets and variables → Actions → New repository secret** and create these four
+(name on the left, value = the matching token/ID you saved, nothing else):
 
-```json
-{"hp":{"meta_access_token":"HP_TOKEN","fb_page_id":"HP_PAGE_ID"},"restore":{"meta_access_token":"RESTORE_TOKEN","fb_page_id":"RESTORE_PAGE_ID"}}
-```
+| Secret name | Value |
+|---|---|
+| `BRAND_HP_META_ACCESS_TOKEN` | HP's `EAA…` Page token |
+| `BRAND_HP_FB_PAGE_ID` | HP's Page ID (numbers) |
+| `BRAND_RESTORE_META_ACCESS_TOKEN` | Restore's `EAA…` Page token |
+| `BRAND_RESTORE_FB_PAGE_ID` | Restore's Page ID (numbers) |
 
-Keep every quote, comma, and brace exactly. (Your real HP values are already in
-there — just add the `,"restore":{…}` part.)
+(Optional, only when doing Instagram: `BRAND_HP_IG_USER_ID`,
+`BRAND_RESTORE_IG_USER_ID`.)
+
+These **override** `BRANDS_JSON` automatically, so you can ignore/delete the old
+`BRANDS_JSON` secret — a broken one can't block this path. The poster also
+trims stray spaces/newlines from each value, so a copy-paste wobble won't break it.
 
 ## Step 5 — verify (nothing posts yet — everything's still paused)
 Tell me "added Restore" and I'll:
