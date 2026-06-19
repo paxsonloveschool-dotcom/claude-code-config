@@ -1,7 +1,53 @@
 # Social Suite — Session Status & Resume
 
-> Saved end of session **2026-06-18**. Say **"continue the social suite"** next
-> session and start here. Everything below is committed + pushed.
+> Saved end of session **2026-06-19 (Fri)**. Say **"continue the social suite"**
+> on Monday and start from this top section. Everything is committed + pushed to
+> `main`. **Nothing posts** — connections are live but silent.
+
+## ▶️ MONDAY RESUME — read this first
+**Where we are:** Facebook **and** Instagram are connected for **both** brands
+(HP + Restore). Dropbox is connected. The plan now is the **video pipeline**:
+drop a video in Dropbox → AI clips/captions/writes → it lands in a review queue
+(paused) → owner approves → it posts. Nothing auto-posts ever until approved.
+
+**✅ Done & connected (all via flat per-brand GitHub secrets — no JSON):**
+- HP: `BRAND_HP_META_ACCESS_TOKEN`, `BRAND_HP_FB_PAGE_ID`, `BRAND_HP_IG_USER_ID`
+- Restore: `BRAND_RESTORE_META_ACCESS_TOKEN`, `BRAND_RESTORE_FB_PAGE_ID`, `BRAND_RESTORE_IG_USER_ID`
+- Both FB + IG **validated green** (token check passed). FB test posts fired live
+  for each brand and were confirmed (then deleted as tests).
+- Dropbox app `hp-restore-suite-8472` (App Folder) connected. Secrets stored:
+  `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
+- Placeholder text content scrapped (queue is empty). Real content = videos.
+
+**🟡 Owner's pending 1-minute task (do Monday):** in Dropbox →
+`Apps/hp-restore-suite-8472/`, create folders **`HP`** and **`Restore`**, and drop
+**one short test video in `HP`** so we can test the pipeline.
+
+**🔒 Security cleanup (do Monday):** the Dropbox app key/secret/refresh token were
+typed in chat. Hit **Reset** on the app secret in the Dropbox app console, then
+update the `DROPBOX_APP_SECRET` secret (and re-gen the refresh token once). Low
+risk meanwhile (App-Folder scope only).
+
+**🔨 Next build (ON ME, Monday):** wire the pipeline workflow — ingest each brand
+folder from Dropbox (`ingest/routing.brand_for_path`), clip → transcribe →
+caption → write (default `free_writer`, $0; optional Claude), host the rendered
+clip (Dropbox shared link or repo raw URL), and enqueue as `status:"review"`
+(paused) tagged with its brand. Building blocks already done + tested:
+`services/write/free_writer.py`, `services/ingest/routing.py`.
+
+**⬜ Still to connect later:** TikTok, YouTube (one-time approvals); Google
+Business Profile (allowlist in review, case `5-2465000041539`, ~7–10 biz days).
+
+**Requirements check (what the owner asked for):** ✅ $0 / no card (free writer +
+public-repo Actions; only optional Claude costs pennies) · ✅ multi-brand · ✅
+content locked to the right account (brand-folder routing + per-brand creds) · ✅
+nothing posts until told (cron off, nothing pending) · ✅ computer can be off
+(runs on GitHub) · 🔨 in progress: the Dropbox→AI→post pipeline.
+
+---
+
+> Saved end of session **2026-06-18**. (Older notes below — superseded by the
+> Monday Resume section above.)
 
 ## ⏸️ PAUSED — nothing posts until the owner says "go" (set 2026-06-18)
 Two safety layers are in place so **no post fires to any account**:
