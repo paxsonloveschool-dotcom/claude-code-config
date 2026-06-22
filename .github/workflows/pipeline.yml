@@ -15,6 +15,10 @@ on:
         description: "Set true to just print/commit a timestamped transcript"
         required: false
         default: ""
+      video:
+        description: "Filename substring to target one specific video (for cuts)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -53,6 +57,7 @@ jobs:
           # When set, do precise manual recuts instead of normal chunking.
           RECUT_SPECS: ${{ inputs.recut_specs }}
           DUMP_TRANSCRIPT: ${{ inputs.dump_transcript }}
+          PIPELINE_VIDEO: ${{ inputs.video }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 

@@ -509,14 +509,17 @@ def recut(end_phrase: str, clip_index: int = 2, end_buffer: float = 1.0,
     return []
 
 
-def _first_video(dbx):
-    """(file, local_path, base, brand, display) for the first video found, or None."""
+def _first_video(dbx, match: str | None = None):
+    """(file, local_path, base, brand, display) for the first video (optionally
+    one whose filename contains ``match``), or None."""
     import shutil
     for path_lower, display in _top_level_folders(dbx):
         brand = classify_brand(display)
         if not brand:
             continue
         vids = [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+        if match:
+            vids = [f for f in vids if match.lower() in f.name.lower()]
         if not vids:
             continue
         f = vids[0]
@@ -531,29 +534,39 @@ def _first_video(dbx):
 
 
 def dump_transcript() -> None:
-    """Transcribe the first video and print/commit a timestamped transcript so a
-    human (or Claude) can choose good clip windows by time."""
+    """Transcribe EVERY video in the brand folders and print/commit a timestamped
+    transcript per video, so good clip windows can be chosen by time."""
+    import shutil
     from services.caption import transcribe  # lazy
     from services.ingest import dropbox_client as dbx  # lazy
 
-    found = _first_video(dbx)
-    if not found:
-        print("No video found to transcribe.")
-        return
-    f, local, base, _brand, display = found
-    segs = transcribe(local)
-    lines = []
-    for s in segs:
-        a = getattr(s, "start_seconds", 0.0) or 0.0
-        b = getattr(s, "end_seconds", 0.0) or 0.0
-        lines.append(f"[{a:6.1f} - {b:6.1f}] {(getattr(s, 'text', '') or '').strip()}")
-    txt = "\n".join(lines)
     out_dir = os.path.join(ROOT, "content", "transcripts")
     os.makedirs(out_dir, exist_ok=True)
-    with open(os.path.join(out_dir, f"{base}.txt"), "w", encoding="utf-8") as fp:
-        fp.write(f"# {display}/{f.name}\n{txt}\n")
-    print(f"=== TRANSCRIPT {display}/{f.name} ({len(segs)} segments) ===")
-    print(txt)
+    count = 0
+    for path_lower, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        for f in dbx.list_folder(path_lower):
+            if not f.name.lower().endswith(VIDEO_EXTS):
+                continue
+            raw = dbx.download(f)
+            base = _slug(f.name) or "clip"
+            ext = os.path.splitext(f.name)[1] or ".mp4"
+            local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
+            if os.path.abspath(local) != os.path.abspath(raw):
+                shutil.copy(raw, local)
+            segs = transcribe(local)
+            lines = [f"[{getattr(s, 'start_seconds', 0.0) or 0.0:6.1f} - "
+                     f"{getattr(s, 'end_seconds', 0.0) or 0.0:6.1f}] "
+                     f"{(getattr(s, 'text', '') or '').strip()}" for s in segs]
+            txt = "\n".join(lines)
+            with open(os.path.join(out_dir, f"{base}.txt"), "w", encoding="utf-8") as fp:
+                fp.write(f"# {display}/{f.name}  (base={base})\n{txt}\n")
+            print(f"=== TRANSCRIPT base={base}  ({display}/{f.name}, {len(segs)} seg) ===")
+            print(txt)
+            print()
+            count += 1
+    print(f"\nTranscribed {count} video(s).")
 
 
 def cut_windows(specs: list[dict]) -> list[dict]:
@@ -566,9 +579,9 @@ def cut_windows(specs: list[dict]) -> list[dict]:
     from services.ingest import dropbox_client as dbx  # lazy
     from services.write.free_writer import generate_caption  # lazy
 
-    found = _first_video(dbx)
+    found = _first_video(dbx, os.getenv("PIPELINE_VIDEO") or None)
     if not found:
-        print("No video found.")
+        print("No video found (PIPELINE_VIDEO=%r)." % os.getenv("PIPELINE_VIDEO"))
         return []
     _f, local, base, brand, display = found
     brand_key, dispname, tags = brand
