@@ -1,0 +1,57 @@
+name: Video pipeline (Dropbox -> review)
+
+# Pulls new videos from each brand's Dropbox folder, captions them, uploads the
+# finished clip to <Brand>/processed/ for the owner to watch, and appends a
+# REVIEW entry to the queue. It NEVER posts — review items sit until approved.
+# Manual-only for now (run it on demand).
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install social-suite + transcription
+        run: |
+          pip install -e social-suite
+          pip install faster-whisper
+
+      - name: Process Dropbox videos into the review queue (NO posting)
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          INGEST_DOWNLOAD_DIR: ./_ingest
+          # Small/fast Whisper model + CPU (no GPU on the runner).
+          WHISPER_MODEL: base
+          WHISPER_DEVICE: cpu
+          # A font that exists on the runner (libass/fontconfig name).
+          CAPTION_FONT: DejaVu Sans
+        working-directory: social-suite
+        run: python automation/video_pipeline.py
+
+      - name: Commit review results (queue + processed set)
+        run: |
+          if git diff --quiet -- social-suite/content/queue.json social-suite/content/processed.json; then
+            echo "No new review items."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add social-suite/content/queue.json social-suite/content/processed.json
+          git commit -m "chore(pipeline): add review item(s) from Dropbox videos [skip ci]"
+          git push

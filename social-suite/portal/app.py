@@ -35,6 +35,7 @@ _DEFAULT_QUEUE_PATH = Path(__file__).resolve().parent.parent / "content" / "queu
 
 # Tailwind dot colors per queue post status (calendar view).
 QUEUE_STATUS_COLORS = {
+    "review": "bg-purple-500",   # produced by the pipeline, awaiting owner approval
     "pending": "bg-blue-500",
     "paused": "bg-gray-400",
     "sent": "bg-green-500",

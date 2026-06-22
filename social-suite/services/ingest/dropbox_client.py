@@ -171,3 +171,71 @@ def download(file: DropboxFile, dest_dir: str | None = None) -> str:
     dbx = _client()
     _call_with_retry(dbx.files_download_to_file, local_path, file.path)
     return os.path.abspath(local_path)
+
+
+def list_folder(folder: str) -> list[DropboxFile]:
+    """List the files directly inside ``folder`` (one full pass, paginated).
+
+    Unlike ``list_new_files`` (which uses an env default + delta cursor), this
+    takes an explicit folder — used to scan each brand's subfolder (e.g. ``/HP``).
+    A missing folder returns ``[]`` rather than raising.
+    """
+    dbx = _client()
+    try:
+        result = _call_with_retry(dbx.files_list_folder, folder)
+    except Exception as exc:  # noqa: BLE001 — missing folder shouldn't crash a run
+        if "not_found" in str(exc).lower():
+            return []
+        raise
+    files = _to_files(result.entries)
+    while getattr(result, "has_more", False):
+        result = _call_with_retry(dbx.files_list_folder_continue, result.cursor)
+        files.extend(_to_files(result.entries))
+    return files
+
+
+def upload(local_path: str, dropbox_path: str) -> str:
+    """Upload a local file to ``dropbox_path`` (overwrites). Returns the path.
+
+    Creates parent folders implicitly (Dropbox does this). Used to put the
+    finished, captioned clip into a review folder the owner can watch.
+    """
+    import dropbox  # lazy
+
+    dbx = _client()
+    with open(local_path, "rb") as f:
+        data = f.read()
+    _call_with_retry(
+        dbx.files_upload,
+        data,
+        dropbox_path,
+        mode=dropbox.files.WriteMode("overwrite"),
+    )
+    return dropbox_path
+
+
+def shared_link(dropbox_path: str, *, raw: bool = True) -> str:
+    """Return a public shareable URL for ``dropbox_path``.
+
+    Creates a shared link (or reuses an existing one). When ``raw`` is True the
+    URL is rewritten to serve the file bytes directly (``raw=1``) — what a
+    platform needs to fetch media; otherwise it's the normal preview link the
+    owner clicks to watch.
+    """
+    dbx = _client()
+    try:
+        link = _call_with_retry(
+            dbx.sharing_create_shared_link_with_settings, dropbox_path
+        )
+        url = link.url
+    except Exception as exc:  # noqa: BLE001 — link may already exist
+        if "shared_link_already_exists" not in str(exc):
+            raise
+        links = _call_with_retry(dbx.sharing_list_shared_links, dropbox_path).links
+        url = links[0].url if links else ""
+    if raw and url:
+        # ?dl=0 (preview) -> ?raw=1 (direct bytes) for server-side media fetch.
+        url = url.replace("?dl=0", "?raw=1").replace("&dl=0", "&raw=1")
+        if "raw=1" not in url:
+            url += ("&" if "?" in url else "?") + "raw=1"
+    return url
