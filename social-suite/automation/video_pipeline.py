@@ -436,6 +436,114 @@ def recut(end_phrase: str, clip_index: int = 2, end_buffer: float = 1.0,
     return []
 
 
+def _first_video(dbx):
+    """(file, local_path, base, brand, display) for the first video found, or None."""
+    import shutil
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            continue
+        vids = [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+        if not vids:
+            continue
+        f = vids[0]
+        raw = dbx.download(f)
+        base = _slug(f.name) or "clip"
+        ext = os.path.splitext(f.name)[1] or ".mp4"
+        local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
+        if os.path.abspath(local) != os.path.abspath(raw):
+            shutil.copy(raw, local)
+        return f, local, base, brand, display
+    return None
+
+
+def dump_transcript() -> None:
+    """Transcribe the first video and print/commit a timestamped transcript so a
+    human (or Claude) can choose good clip windows by time."""
+    from services.caption import transcribe  # lazy
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    found = _first_video(dbx)
+    if not found:
+        print("No video found to transcribe.")
+        return
+    f, local, base, _brand, display = found
+    segs = transcribe(local)
+    lines = []
+    for s in segs:
+        a = getattr(s, "start_seconds", 0.0) or 0.0
+        b = getattr(s, "end_seconds", 0.0) or 0.0
+        lines.append(f"[{a:6.1f} - {b:6.1f}] {(getattr(s, 'text', '') or '').strip()}")
+    txt = "\n".join(lines)
+    out_dir = os.path.join(ROOT, "content", "transcripts")
+    os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, f"{base}.txt"), "w", encoding="utf-8") as fp:
+        fp.write(f"# {display}/{f.name}\n{txt}\n")
+    print(f"=== TRANSCRIPT {display}/{f.name} ({len(segs)} segments) ===")
+    print(txt)
+
+
+def cut_windows(specs: list[dict]) -> list[dict]:
+    """Cut explicit time windows: each spec is {name, start, end} (seconds).
+
+    Reliable (no phrase guessing): exactly [start, end], vertical, no subtitles.
+    Redoing a window with the same name auto-deletes the previous version.
+    """
+    from services.caption import transcribe  # lazy (for the post caption)
+    from services.ingest import dropbox_client as dbx  # lazy
+    from services.write.free_writer import generate_caption  # lazy
+
+    found = _first_video(dbx)
+    if not found:
+        print("No video found.")
+        return []
+    _f, local, base, brand, display = found
+    brand_key, dispname, tags = brand
+    caption = _compose(generate_caption(
+        {"transcript": _transcript_text(transcribe(local)), "brand_name": dispname},
+        default_hashtags=tags,
+    ))
+
+    queue = _load_json(QUEUE_PATH, [])
+    made: list[dict] = []
+    for sp in specs:
+        nm = _slug(sp.get("name", "clip")) or "clip"
+        start, end = float(sp["start"]), float(sp["end"])
+        out_name = f"{base}-{nm}.mp4"
+        out_local = os.path.join(os.path.dirname(local), out_name)
+        try:
+            _edit_short(local, start, end, out_local, srt=None)
+        except Exception as ex:  # noqa: BLE001
+            print(f"[{brand_key}] cut {nm} failed: {ex}")
+            continue
+        out_path = f"{display.rstrip('/')}/processed/{out_name}"
+        dbx.upload(out_local, out_path)
+        url = dbx.shared_link(out_path, raw=True)
+        # auto-delete any prior version with the same name (queue + Dropbox)
+        keep = []
+        for e in queue:
+            if e.get("brand") == brand_key and e["id"].endswith(f"-{nm}"):
+                if e.get("media_path"):
+                    try:
+                        dbx.delete(e["media_path"])
+                    except Exception:  # noqa: BLE001
+                        pass
+            else:
+                keep.append(e)
+        queue = keep
+        entry = {
+            "id": f"{brand_key}-{nm}", "brand": brand_key, "text": caption,
+            "media_url": url, "media_path": out_path,
+            "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+            "status": "review", "error": None,
+        }
+        queue.append(entry)
+        made.append(entry)
+        print(f"[{brand_key}] cut {nm}: {start:.1f}-{end:.1f}s ({end - start:.1f}s) -> {out_path}")
+    _save_json(QUEUE_PATH, queue)
+    return made
+
+
 def run(*, dry_run: bool = False) -> list[dict]:
     """Discover top-level brand folders and process each. Returns review entries."""
     from services.ingest import dropbox_client as dbx  # lazy
@@ -462,23 +570,31 @@ def main(argv: list[str] | None = None) -> int:
         debug_tree()
         return 0
 
-    # Precise manual recuts, driven by a JSON list in RECUT_SPECS, e.g.:
-    #   [{"clip":2,"end_phrase":"come check it out"},
-    #    {"clip":3,"end_phrase":"its expensive","start_lead":1}]
+    # Dump a timestamped transcript so clip windows can be chosen by time.
+    if os.getenv("DUMP_TRANSCRIPT", "").strip().lower() in ("1", "true", "yes"):
+        dump_transcript()
+        return 0
+
+    # RECUT_SPECS json: explicit time windows [{"name","start","end"}] (preferred),
+    # or legacy phrase recuts [{"clip","end_phrase",...}].
     specs = os.getenv("RECUT_SPECS", "").strip()
     if specs:
         import json as _json
 
-        total = 0
-        for sp in _json.loads(specs):
-            sl = sp.get("start_lead")
-            total += len(recut(
-                sp.get("end_phrase", ""),
-                int(sp.get("clip", 2)),
-                float(sp.get("end_buffer", 1.0)),
-                float(sl) if sl is not None else None,
-            ))
-        print(f"\nDone: {total} recut(s). Nothing posted (all status=review).")
+        data = _json.loads(specs)
+        if data and "start" in data[0] and "end" in data[0]:
+            made = cut_windows(data)
+            print(f"\nDone: {len(made)} clip(s). Nothing posted (all status=review).")
+        else:
+            total = 0
+            for sp in data:
+                sl = sp.get("start_lead")
+                total += len(recut(
+                    sp.get("end_phrase", ""), int(sp.get("clip", 2)),
+                    float(sp.get("end_buffer", 1.0)),
+                    float(sl) if sl is not None else None,
+                ))
+            print(f"\nDone: {total} recut(s).")
         return 0
 
     created = run(dry_run=args.dry_run)
