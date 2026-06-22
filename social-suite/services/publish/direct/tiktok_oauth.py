@@ -204,6 +204,57 @@ def check_token(access_token: str) -> dict:
     return {"ok": True, "info": body.get("data") or {}}
 
 
+def _check_brand(name: str, creds: dict) -> str:
+    """Verify one brand's stored TikTok creds; return a one-line status string.
+
+    Prefers the self-refreshing path (mint a fresh token from the refresh token);
+    falls back to a static ``access_token``. Never raises — the caller tallies on
+    the returned string's "OK"/"INVALID" prefix.
+    """
+    refresh_token = creds.get("refresh_token")
+    client_key = creds.get("client_key")
+    client_secret = creds.get("client_secret")
+    token = creds.get("access_token")
+    if refresh_token and client_key and client_secret:
+        try:
+            token = refresh_access_token(
+                client_key, client_secret, refresh_token
+            ).get("access_token")
+        except RuntimeError as e:
+            return f"[{name}] INVALID — refresh failed: {e}"
+    if not token:
+        return f"[{name}] INVALID — no refresh_token (+client_key/secret) or access_token."
+    result = check_token(token)
+    return f"[{name}] OK" if result["ok"] else f"[{name}] INVALID — {result['error']}"
+
+
+def check_all_brands() -> int:
+    """Refresh+check every brand that has TikTok creds. Exit 0 iff all OK."""
+    from services.publish.brands import load_brands  # lazy
+
+    brands = load_brands()
+    relevant = {n: c.tiktok for n, c in brands.items() if c.tiktok}
+    if not relevant:
+        print("No brands have TikTok credentials configured.")
+        return 1
+
+    bad = 0
+    for name in sorted(relevant):
+        line = _check_brand(name, relevant[name])
+        if "INVALID" in line:
+            bad += 1
+        print(line)
+
+    if bad:
+        print(
+            f"\n{bad} brand TikTok link(s) invalid. Re-link the account(s) "
+            "(see social-suite/TIKTOK_SETUP.md)."
+        )
+        return 1
+    print(f"\nAll {len(relevant)} brand TikTok link(s) OK.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI: ``authorize | exchange | refresh | check`` the TikTok OAuth flow."""
     import argparse
@@ -231,8 +282,17 @@ def main(argv: list[str] | None = None) -> int:
     p_rf.add_argument("--client-secret", default=os.environ.get("TIKTOK_CLIENT_SECRET", ""))
     p_rf.add_argument("--refresh-token", default=os.environ.get("TIKTOK_REFRESH_TOKEN", ""))
 
-    p_ck = sub.add_parser("check", help="Verify an access token can post.")
+    p_ck = sub.add_parser(
+        "check",
+        help="Verify a token can post. With --all-brands, refresh+check every "
+        "brand's stored TikTok creds (BRANDS_JSON / content/brands.json).",
+    )
     p_ck.add_argument("--access-token", default=os.environ.get("TIKTOK_ACCESS_TOKEN", ""))
+    p_ck.add_argument(
+        "--all-brands",
+        action="store_true",
+        help="Check every brand's TikTok link (mints a fresh token per brand).",
+    )
 
     args = parser.parse_args(argv)
 
@@ -260,6 +320,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "check":
+        if args.all_brands:
+            return check_all_brands()
         result = check_token(args.access_token)
         if result["ok"]:
             print("TikTok access token OK — creator info reachable, posting scope present.")

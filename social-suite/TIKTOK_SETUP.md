@@ -130,6 +130,14 @@ TIKTOK_ACCESS_TOKEN="act...." \
 # -> "TikTok access token OK — creator info reachable, posting scope present."
 ```
 
+**Verify every brand's link at once** (refreshes + checks each brand that has
+TikTok creds in `BRANDS_JSON` / `content/brands.json`):
+
+```bash
+python social-suite/services/publish/direct/tiktok_oauth.py check --all-brands
+# -> "[hp] OK"  "[restore] OK"  "All 2 brand TikTok link(s) OK."
+```
+
 **Dry-run the queue** (routes nothing, just shows what would post):
 
 ```bash

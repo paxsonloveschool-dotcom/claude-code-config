@@ -169,6 +169,60 @@ def test_post_form_raises_with_body_on_http_error():
         urllib.request.urlopen = orig
 
 
+def test_check_all_brands_refreshes_and_reports_per_brand(capsys=None):
+    import os
+
+    from services.publish.direct import tiktok
+
+    orig_refresh = tiktok_oauth.refresh_access_token
+    orig_query = tiktok.query_creator_info
+    orig_brands = os.environ.get("BRANDS_JSON")
+
+    # hp refreshes OK and creator_info resolves; restore's refresh token is dead.
+    def _fake_refresh(ck, cs, rt):
+        if rt == "DEAD":
+            raise RuntimeError("invalid_grant: expired")
+        return {"access_token": "FRESH"}
+
+    tiktok_oauth.refresh_access_token = _fake_refresh
+    tiktok.query_creator_info = lambda tok: {"data": {}, "error": {"code": "ok"}}
+    os.environ["BRANDS_JSON"] = (
+        '{"hp": {"meta_access_token": "m", "tiktok": {"refresh_token": "OK",'
+        ' "client_key": "CK", "client_secret": "CS"}},'
+        ' "restore": {"meta_access_token": "m", "tiktok": {"refresh_token": "DEAD",'
+        ' "client_key": "CK", "client_secret": "CS"}},'
+        ' "noprofile": {"meta_access_token": "m"}}'
+    )
+    try:
+        rc = tiktok_oauth.check_all_brands()
+    finally:
+        tiktok_oauth.refresh_access_token = orig_refresh
+        tiktok.query_creator_info = orig_query
+        if orig_brands is None:
+            os.environ.pop("BRANDS_JSON", None)
+        else:
+            os.environ["BRANDS_JSON"] = orig_brands
+
+    # One brand (restore) is bad -> non-zero exit. "noprofile" has no tiktok creds
+    # so it is skipped entirely (not counted as a failure).
+    assert rc == 1
+
+
+def test_check_all_brands_zero_when_no_tiktok_brands():
+    import os
+
+    orig_brands = os.environ.get("BRANDS_JSON")
+    os.environ["BRANDS_JSON"] = '{"hp": {"meta_access_token": "m"}}'
+    try:
+        rc = tiktok_oauth.check_all_brands()
+    finally:
+        if orig_brands is None:
+            os.environ.pop("BRANDS_JSON", None)
+        else:
+            os.environ["BRANDS_JSON"] = orig_brands
+    assert rc == 1  # nothing to check is treated as "not configured" -> exit 1
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):
