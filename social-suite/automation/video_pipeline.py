@@ -1,19 +1,19 @@
 """Video pipeline: Dropbox brand folders -> captioned clip -> REVIEW queue.
 
-For each brand subfolder in the Dropbox app folder (``/HP``, ``/Restore``, …):
-pull new videos, transcribe them, write a caption (free $0 writer by default),
-burn the captions onto the video, upload the finished clip back to a
-``<Brand>/processed/`` folder the owner can watch, and append a queue entry with
-``status:"review"``. **Nothing is ever posted** — the poster only fires
-``status:"pending"``, so review items sit until the owner approves them.
+Scans the TOP-LEVEL folders of the Dropbox app folder, matches each to a brand
+by keyword in its name (``…HP…`` -> hp, ``…Restore…`` -> restore), and for each
+matched folder pulls new videos, transcribes them, writes a caption (free $0
+writer), burns the captions on, uploads the finished clip to a ``processed/``
+subfolder the owner can watch, and appends a ``status:"review"`` queue entry.
 
-Brand routing is by folder name (``/HP`` -> ``hp``), so a client's video can
-only ever produce a post for that client's own accounts.
+**Nothing is ever posted** — the poster only fires ``status:"pending"``. And only
+TOP-LEVEL folders are scanned (never recursing into a nested folder), so one
+brand's videos can never leak into another brand's posts.
 
 Run on GitHub Actions (heavy ffmpeg/whisper deps + Dropbox secrets live there):
-    python automation/video_pipeline.py
-Heavy imports (dropbox, faster-whisper, ffmpeg via subprocess) are all lazy, so
-this module imports fine without them installed.
+    python automation/video_pipeline.py        # process
+    python automation/video_pipeline.py --ls    # just list what the app sees
+Heavy imports (dropbox, faster-whisper, ffmpeg) are lazy.
 """
 
 from __future__ import annotations
@@ -30,14 +30,27 @@ PROCESSED_PATH = os.path.join(ROOT, "content", "processed.json")
 
 VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv")
 
-# Brand folder name -> (brand key, display name, default hashtags). The folder
-# names match what the owner created in Dropbox.
+# Brand classification by keyword in the folder name + that brand's look. Order
+# matters: check "restore" before "hp" so "Restore" never falls through to hp.
+BRAND_RULES = [
+    ("restore", "restore", "Restore Marketing", ["RestoreMarketing", "marketing"]),
+    ("hp", "hp", "HP Landscaping", ["HPLandscaping", "landscaping", "lawncare"]),
+]
+# Kept for backward-compat/tests: folder-name -> (key, display, tags).
 BRANDS = {
     "HP": ("hp", "HP Landscaping", ["HPLandscaping", "landscaping", "lawncare"]),
     "Restore": ("restore", "Restore Marketing", ["RestoreMarketing", "marketing"]),
 }
-# Which platforms each review item targets once approved. FB + IG are connected.
 REVIEW_PLATFORMS = [p.strip() for p in os.getenv("REVIEW_PLATFORMS", "instagram,facebook").split(",") if p.strip()]
+
+
+def classify_brand(folder_name: str):
+    """Return (key, display, hashtags) for a folder name, or None if unmatched."""
+    low = (folder_name or "").lower()
+    for needle, key, display, tags in BRAND_RULES:
+        if needle in low:
+            return (key, display, list(tags))
+    return None
 
 
 def _load_json(path, default):
@@ -67,28 +80,44 @@ def _transcript_text(segments) -> str:
     return " ".join(getattr(s, "text", "").strip() for s in segments).strip()
 
 
-def process_brand_folder(folder_name: str, *, dry_run: bool = False) -> list[dict]:
-    """Process one brand's Dropbox folder; return the review entries created."""
-    from services.ingest import dropbox_client as dbx  # lazy
+def display_folder(brand_key: str) -> str:
+    """Map a brand key to its canonical Dropbox folder name (for tests/docs)."""
+    for folder, (key, *_rest) in BRANDS.items():
+        if key == brand_key:
+            return folder
+    return brand_key
 
-    brand_key, display, default_tags = BRANDS.get(
-        folder_name, (folder_name.lower(), folder_name, [])
-    )
+
+def _top_level_folders(dbx):
+    """Yield (path_lower, display_name) for each folder at the app-folder root."""
+    client = dbx._client()
+    res = client.files_list_folder("")
+    out = []
+    while True:
+        for e in res.entries:
+            if e.__class__.__name__ == "FolderMetadata":
+                out.append((getattr(e, "path_lower", ""), getattr(e, "path_display", e.name)))
+        if not getattr(res, "has_more", False):
+            break
+        res = client.files_list_folder_continue(res.cursor)
+    return out
+
+
+def process_folder(folder_path: str, folder_display: str, brand, dbx, *, dry_run: bool = False) -> list[dict]:
+    """Process the videos directly inside one matched brand folder."""
+    brand_key, display, default_tags = brand
     processed = set(_load_json(PROCESSED_PATH, []))
     created: list[dict] = []
 
-    files = dbx.list_folder(f"/{folder_name}")
-    for f in files:
-        if not f.name.lower().endswith(VIDEO_EXTS):
+    for f in dbx.list_folder(folder_path):
+        if not f.name.lower().endswith(VIDEO_EXTS) or f.rev in processed:
             continue
-        if f.rev in processed:
-            continue  # already handled
-        print(f"[{brand_key}] processing {f.name} (rev {f.rev})")
+        print(f"[{brand_key}] processing {f.name} from {folder_display}")
         if dry_run:
             created.append({"id": f"{brand_key}-DRYRUN-{_slug(f.name)}", "brand": brand_key})
             continue
         try:
-            entry = _process_one(f, brand_key, display, default_tags, dbx)
+            entry = _process_one(f, folder_display, brand_key, display, default_tags, dbx)
             created.append(entry)
             processed.add(f.rev)
         except Exception as e:  # noqa: BLE001 — one bad video never kills the run
@@ -98,7 +127,7 @@ def process_brand_folder(folder_name: str, *, dry_run: bool = False) -> list[dic
     return created
 
 
-def _process_one(f, brand_key, display, default_tags, dbx) -> dict:
+def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> dict:
     """Download -> transcribe -> caption -> burn -> upload -> review entry."""
     from services.caption import burn_captions, transcribe  # lazy (whisper/ffmpeg)
     from services.write.free_writer import generate_caption  # lazy
@@ -113,10 +142,10 @@ def _process_one(f, brand_key, display, default_tags, dbx) -> dict:
     )
     caption = _compose(copy)
 
-    captioned = burn_captions(local, segments)  # returns local path to captioned mp4
+    captioned = burn_captions(local, segments)
 
     out_name = f"{_slug(f.name)}-captioned.mp4"
-    out_path = f"/{display_folder(brand_key)}/processed/{out_name}"
+    out_path = f"{folder_display.rstrip('/')}/processed/{out_name}"
     dbx.upload(captioned, out_path)
     url = dbx.shared_link(out_path, raw=True)
 
@@ -130,40 +159,27 @@ def _process_one(f, brand_key, display, default_tags, dbx) -> dict:
         "status": "review",   # NEVER posts (poster only fires "pending")
         "error": None,
     }
-    _append_review(entry)
+    queue = _load_json(QUEUE_PATH, [])
+    queue.append(entry)
+    _save_json(QUEUE_PATH, queue)
     print(f"[{brand_key}] review ready -> {out_path}\n  caption: {caption[:80]!r}")
     return entry
 
 
-def display_folder(brand_key: str) -> str:
-    """Map a brand key back to its Dropbox folder name (HP/Restore)."""
-    for folder, (key, *_rest) in BRANDS.items():
-        if key == brand_key:
-            return folder
-    return brand_key
-
-
-def _append_review(entry: dict) -> None:
-    queue = _load_json(QUEUE_PATH, [])
-    queue.append(entry)
-    _save_json(QUEUE_PATH, queue)
-
-
 def debug_tree() -> None:
-    """Print what the Dropbox app can actually see (root + one level deep).
-
-    Run when no videos are found, to diagnose folder/path mismatches.
-    """
+    """Print what the Dropbox app can see (root + one level deep) for diagnosis."""
     from services.ingest import dropbox_client as dbx  # lazy
 
     client = dbx._client()
     print("== Dropbox app-folder contents (root) ==")
     res = client.files_list_folder("")
     if not res.entries:
-        print("  (root is empty — no folders/files visible to the app)")
+        print("  (root is empty — nothing visible to the app)")
     for e in res.entries:
         is_dir = e.__class__.__name__ == "FolderMetadata"
-        print(f"  {'DIR ' if is_dir else 'file'} {getattr(e, 'path_display', e.name)}")
+        tag = classify_brand(e.name)
+        label = f" -> brand={tag[0]}" if (is_dir and tag) else (" -> (unmatched)" if is_dir else "")
+        print(f"  {'DIR ' if is_dir else 'file'} {getattr(e, 'path_display', e.name)}{label}")
         if is_dir:
             try:
                 sub = client.files_list_folder(getattr(e, "path_lower", ""))
@@ -175,27 +191,36 @@ def debug_tree() -> None:
                 print(f"        (could not list: {ex})")
 
 
+def run(*, dry_run: bool = False) -> list[dict]:
+    """Discover top-level brand folders and process each. Returns review entries."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    created: list[dict] = []
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            print(f"skip unrecognized folder: {display}")
+            continue
+        created += process_folder(path_lower, display, brand, dbx, dry_run=dry_run)
+    return created
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description="Process Dropbox brand videos into the review queue.")
-    parser.add_argument("--dry-run", action="store_true", help="List/route only; no download/transcribe/post.")
-    parser.add_argument("--brand", default=None, help="Only this folder (e.g. HP).")
-    parser.add_argument("--ls", action="store_true", help="Just print the Dropbox app-folder tree and exit.")
+    parser.add_argument("--dry-run", action="store_true", help="List/route only; no download/transcribe.")
+    parser.add_argument("--ls", action="store_true", help="Print the Dropbox app-folder tree and exit.")
     args = parser.parse_args(argv)
 
     if args.ls:
         debug_tree()
         return 0
 
-    folders = [args.brand] if args.brand else list(BRANDS)
-    total = 0
-    for folder in folders:
-        created = process_brand_folder(folder, dry_run=args.dry_run)
-        total += len(created)
-    print(f"\nDone: {total} review item(s) created. Nothing was posted (all status=review).")
-    if total == 0 and not args.dry_run:
-        print("\nNo videos found — here's what the app can see, to diagnose:")
+    created = run(dry_run=args.dry_run)
+    print(f"\nDone: {len(created)} review item(s) created. Nothing was posted (all status=review).")
+    if not created and not args.dry_run:
+        print("\nNo videos processed — here's what the app sees, to diagnose:")
         try:
             debug_tree()
         except Exception as e:  # noqa: BLE001

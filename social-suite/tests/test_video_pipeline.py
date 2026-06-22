@@ -51,6 +51,17 @@ def test_brands_map_folders_to_keys():
     assert vp.BRANDS["Restore"][0] == "restore"
 
 
+def test_classify_brand_matches_messy_folder_names():
+    # tolerant of extra words / spacing the owner might type
+    assert vp.classify_brand("HP-Content Auto.")[0] == "hp"
+    assert vp.classify_brand("Restore- Content Auto")[0] == "restore"
+    assert vp.classify_brand("hp")[0] == "hp"
+    # "restore" is checked first so a folder mentioning both routes to restore
+    assert vp.classify_brand("Restore")[0] == "restore"
+    # unrecognized -> None (skipped, never mis-tagged)
+    assert vp.classify_brand("Random Folder") is None
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):
