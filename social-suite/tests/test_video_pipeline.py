@@ -62,16 +62,19 @@ def test_classify_brand_matches_messy_folder_names():
     assert vp.classify_brand("Random Folder") is None
 
 
-def test_windows_make_ten_varied_cuts():
-    w = vp._windows(0.0, 60.0)
-    labels = [lbl for _a, _b, lbl in w]
-    assert labels[0] == "full"
-    assert len(w) == 10  # full + halves + thirds + quarters
-    # lengths span short to long
-    lengths = sorted(round(b - a) for a, b, _l in w)
-    assert lengths[0] == 15 and lengths[-1] == 60
-    # a very short clip just yields the full cut
-    assert vp._windows(0.0, 1.0) == [(0.0, 1.0, "full")]
+def test_windows_split_into_20s_chunks():
+    w = vp._windows(0.0, 71.0, target=20)
+    assert len(w) == 4                       # 71s / 20 -> 4 chunks (~18s)
+    assert w[0][0] == 0.0 and abs(w[-1][1] - 71.0) < 0.01  # cover full span
+    # back-to-back, no overlap
+    for (a, b, _l), (a2, b2, _l2) in zip(w, w[1:]):
+        assert abs(b - a2) < 0.01
+    for a, b, _l in w:
+        assert 15 <= (b - a) <= 22           # each near the 20s target
+    # a clip already near target stays whole
+    assert len(vp._windows(0.0, 18.0, target=20)) == 1
+    # a one-minute video -> 3 clean 20s posts
+    assert len(vp._windows(0.0, 60.0, target=20)) == 3
 
 
 def test_speech_bounds_from_segments():

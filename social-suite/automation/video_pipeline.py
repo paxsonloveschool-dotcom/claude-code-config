@@ -144,19 +144,25 @@ def _speech_bounds(segments) -> tuple[float, float]:
     return s0, e0
 
 
-def _windows(s: float, e: float, max_n: int = 10) -> list[tuple[float, float, str]]:
-    """A spread of cuts across [s, e]: full, halves, thirds, quarters (=10)."""
+def _windows(s: float, e: float, target: float | None = None) -> list[tuple[float, float, str]]:
+    """Split [s, e] into back-to-back ~``target``-second chunks (default 20s).
+
+    Each chunk becomes its own post, so one minute of footage yields ~3-4 posts.
+    Chunks are equal-length and non-overlapping; a clip already near target
+    length stays whole. ``CLIP_TARGET_SECONDS`` overrides the default.
+    """
+    target = target or float(os.getenv("CLIP_TARGET_SECONDS", "20"))
     total = max(0.0, e - s)
-    if total < 1.5:
-        return [(s, e, "full")]
-    wins = [(s, e, "full")]
-    for n in (2, 3, 4):
-        step = total / n
-        for i in range(n):
-            a = s + i * step
-            b = e if i == n - 1 else s + (i + 1) * step
-            wins.append((round(a, 2), round(b, 2), f"{n}part-{i + 1}"))
-    return wins[:max_n]
+    if total <= target * 1.5:
+        return [(round(s, 2), round(e, 2), "clip-1")]
+    n = max(1, round(total / target))
+    step = total / n
+    out = []
+    for i in range(n):
+        a = s + i * step
+        b = e if i == n - 1 else s + (i + 1) * step
+        out.append((round(a, 2), round(b, 2), f"clip-{i + 1}"))
+    return out
 
 
 def _edit_short(src: str, a: float, b: float, out_path: str) -> str:
