@@ -46,11 +46,20 @@ def _truncate_words(text: str, max_words: int) -> str:
     return " ".join(words[:max_words]).rstrip(",;:") + "…"
 
 
+_FILLER = {
+    "finally", "today", "really", "actually", "basically", "literally",
+    "nation", "higher", "purpose", "guys", "everyone", "welcome", "video",
+    "thing", "things", "stuff", "going", "doing", "little", "right", "well",
+}
+
+
 def _keywords(text: str, n: int) -> list[str]:
+    """Pick a few clean, on-topic keywords. Strict: alphabetic only (drops
+    contractions like "what's"), length >= 5, and not a stop/filler word."""
     seen: list[str] = []
-    for raw in re.findall(r"[A-Za-z][A-Za-z'-]+", (text or "").lower()):
-        w = raw.strip("'-")
-        if len(w) < 4 or w in _STOP or w in seen:
+    for raw in re.findall(r"[A-Za-z']+", (text or "").lower()):
+        w = raw.strip("'")
+        if not w.isalpha() or len(w) < 5 or w in _STOP or w in _FILLER or w in seen:
             continue
         seen.append(w)
         if len(seen) >= n:
@@ -87,7 +96,8 @@ def generate_caption(
         t = t.lstrip("#").strip().lower()
         if t and t not in tags:
             tags.append(t)
-    for kw in _keywords(transcript, 6):
+    # Lean mostly on the brand's curated tags; add at most 2 clean keywords.
+    for kw in _keywords(transcript, 2):
         if kw not in tags:
             tags.append(kw)
         if len(tags) >= 10:

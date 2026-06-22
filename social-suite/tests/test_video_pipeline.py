@@ -62,6 +62,29 @@ def test_classify_brand_matches_messy_folder_names():
     assert vp.classify_brand("Random Folder") is None
 
 
+def test_windows_make_ten_varied_cuts():
+    w = vp._windows(0.0, 60.0)
+    labels = [lbl for _a, _b, lbl in w]
+    assert labels[0] == "full"
+    assert len(w) == 10  # full + halves + thirds + quarters
+    # lengths span short to long
+    lengths = sorted(round(b - a) for a, b, _l in w)
+    assert lengths[0] == 15 and lengths[-1] == 60
+    # a very short clip just yields the full cut
+    assert vp._windows(0.0, 1.0) == [(0.0, 1.0, "full")]
+
+
+def test_speech_bounds_from_segments():
+    @dataclass
+    class _S:
+        start_seconds: float
+        end_seconds: float
+
+    s, e = vp._speech_bounds([_S(2.0, 5.0), _S(6.0, 9.0)])
+    assert 1.0 <= s <= 2.0          # padded a little before first word
+    assert 9.0 <= e <= 9.5          # padded a little after last word
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):

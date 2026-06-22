@@ -33,8 +33,12 @@ VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv")
 # Brand classification by keyword in the folder name + that brand's look. Order
 # matters: check "restore" before "hp" so "Restore" never falls through to hp.
 BRAND_RULES = [
-    ("restore", "restore", "Restore Marketing", ["RestoreMarketing", "marketing"]),
-    ("hp", "hp", "HP Landscaping", ["HPLandscaping", "landscaping", "lawncare"]),
+    ("restore", "restore", "Restore Marketing",
+     ["RestoreMarketing", "marketingagency", "smallbusinessmarketing",
+      "contentcreator", "socialmediamarketing", "digitalmarketing"]),
+    ("hp", "hp", "HP Landscaping",
+     ["HPLandscaping", "landscaping", "hardscape", "patiodesign", "backyardgoals",
+      "outdoorliving", "stampedconcrete", "curbappeal"]),
 ]
 # Kept for backward-compat/tests: folder-name -> (key, display, tags).
 BRANDS = {
@@ -117,8 +121,8 @@ def process_folder(folder_path: str, folder_display: str, brand, dbx, *, dry_run
             created.append({"id": f"{brand_key}-DRYRUN-{_slug(f.name)}", "brand": brand_key})
             continue
         try:
-            entry = _process_one(f, folder_display, brand_key, display, default_tags, dbx)
-            created.append(entry)
+            entries = _process_one(f, folder_display, brand_key, display, default_tags, dbx)
+            created.extend(entries)
             processed.add(f.rev)
         except Exception as e:  # noqa: BLE001 — one bad video never kills the run
             print(f"[{brand_key}] FAILED {f.name}: {e}")
@@ -127,53 +131,105 @@ def process_folder(folder_path: str, folder_display: str, brand, dbx, *, dry_run
     return created
 
 
-def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> dict:
-    """Download -> transcribe -> caption -> burn -> upload -> review entry."""
+def _speech_bounds(segments) -> tuple[float, float]:
+    """(start, end) seconds spanning the spoken content, with small padding."""
+    starts = [getattr(s, "start_seconds", None) for s in segments]
+    ends = [getattr(s, "end_seconds", None) for s in segments]
+    starts = [x for x in starts if x is not None]
+    ends = [x for x in ends if x is not None]
+    s0 = max(0.0, (min(starts) if starts else 0.0) - 0.2)
+    e0 = (max(ends) if ends else 0.0) + 0.3
+    if e0 <= s0:
+        e0 = s0 + 5.0
+    return s0, e0
+
+
+def _windows(s: float, e: float, max_n: int = 10) -> list[tuple[float, float, str]]:
+    """A spread of cuts across [s, e]: full, halves, thirds, quarters (=10)."""
+    total = max(0.0, e - s)
+    if total < 1.5:
+        return [(s, e, "full")]
+    wins = [(s, e, "full")]
+    for n in (2, 3, 4):
+        step = total / n
+        for i in range(n):
+            a = s + i * step
+            b = e if i == n - 1 else s + (i + 1) * step
+            wins.append((round(a, 2), round(b, 2), f"{n}part-{i + 1}"))
+    return wins[:max_n]
+
+
+def _edit_short(src: str, a: float, b: float, out_path: str) -> str:
+    """Cut [a,b] and reframe to vertical 1080x1920 (center crop). No captions."""
+    import subprocess  # lazy, stdlib
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
+    cmd = [
+        "ffmpeg", "-y", "-i", src, "-ss", f"{a:.2f}", "-to", f"{b:.2f}",
+        "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path,
+    ]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return out_path
+
+
+def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> list[dict]:
+    """Download -> transcribe -> make ~10 vertical cuts -> upload -> review entries."""
     import shutil  # lazy, stdlib
 
-    from services.caption import burn_captions, transcribe  # lazy (whisper/ffmpeg)
+    from services.caption import transcribe  # lazy (whisper)
     from services.write.free_writer import generate_caption  # lazy
 
     raw = dbx.download(f)
-    # Work on a SAFE filename (no spaces/commas/colons) so ffmpeg's caption
-    # filtergraph (which treats those as syntax) doesn't break on phone-clip
-    # names like "Video Sep 17 2025, 5 25 38 PM.mov".
+    # Safe filename (no spaces/commas) so ffmpeg paths never break on phone names.
     ext = os.path.splitext(f.name)[1] or ".mp4"
-    local = os.path.join(os.path.dirname(raw), f"{_slug(f.name) or 'clip'}{ext}")
+    base = _slug(f.name) or "clip"
+    local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
     if os.path.abspath(local) != os.path.abspath(raw):
         shutil.copy(raw, local)
 
     segments = transcribe(local)
     transcript = _transcript_text(segments)
-
     copy = generate_caption(
         {"transcript": transcript, "brand_name": display},
         default_hashtags=default_tags,
     )
     caption = _compose(copy)
 
-    captioned = burn_captions(local, segments)
-
-    out_name = f"{_slug(f.name)}-captioned.mp4"
-    out_path = f"{folder_display.rstrip('/')}/processed/{out_name}"
-    dbx.upload(captioned, out_path)
-    url = dbx.shared_link(out_path, raw=True)
-
-    entry = {
-        "id": f"{brand_key}-{_dt.datetime.utcnow():%Y%m%d%H%M%S}-{_slug(f.name)}",
-        "brand": brand_key,
-        "text": caption,
-        "media_url": url,
-        "platforms": list(REVIEW_PLATFORMS),
-        "schedule": None,
-        "status": "review",   # NEVER posts (poster only fires "pending")
-        "error": None,
-    }
+    s0, e0 = _speech_bounds(segments)
     queue = _load_json(QUEUE_PATH, [])
-    queue.append(entry)
+    entries: list[dict] = []
+    stamp = _dt.datetime.utcnow().strftime("%Y%m%d%H%M%S")
+
+    for a, b, label in _windows(s0, e0):
+        out_name = f"{base}-{label}.mp4"
+        out_local = os.path.join(os.path.dirname(local), out_name)
+        try:
+            _edit_short(local, a, b, out_local)
+        except Exception as ex:  # noqa: BLE001 — skip a bad cut, keep the rest
+            print(f"[{brand_key}] cut {label} failed: {ex}")
+            continue
+        out_path = f"{folder_display.rstrip('/')}/processed/{out_name}"
+        dbx.upload(out_local, out_path)
+        url = dbx.shared_link(out_path, raw=True)
+        entry = {
+            "id": f"{brand_key}-{stamp}-{label}",
+            "brand": brand_key,
+            "text": caption,
+            "media_url": url,
+            "platforms": list(REVIEW_PLATFORMS),
+            "schedule": None,
+            "status": "review",   # NEVER posts (poster only fires "pending")
+            "error": None,
+        }
+        queue.append(entry)
+        entries.append(entry)
+        print(f"[{brand_key}] cut {label}: {a:.0f}-{b:.0f}s ({b - a:.0f}s) -> {out_path}")
+
     _save_json(QUEUE_PATH, queue)
-    print(f"[{brand_key}] review ready -> {out_path}\n  caption: {caption[:80]!r}")
-    return entry
+    print(f"[{brand_key}] {len(entries)} cuts ready for review. caption: {caption[:70]!r}")
+    return entries
 
 
 def debug_tree() -> None:
