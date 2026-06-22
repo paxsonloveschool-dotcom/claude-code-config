@@ -129,10 +129,20 @@ def process_folder(folder_path: str, folder_display: str, brand, dbx, *, dry_run
 
 def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> dict:
     """Download -> transcribe -> caption -> burn -> upload -> review entry."""
+    import shutil  # lazy, stdlib
+
     from services.caption import burn_captions, transcribe  # lazy (whisper/ffmpeg)
     from services.write.free_writer import generate_caption  # lazy
 
-    local = dbx.download(f)
+    raw = dbx.download(f)
+    # Work on a SAFE filename (no spaces/commas/colons) so ffmpeg's caption
+    # filtergraph (which treats those as syntax) doesn't break on phone-clip
+    # names like "Video Sep 17 2025, 5 25 38 PM.mov".
+    ext = os.path.splitext(f.name)[1] or ".mp4"
+    local = os.path.join(os.path.dirname(raw), f"{_slug(f.name) or 'clip'}{ext}")
+    if os.path.abspath(local) != os.path.abspath(raw):
+        shutil.copy(raw, local)
+
     segments = transcribe(local)
     transcript = _transcript_text(segments)
 
