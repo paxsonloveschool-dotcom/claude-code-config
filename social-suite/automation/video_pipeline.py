@@ -251,25 +251,21 @@ def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> li
     entries: list[dict] = []
     stamp = _dt.datetime.utcnow().strftime("%Y%m%d%H%M%S")
 
-    # Alternate a style per chunk so the owner can compare: even = clean (no
-    # captions), odd = bold burned subtitles. (Music/SFX added once a track exists.)
+    # Vertical chunks, NO burned subtitles (owner's call). The strong post
+    # caption goes in the text field instead, used when the post is published.
     for i, (a, b, label) in enumerate(_windows(s0, e0)):
-        style = "captions" if i % 2 == 1 else "plain"
-        out_name = f"{base}-{label}-{style}.mp4"
+        out_name = f"{base}-{label}.mp4"
         out_local = os.path.join(os.path.dirname(local), out_name)
-        srt = None
-        if style == "captions":
-            srt = _write_srt(segments, a, b, os.path.join(os.path.dirname(local), f"{base}-{label}.srt"))
         try:
-            _edit_short(local, a, b, out_local, srt=srt)
+            _edit_short(local, a, b, out_local, srt=None)
         except Exception as ex:  # noqa: BLE001 — skip a bad cut, keep the rest
-            print(f"[{brand_key}] cut {label} ({style}) failed: {ex}")
+            print(f"[{brand_key}] cut {label} failed: {ex}")
             continue
         out_path = f"{folder_display.rstrip('/')}/processed/{out_name}"
         dbx.upload(out_local, out_path)
         url = dbx.shared_link(out_path, raw=True)
         entry = {
-            "id": f"{brand_key}-{stamp}-{label}-{style}",
+            "id": f"{brand_key}-{stamp}-{label}",
             "brand": brand_key,
             "text": caption,
             "media_url": url,
@@ -280,7 +276,7 @@ def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> li
         }
         queue.append(entry)
         entries.append(entry)
-        print(f"[{brand_key}] cut {label} [{style}]: {a:.0f}-{b:.0f}s ({b - a:.0f}s) -> {out_path}")
+        print(f"[{brand_key}] cut {label}: {a:.0f}-{b:.0f}s ({b - a:.0f}s) -> {out_path}")
 
     _save_json(QUEUE_PATH, queue)
     print(f"[{brand_key}] {len(entries)} cuts ready for review. caption: {caption[:70]!r}")
@@ -312,6 +308,114 @@ def debug_tree() -> None:
                 print(f"        (could not list: {ex})")
 
 
+def _find_phrase_end(segments, phrase: str) -> float | None:
+    """End-time (seconds) of where ``phrase`` is spoken, or None if not found.
+
+    Prefers word-level timing; falls back to the segment containing the phrase.
+    """
+    norm = lambda s: re.sub(r"[^a-z]", "", s.lower())
+    target = [norm(w) for w in phrase.split() if norm(w)]
+    if not target:
+        return None
+    words = []
+    for seg in segments:
+        for w in (getattr(seg, "words", None) or []):
+            words.append((norm(getattr(w, "text", "")), getattr(w, "end_seconds", None)))
+    n = len(target)
+    for i in range(len(words) - n + 1):
+        if [words[i + j][0] for j in range(n)] == target and words[i + n - 1][1] is not None:
+            return float(words[i + n - 1][1])
+    # fallback: a segment whose text contains the phrase
+    flat = " ".join(target)
+    for seg in segments:
+        txt = " ".join(norm(w) for w in (getattr(seg, "text", "") or "").split())
+        if flat in txt and getattr(seg, "end_seconds", None) is not None:
+            return float(seg.end_seconds)
+    return None
+
+
+def _first_word_after(segments, t0: float) -> float:
+    """Start time of the first spoken word at/after ``t0`` (else ``t0``)."""
+    times = []
+    for seg in segments:
+        for w in (getattr(seg, "words", None) or []):
+            st = getattr(w, "start_seconds", None)
+            if st is not None and st >= t0:
+                times.append(st)
+        ss = getattr(seg, "start_seconds", None)
+        if ss is not None and ss >= t0:
+            times.append(ss)
+    return min(times) if times else t0
+
+
+def recut(end_phrase: str, clip_index: int = 2, end_buffer: float = 1.0,
+          start_lead: float | None = None) -> list[dict]:
+    """Recut one chunk: start ``start_lead`` sec before the first word (if set),
+    end ``end_buffer`` sec after ``end_phrase``. Never burns subtitles.
+
+    Operates on the first video in the first matched brand folder. Returns the
+    review entries created (one).
+    """
+    import shutil
+
+    from services.caption import transcribe
+    from services.ingest import dropbox_client as dbx
+
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            continue
+        vids = [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+        if not vids:
+            continue
+        brand_key, dispname, _tags = brand
+        f = vids[0]
+        raw = dbx.download(f)
+        base = _slug(f.name) or "clip"
+        ext = os.path.splitext(f.name)[1] or ".mp4"
+        local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
+        if os.path.abspath(local) != os.path.abspath(raw):
+            shutil.copy(raw, local)
+
+        segments = transcribe(local)
+        s0, e0 = _speech_bounds(segments)
+        wins = _windows(s0, e0)
+        a_chunk, b, _label = wins[max(0, min(clip_index - 1, len(wins) - 1))]
+        if start_lead is not None:
+            a = max(0.0, _first_word_after(segments, a_chunk) - start_lead)
+        else:
+            a = a_chunk
+        t = _find_phrase_end(segments, end_phrase)
+        end = (t + end_buffer) if t is not None else b
+        print(f"[{brand_key}] recut clip {clip_index}: start {a:.1f}s, "
+              f"phrase {'found @ %.1fs' % t if t is not None else 'NOT found (kept chunk end)'}, "
+              f"end {end:.1f}s")
+        out_name = f"{base}-clip{clip_index}-recut.mp4"
+        out_local = os.path.join(os.path.dirname(local), out_name)
+        _edit_short(local, a, end, out_local, srt=None)
+        out_path = f"{display.rstrip('/')}/processed/{out_name}"
+        dbx.upload(out_local, out_path)
+        url = dbx.shared_link(out_path, raw=True)
+        from services.write.free_writer import generate_caption  # lazy
+        caption = _compose(generate_caption(
+            {"transcript": _transcript_text(segments), "brand_name": dispname},
+            default_hashtags=_tags,
+        ))
+        entry = {
+            "id": f"{brand_key}-{_dt.datetime.utcnow():%Y%m%d%H%M%S}-clip{clip_index}-recut",
+            "brand": brand_key, "text": caption, "media_url": url,
+            "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+            "status": "review", "error": None,
+        }
+        queue = _load_json(QUEUE_PATH, [])
+        queue.append(entry)
+        _save_json(QUEUE_PATH, queue)
+        print(f"[{brand_key}] recut -> {out_path}")
+        return [entry]
+    print("recut: no brand folder with a video found.")
+    return []
+
+
 def run(*, dry_run: bool = False) -> list[dict]:
     """Discover top-level brand folders and process each. Returns review entries."""
     from services.ingest import dropbox_client as dbx  # lazy
@@ -336,6 +440,25 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.ls:
         debug_tree()
+        return 0
+
+    # Precise manual recuts, driven by a JSON list in RECUT_SPECS, e.g.:
+    #   [{"clip":2,"end_phrase":"come check it out"},
+    #    {"clip":3,"end_phrase":"its expensive","start_lead":1}]
+    specs = os.getenv("RECUT_SPECS", "").strip()
+    if specs:
+        import json as _json
+
+        total = 0
+        for sp in _json.loads(specs):
+            sl = sp.get("start_lead")
+            total += len(recut(
+                sp.get("end_phrase", ""),
+                int(sp.get("clip", 2)),
+                float(sp.get("end_buffer", 1.0)),
+                float(sl) if sl is not None else None,
+            ))
+        print(f"\nDone: {total} recut(s). Nothing posted (all status=review).")
         return 0
 
     created = run(dry_run=args.dry_run)

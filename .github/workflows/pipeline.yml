@@ -5,7 +5,12 @@ name: Video pipeline (Dropbox -> review)
 # REVIEW entry to the queue. It NEVER posts — review items sit until approved.
 # Manual-only for now (run it on demand).
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      recut_specs:
+        description: "Optional JSON list of precise recuts (else normal chunking)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -41,6 +46,8 @@ jobs:
           WHISPER_DEVICE: cpu
           # A font that exists on the runner (libass/fontconfig name).
           CAPTION_FONT: DejaVu Sans
+          # When set, do precise manual recuts instead of normal chunking.
+          RECUT_SPECS: ${{ inputs.recut_specs }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
