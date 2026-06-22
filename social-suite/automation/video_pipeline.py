@@ -569,6 +569,40 @@ def dump_transcript() -> None:
     print(f"\nTranscribed {count} video(s).")
 
 
+def dump_thumbs() -> None:
+    """For every video, make a 3x2 contact sheet of sample frames (committed) so
+    the footage can be 'seen' to choose good shots."""
+    import subprocess  # lazy
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    out_dir = os.path.join(ROOT, "content", "thumbs")
+    os.makedirs(out_dir, exist_ok=True)
+    for path_lower, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        for f in dbx.list_folder(path_lower):
+            if not f.name.lower().endswith(VIDEO_EXTS):
+                continue
+            raw = dbx.download(f)
+            base = _slug(f.name) or "clip"
+            r = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=nw=1:nk=1", raw],
+                capture_output=True, text=True)
+            try:
+                dur = max(1.0, float(r.stdout.strip()))
+            except ValueError:
+                dur = 10.0
+            fps = max(0.05, 6.0 / dur)
+            sheet = os.path.join(out_dir, f"{base}.jpg")
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", raw, "-vf",
+                 f"fps={fps:.4f},scale=320:-1,tile=3x2:padding=6:margin=6",
+                 "-frames:v", "1", "-q:v", "4", sheet],
+                check=False, capture_output=True)
+            print(f"contact sheet {base}.jpg (dur={dur:.1f}s)")
+
+
 def cut_windows(specs: list[dict]) -> list[dict]:
     """Cut explicit time windows: each spec is {name, start, end} (seconds).
 
@@ -702,6 +736,11 @@ def main(argv: list[str] | None = None) -> int:
     # Dump a timestamped transcript so clip windows can be chosen by time.
     if os.getenv("DUMP_TRANSCRIPT", "").strip().lower() in ("1", "true", "yes"):
         dump_transcript()
+        return 0
+
+    # Dump per-video contact sheets so the footage can be 'seen' to pick shots.
+    if os.getenv("DUMP_THUMBS", "").strip().lower() in ("1", "true", "yes"):
+        dump_thumbs()
         return 0
 
     # RECUT_SPECS json: explicit time windows [{"name","start","end"}] (preferred),
