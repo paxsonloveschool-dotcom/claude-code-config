@@ -205,22 +205,41 @@ _CAPTION_STYLE = (
 )
 
 
-def _edit_short(src: str, a: float, b: float, out_path: str, srt: str | None = None) -> str:
-    """Cut [a,b], reframe to vertical 1080x1920, optionally burn bold captions."""
+def _edit_short(src: str, a: float, b: float, out_path: str, srt: str | None = None,
+                mute: bool = False, music: str | None = None) -> str:
+    """Cut [a,b], reframe vertical 1080x1920. Optional bold captions, mute audio,
+    or replace audio with looped background ``music``."""
     import subprocess  # lazy, stdlib
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    dur = max(0.1, b - a)
     vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
     if srt:
         vf += f",subtitles={srt}:force_style='{_CAPTION_STYLE}'"
-    # Input seeking (-ss before -i) resets PTS to 0 so the shifted SRT lines up.
-    cmd = [
-        "ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{max(0.1, b - a):.2f}",
-        "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path,
-    ]
+    cmd = ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src]
+    if music:
+        cmd += ["-stream_loop", "-1", "-i", music]   # loop the track to fill the clip
+    cmd += ["-t", f"{dur:.2f}", "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
+    if music:
+        cmd += ["-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "160k"]
+    elif mute:
+        cmd += ["-an"]
+    else:
+        cmd += ["-c:a", "aac", "-b:a", "128k"]
+    cmd += ["-movflags", "+faststart", out_path]
     subprocess.run(cmd, check=True, capture_output=True)
     return out_path
+
+
+def _find_music(dbx) -> str | None:
+    """Download the first audio file from a Dropbox folder whose name has 'music'."""
+    for path_lower, display in _top_level_folders(dbx):
+        if "music" in display.lower():
+            auds = [f for f in dbx.list_folder(path_lower)
+                    if f.name.lower().endswith((".mp3", ".wav", ".m4a", ".aac"))]
+            if auds:
+                return dbx.download(auds[0])
+    return None
 
 
 def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> list[dict]:
@@ -506,13 +525,18 @@ def cut_windows(specs: list[dict]) -> list[dict]:
 
     queue = _load_json(QUEUE_PATH, [])
     made: list[dict] = []
+    music_path = _find_music(dbx) if any(sp.get("music") for sp in specs) else None
+    if any(sp.get("music") for sp in specs) and not music_path:
+        print("No music track found — drop an .mp3 in a Dropbox folder named 'Music'.")
     for sp in specs:
         nm = _slug(sp.get("name", "clip")) or "clip"
         start, end = float(sp["start"]), float(sp["end"])
+        use_music = music_path if sp.get("music") else None
         out_name = f"{base}-{nm}.mp4"
         out_local = os.path.join(os.path.dirname(local), out_name)
         try:
-            _edit_short(local, start, end, out_local, srt=None)
+            _edit_short(local, start, end, out_local, srt=None,
+                        mute=bool(sp.get("mute")), music=use_music)
         except Exception as ex:  # noqa: BLE001
             print(f"[{brand_key}] cut {nm} failed: {ex}")
             continue
