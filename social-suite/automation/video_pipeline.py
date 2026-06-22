@@ -231,6 +231,26 @@ def _edit_short(src: str, a: float, b: float, out_path: str, srt: str | None = N
     return out_path
 
 
+def _concat(parts: list[str], out_path: str) -> str:
+    """Join several clips (same format) into one. Copy-concat, re-encode if needed."""
+    import subprocess  # lazy
+
+    lst = out_path + ".txt"
+    with open(lst, "w") as f:
+        for p in parts:
+            f.write(f"file '{os.path.abspath(p)}'\n")
+    base = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst]
+    try:
+        subprocess.run(base + ["-c", "copy", "-movflags", "+faststart", out_path],
+                       check=True, capture_output=True)
+    except subprocess.CalledProcessError:
+        subprocess.run(base + ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                               "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path],
+                       check=True, capture_output=True)
+    os.remove(lst)
+    return out_path
+
+
 def _find_music(dbx) -> str | None:
     """Download the first audio file from a Dropbox folder whose name has 'music'."""
     for path_lower, display in _top_level_folders(dbx):
@@ -530,13 +550,22 @@ def cut_windows(specs: list[dict]) -> list[dict]:
         print("No music track found — drop an .mp3 in a Dropbox folder named 'Music'.")
     for sp in specs:
         nm = _slug(sp.get("name", "clip")) or "clip"
-        start, end = float(sp["start"]), float(sp["end"])
         use_music = music_path if sp.get("music") else None
         out_name = f"{base}-{nm}.mp4"
         out_local = os.path.join(os.path.dirname(local), out_name)
+        # A clip is one window {start,end} or several {segments:[[a,b],...]} stitched.
+        wins = sp.get("segments") or [[sp["start"], sp["end"]]]
         try:
-            _edit_short(local, start, end, out_local, srt=None,
-                        mute=bool(sp.get("mute")), music=use_music)
+            if len(wins) == 1:
+                _edit_short(local, float(wins[0][0]), float(wins[0][1]), out_local, srt=None,
+                            mute=bool(sp.get("mute")), music=use_music)
+            else:
+                parts = []
+                for j, w in enumerate(wins):
+                    pp = os.path.join(os.path.dirname(local), f"{base}-{nm}-p{j}.mp4")
+                    _edit_short(local, float(w[0]), float(w[1]), pp, srt=None, mute=bool(sp.get("mute")))
+                    parts.append(pp)
+                _concat(parts, out_local)
         except Exception as ex:  # noqa: BLE001
             print(f"[{brand_key}] cut {nm} failed: {ex}")
             continue
@@ -563,7 +592,8 @@ def cut_windows(specs: list[dict]) -> list[dict]:
         }
         queue.append(entry)
         made.append(entry)
-        print(f"[{brand_key}] cut {nm}: {start:.1f}-{end:.1f}s ({end - start:.1f}s) -> {out_path}")
+        dur = sum(float(w[1]) - float(w[0]) for w in wins)
+        print(f"[{brand_key}] cut {nm}: {len(wins)} seg(s), {dur:.1f}s -> {out_path}")
     _save_json(QUEUE_PATH, queue)
     return made
 
@@ -606,7 +636,7 @@ def main(argv: list[str] | None = None) -> int:
         import json as _json
 
         data = _json.loads(specs)
-        if data and "start" in data[0] and "end" in data[0]:
+        if data and ("segments" in data[0] or ("start" in data[0] and "end" in data[0])):
             made = cut_windows(data)
             print(f"\nDone: {len(made)} clip(s). Nothing posted (all status=review).")
         else:
