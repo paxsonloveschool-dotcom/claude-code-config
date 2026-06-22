@@ -149,13 +149,44 @@ def _append_review(entry: dict) -> None:
     _save_json(QUEUE_PATH, queue)
 
 
+def debug_tree() -> None:
+    """Print what the Dropbox app can actually see (root + one level deep).
+
+    Run when no videos are found, to diagnose folder/path mismatches.
+    """
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    print("== Dropbox app-folder contents (root) ==")
+    res = client.files_list_folder("")
+    if not res.entries:
+        print("  (root is empty — no folders/files visible to the app)")
+    for e in res.entries:
+        is_dir = e.__class__.__name__ == "FolderMetadata"
+        print(f"  {'DIR ' if is_dir else 'file'} {getattr(e, 'path_display', e.name)}")
+        if is_dir:
+            try:
+                sub = client.files_list_folder(getattr(e, "path_lower", ""))
+                for se in sub.entries:
+                    print(f"        - {getattr(se, 'name', '?')}")
+                if not sub.entries:
+                    print("        (empty)")
+            except Exception as ex:  # noqa: BLE001
+                print(f"        (could not list: {ex})")
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description="Process Dropbox brand videos into the review queue.")
     parser.add_argument("--dry-run", action="store_true", help="List/route only; no download/transcribe/post.")
     parser.add_argument("--brand", default=None, help="Only this folder (e.g. HP).")
+    parser.add_argument("--ls", action="store_true", help="Just print the Dropbox app-folder tree and exit.")
     args = parser.parse_args(argv)
+
+    if args.ls:
+        debug_tree()
+        return 0
 
     folders = [args.brand] if args.brand else list(BRANDS)
     total = 0
@@ -163,6 +194,12 @@ def main(argv: list[str] | None = None) -> int:
         created = process_brand_folder(folder, dry_run=args.dry_run)
         total += len(created)
     print(f"\nDone: {total} review item(s) created. Nothing was posted (all status=review).")
+    if total == 0 and not args.dry_run:
+        print("\nNo videos found — here's what the app can see, to diagnose:")
+        try:
+            debug_tree()
+        except Exception as e:  # noqa: BLE001
+            print(f"(debug listing failed: {e})")
     return 0
 
 
