@@ -342,7 +342,7 @@ def test_routes_to_each_new_platform_adapter():
     assert rec["x"][0]["access_token"] == "xTOK"
     assert rec["x"][0]["text"] == "tweet"
     assert rec["tiktok"][0]["access_token"] == "tkTOK"
-    assert rec["tiktok"][0]["video_url"] == "https://v/t.mp4"
+    assert rec["tiktok"][0]["video"] == "https://v/t.mp4"
     assert rec["tiktok"][0]["privacy_level"] == "PUBLIC_TO_EVERYONE"
     assert rec["youtube"][0]["access_token"] == "ytTOK"
     assert rec["youtube"][0]["video_path_or_url"] == "https://v/y.mp4"

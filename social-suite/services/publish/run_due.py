@@ -140,13 +140,17 @@ def _adapt_tiktok(post: QueuedPost, creds: BrandCreds) -> None:
     from services.publish.direct import tiktok  # lazy
 
     if not post.media_url:
-        raise RuntimeError("tiktok requires a public video media_url.")
+        raise RuntimeError(
+            "tiktok requires a video media_url (local file path or http(s) URL)."
+        )
     token = _tiktok_access_token(creds)
+    # Default SELF_ONLY (private) — keeps test posts non-public and is the only
+    # level an unaudited app can use. A brand can override once audited.
     privacy = creds.tiktok.get("privacy_level", "SELF_ONLY")
     tiktok.post_tiktok(
         access_token=token,
         caption=post.text,
-        video_url=post.media_url,
+        video=post.media_url,
         privacy_level=privacy,
     )
 

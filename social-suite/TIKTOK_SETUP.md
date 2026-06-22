@@ -169,12 +169,52 @@ posts a private video you can confirm in the app, then flip it to
 
 ---
 
-## (f) Media must be a PUBLIC video URL
+## (f) Media: a LOCAL file (no public host needed)
 
-TikTok fetches the bytes **server-side** via `PULL_FROM_URL`, so a post's
-`media_url` must be a **public video URL on a verified domain** (verify the
-domain under your app's **URL properties**). A `localhost`/private path fails —
-TikTok can't reach it. Same constraint as Meta's image/video fetch.
+The publisher uploads the bytes directly via **FILE_UPLOAD**, so a post's
+`media_url` can be a **local video file path** (e.g. the rendered clip on disk) —
+**no public host, no verified domain, $0**. An `http(s)` URL also works (it's
+downloaded first), but you don't need one. This is the opposite of Meta, which
+must fetch your media server-side.
+
+---
+
+## (g) Test ONE private SELF_ONLY clip, then delete it
+
+Nothing here goes public: `SELF_ONLY` posts a **private** video only you can see.
+Post one from a local clip with the brand's token, confirm it in the TikTok app,
+then delete it.
+
+```bash
+# Use a fresh access token (mint from the refresh token if needed — see (e)).
+python - <<'PY'
+from services.publish.direct import tiktok
+pub_id = tiktok.post_tiktok(
+    access_token="act....",          # the brand's TikTok access token
+    caption="suite test — private",
+    video="media/clips/test.mp4",     # a LOCAL clip path
+    privacy_level="SELF_ONLY",        # private; nothing public
+)
+print("publish_id:", pub_id)
+# Optional: poll until done
+import time
+for _ in range(20):
+    s = tiktok.fetch_status("act....", pub_id)
+    st = (s.get("data") or {}).get("status")
+    print(st)
+    if st in ("PUBLISH_COMPLETE", "FAILED"):
+        break
+    time.sleep(3)
+PY
+```
+
+Then open the **TikTok app → your profile → the private video** and **delete it**.
+(Because it's `SELF_ONLY`, no follower ever saw it.)
+
+> The suite's own queue stays **paused**: the cron in
+> `.github/workflows/social-post.yml` is off, and `run_due.py` only fires posts
+> with `status == "pending"`. So nothing posts on its own until you flip a post
+> to `pending` yourself.
 
 ---
 
