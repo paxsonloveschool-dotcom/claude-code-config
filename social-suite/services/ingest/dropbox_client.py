@@ -214,6 +214,18 @@ def upload(local_path: str, dropbox_path: str) -> str:
     return dropbox_path
 
 
+def delete(dropbox_path: str) -> bool:
+    """Delete a file/folder at ``dropbox_path``. Returns False if it didn't exist."""
+    dbx = _client()
+    try:
+        _call_with_retry(dbx.files_delete_v2, dropbox_path)
+    except Exception as exc:  # noqa: BLE001
+        if "not_found" in str(exc).lower():
+            return False
+        raise
+    return True
+
+
 def shared_link(dropbox_path: str, *, raw: bool = True) -> str:
     """Return a public shareable URL for ``dropbox_path``.
 

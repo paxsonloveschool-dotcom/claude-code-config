@@ -269,6 +269,7 @@ def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> li
             "brand": brand_key,
             "text": caption,
             "media_url": url,
+            "media_path": out_path,   # Dropbox path, so old versions can be deleted
             "platforms": list(REVIEW_PLATFORMS),
             "schedule": None,
             "status": "review",   # NEVER posts (poster only fires "pending")
@@ -404,13 +405,32 @@ def recut(end_phrase: str, clip_index: int = 2, end_buffer: float = 1.0,
         entry = {
             "id": f"{brand_key}-{_dt.datetime.utcnow():%Y%m%d%H%M%S}-clip{clip_index}-recut",
             "brand": brand_key, "text": caption, "media_url": url,
+            "media_path": out_path,
             "platforms": list(REVIEW_PLATFORMS), "schedule": None,
             "status": "review", "error": None,
         }
+        # Delete the old version(s) of THIS clip (queue entry + Dropbox file) so
+        # only the latest recut remains — no sifting through messed-up versions.
         queue = _load_json(QUEUE_PATH, [])
-        queue.append(entry)
-        _save_json(QUEUE_PATH, queue)
-        print(f"[{brand_key}] recut -> {out_path}")
+        keep = []
+        for e in queue:
+            same = e.get("brand") == brand_key and (
+                e["id"].endswith(f"clip-{clip_index}")
+                or e["id"].endswith(f"clip{clip_index}-recut")
+            )
+            if same:
+                mp = e.get("media_path")
+                if mp:
+                    try:
+                        dbx.delete(mp)
+                        print(f"[{brand_key}] deleted old: {mp}")
+                    except Exception as ex:  # noqa: BLE001
+                        print(f"[{brand_key}] could not delete {mp}: {ex}")
+            else:
+                keep.append(e)
+        keep.append(entry)
+        _save_json(QUEUE_PATH, keep)
+        print(f"[{brand_key}] recut -> {out_path} (replaced {len(queue) - len(keep) + 1} old)")
         return [entry]
     print("recut: no brand folder with a video found.")
     return []
