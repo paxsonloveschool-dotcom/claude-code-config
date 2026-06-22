@@ -165,14 +165,57 @@ def _windows(s: float, e: float, target: float | None = None) -> list[tuple[floa
     return out
 
 
-def _edit_short(src: str, a: float, b: float, out_path: str) -> str:
-    """Cut [a,b] and reframe to vertical 1080x1920 (center crop). No captions."""
+def _write_srt(segments, a: float, b: float, path: str) -> str | None:
+    """Write an SRT for the segments inside [a,b], shifted to start at 0.
+
+    Returns the path, or None if no speech falls in the window.
+    """
+    def _ts(t: float) -> str:
+        t = max(0.0, t)
+        h, rem = divmod(t, 3600)
+        m, s = divmod(rem, 60)
+        return f"{int(h):02d}:{int(m):02d}:{s:06.3f}".replace(".", ",")
+
+    lines: list[str] = []
+    idx = 1
+    for seg in segments:
+        ss = getattr(seg, "start_seconds", None)
+        ee = getattr(seg, "end_seconds", None)
+        tx = (getattr(seg, "text", "") or "").strip()
+        if ss is None or ee is None or not tx or ee <= a or ss >= b:
+            continue
+        s = max(ss, a) - a
+        e = min(ee, b) - a
+        if e <= s:
+            continue
+        lines.append(f"{idx}\n{_ts(s)} --> {_ts(e)}\n{tx}\n")
+        idx += 1
+    if idx == 1:
+        return None
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return path
+
+
+# Bold, TikTok-style burned caption look (ASS force_style).
+_CAPTION_STYLE = (
+    "FontName=DejaVu Sans,Fontsize=22,Bold=1,PrimaryColour=&H00FFFFFF&,"
+    "OutlineColour=&H00000000&,BorderStyle=1,Outline=3,Shadow=1,"
+    "Alignment=2,MarginV=180"
+)
+
+
+def _edit_short(src: str, a: float, b: float, out_path: str, srt: str | None = None) -> str:
+    """Cut [a,b], reframe to vertical 1080x1920, optionally burn bold captions."""
     import subprocess  # lazy, stdlib
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
+    if srt:
+        vf += f",subtitles={srt}:force_style='{_CAPTION_STYLE}'"
+    # Input seeking (-ss before -i) resets PTS to 0 so the shifted SRT lines up.
     cmd = [
-        "ffmpeg", "-y", "-i", src, "-ss", f"{a:.2f}", "-to", f"{b:.2f}",
+        "ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{max(0.1, b - a):.2f}",
         "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path,
     ]
@@ -208,19 +251,25 @@ def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> li
     entries: list[dict] = []
     stamp = _dt.datetime.utcnow().strftime("%Y%m%d%H%M%S")
 
-    for a, b, label in _windows(s0, e0):
-        out_name = f"{base}-{label}.mp4"
+    # Alternate a style per chunk so the owner can compare: even = clean (no
+    # captions), odd = bold burned subtitles. (Music/SFX added once a track exists.)
+    for i, (a, b, label) in enumerate(_windows(s0, e0)):
+        style = "captions" if i % 2 == 1 else "plain"
+        out_name = f"{base}-{label}-{style}.mp4"
         out_local = os.path.join(os.path.dirname(local), out_name)
+        srt = None
+        if style == "captions":
+            srt = _write_srt(segments, a, b, os.path.join(os.path.dirname(local), f"{base}-{label}.srt"))
         try:
-            _edit_short(local, a, b, out_local)
+            _edit_short(local, a, b, out_local, srt=srt)
         except Exception as ex:  # noqa: BLE001 — skip a bad cut, keep the rest
-            print(f"[{brand_key}] cut {label} failed: {ex}")
+            print(f"[{brand_key}] cut {label} ({style}) failed: {ex}")
             continue
         out_path = f"{folder_display.rstrip('/')}/processed/{out_name}"
         dbx.upload(out_local, out_path)
         url = dbx.shared_link(out_path, raw=True)
         entry = {
-            "id": f"{brand_key}-{stamp}-{label}",
+            "id": f"{brand_key}-{stamp}-{label}-{style}",
             "brand": brand_key,
             "text": caption,
             "media_url": url,
@@ -231,7 +280,7 @@ def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> li
         }
         queue.append(entry)
         entries.append(entry)
-        print(f"[{brand_key}] cut {label}: {a:.0f}-{b:.0f}s ({b - a:.0f}s) -> {out_path}")
+        print(f"[{brand_key}] cut {label} [{style}]: {a:.0f}-{b:.0f}s ({b - a:.0f}s) -> {out_path}")
 
     _save_json(QUEUE_PATH, queue)
     print(f"[{brand_key}] {len(entries)} cuts ready for review. caption: {caption[:70]!r}")
