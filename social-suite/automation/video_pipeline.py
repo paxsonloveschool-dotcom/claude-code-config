@@ -575,51 +575,80 @@ def cut_windows(specs: list[dict]) -> list[dict]:
     Reliable (no phrase guessing): exactly [start, end], vertical, no subtitles.
     Redoing a window with the same name auto-deletes the previous version.
     """
-    from services.caption import transcribe  # lazy (for the post caption)
+    from services.caption import transcribe  # lazy
     from services.ingest import dropbox_client as dbx  # lazy
     from services.write.free_writer import generate_caption  # lazy
 
-    found = _first_video(dbx, os.getenv("PIPELINE_VIDEO") or None)
-    if not found:
-        print("No video found (PIPELINE_VIDEO=%r)." % os.getenv("PIPELINE_VIDEO"))
-        return []
-    _f, local, base, brand, display = found
-    brand_key, dispname, tags = brand
-    caption = _compose(generate_caption(
-        {"transcript": _transcript_text(transcribe(local)), "brand_name": dispname},
-        default_hashtags=tags,
-    ))
+    default_match = os.getenv("PIPELINE_VIDEO") or None
+    vid_cache: dict = {}     # match -> (f, local, base, brand, display) or None
+    cap_cache: dict = {}     # base -> caption
 
-    queue = _load_json(QUEUE_PATH, [])
-    made: list[dict] = []
+    def resolve(match):
+        key = (match or "").lower()
+        if key not in vid_cache:
+            vid_cache[key] = _first_video(dbx, match or None)
+        return vid_cache[key]
+
+    def caption_for(local, base, dispname, tags):
+        if base not in cap_cache:
+            cap_cache[base] = _compose(generate_caption(
+                {"transcript": _transcript_text(transcribe(local)), "brand_name": dispname},
+                default_hashtags=tags))
+        return cap_cache[base]
+
     music_path = _find_music(dbx) if any(sp.get("music") for sp in specs) else None
     if any(sp.get("music") for sp in specs) and not music_path:
         print("No music track found — drop an .mp3 in a Dropbox folder named 'Music'.")
+
+    queue = _load_json(QUEUE_PATH, [])
+    made: list[dict] = []
     for sp in specs:
         nm = _slug(sp.get("name", "clip")) or "clip"
-        use_music = music_path if sp.get("music") else None
-        out_name = f"{base}-{nm}.mp4"
-        out_local = os.path.join(os.path.dirname(local), out_name)
-        # A clip is one window {start,end} or several {segments:[[a,b],...]} stitched.
-        wins = sp.get("segments") or [[sp["start"], sp["end"]]]
         try:
-            if len(wins) == 1:
-                _edit_short(local, float(wins[0][0]), float(wins[0][1]), out_local, srt=None,
-                            mute=bool(sp.get("mute")), music=use_music)
+            parts_spec = sp.get("parts")
+            if parts_spec:
+                # CROSS-VIDEO: each part is {video, start, end} from possibly different videos.
+                ctxs, tmp = [], []
+                for j, part in enumerate(parts_spec):
+                    ctx = resolve(part.get("video") or default_match)
+                    if not ctx:
+                        raise RuntimeError(f"video not found: {part.get('video')!r}")
+                    ctxs.append(ctx)
+                    plocal = ctx[1]
+                    pp = os.path.join(os.path.dirname(plocal), f"xv-{nm}-{j}.mp4")
+                    _edit_short(plocal, float(part["start"]), float(part["end"]), pp,
+                                srt=None, mute=bool(sp.get("mute")))
+                    tmp.append(pp)
+                _f, local, base, brand, display = ctxs[0]
+                out_local = os.path.join(os.path.dirname(local), f"{base}-{nm}.mp4")
+                _concat(tmp, out_local)
             else:
-                parts = []
-                for j, w in enumerate(wins):
-                    pp = os.path.join(os.path.dirname(local), f"{base}-{nm}-p{j}.mp4")
-                    _edit_short(local, float(w[0]), float(w[1]), pp, srt=None, mute=bool(sp.get("mute")))
-                    parts.append(pp)
-                _concat(parts, out_local)
+                ctx = resolve(sp.get("video") or default_match)
+                if not ctx:
+                    raise RuntimeError("video not found")
+                _f, local, base, brand, display = ctx
+                out_local = os.path.join(os.path.dirname(local), f"{base}-{nm}.mp4")
+                wins = sp.get("segments") or [[sp["start"], sp["end"]]]
+                if len(wins) == 1:
+                    _edit_short(local, float(wins[0][0]), float(wins[0][1]), out_local, srt=None,
+                                mute=bool(sp.get("mute")), music=(music_path if sp.get("music") else None))
+                else:
+                    pl = []
+                    for j, w in enumerate(wins):
+                        pp = os.path.join(os.path.dirname(local), f"{base}-{nm}-p{j}.mp4")
+                        _edit_short(local, float(w[0]), float(w[1]), pp, srt=None, mute=bool(sp.get("mute")))
+                        pl.append(pp)
+                    _concat(pl, out_local)
         except Exception as ex:  # noqa: BLE001
-            print(f"[{brand_key}] cut {nm} failed: {ex}")
+            print(f"cut {nm} failed: {ex}")
             continue
+
+        brand_key, dispname, tags = brand
+        out_name = os.path.basename(out_local)
         out_path = f"{display.rstrip('/')}/processed/{out_name}"
         dbx.upload(out_local, out_path)
         url = dbx.shared_link(out_path, raw=True)
-        # auto-delete any prior version with the same name (queue + Dropbox)
+        caption = caption_for(local, base, dispname, tags)
         keep = []
         for e in queue:
             if e.get("brand") == brand_key and e["id"].endswith(f"-{nm}"):
@@ -639,8 +668,7 @@ def cut_windows(specs: list[dict]) -> list[dict]:
         }
         queue.append(entry)
         made.append(entry)
-        dur = sum(float(w[1]) - float(w[0]) for w in wins)
-        print(f"[{brand_key}] cut {nm}: {len(wins)} seg(s), {dur:.1f}s -> {out_path}")
+        print(f"[{brand_key}] {nm} -> {out_path}")
     _save_json(QUEUE_PATH, queue)
     return made
 
@@ -683,7 +711,7 @@ def main(argv: list[str] | None = None) -> int:
         import json as _json
 
         data = _json.loads(specs)
-        if data and ("segments" in data[0] or ("start" in data[0] and "end" in data[0])):
+        if data and ("parts" in data[0] or "segments" in data[0] or ("start" in data[0] and "end" in data[0])):
             made = cut_windows(data)
             print(f"\nDone: {len(made)} clip(s). Nothing posted (all status=review).")
         else:
