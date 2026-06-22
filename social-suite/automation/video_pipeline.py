@@ -231,22 +231,56 @@ def _edit_short(src: str, a: float, b: float, out_path: str, srt: str | None = N
     return out_path
 
 
-def _concat(parts: list[str], out_path: str) -> str:
-    """Join several clips (same format) into one. Copy-concat, re-encode if needed."""
+def _concat(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
+    """Join clips with smooth crossfades (not choppy hard cuts). Falls back to a
+    plain concat if the crossfade graph fails (e.g. a part has no audio)."""
+    import shutil  # lazy
     import subprocess  # lazy
 
+    if len(parts) == 1:
+        shutil.copy(parts[0], out_path)
+        return out_path
+
+    durs = []
+    for p in parts:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", p],
+            capture_output=True, text=True,
+        )
+        try:
+            durs.append(float(r.stdout.strip()))
+        except ValueError:
+            durs.append(3.0)
+
+    cmd = ["ffmpeg", "-y"]
+    for p in parts:
+        cmd += ["-i", p]
+    fc = []
+    vlab, alab, off = "[0:v]", "[0:a]", durs[0] - xfade
+    for i in range(1, len(parts)):
+        nv, na = f"[v{i}]", f"[a{i}]"
+        fc.append(f"{vlab}[{i}:v]xfade=transition=fade:duration={xfade}:offset={off:.3f}{nv}")
+        fc.append(f"{alab}[{i}:a]acrossfade=d={xfade}{na}")
+        vlab, alab = nv, na
+        off += durs[i] - xfade
+    cmd += ["-filter_complex", ";".join(fc), "-map", vlab, "-map", alab,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        return out_path
+    except subprocess.CalledProcessError:
+        pass
+    # Fallback: plain (hard) concat.
     lst = out_path + ".txt"
     with open(lst, "w") as f:
         for p in parts:
             f.write(f"file '{os.path.abspath(p)}'\n")
-    base = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst]
-    try:
-        subprocess.run(base + ["-c", "copy", "-movflags", "+faststart", out_path],
-                       check=True, capture_output=True)
-    except subprocess.CalledProcessError:
-        subprocess.run(base + ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-                               "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path],
-                       check=True, capture_output=True)
+    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst,
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path],
+                   check=True, capture_output=True)
     os.remove(lst)
     return out_path
 

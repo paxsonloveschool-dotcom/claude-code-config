@@ -18,7 +18,8 @@ they'd approve on their own. Update this every time they react to a batch.
 - **Before → after** structure for reno/landscaping; show zones with a purpose
   (patio, putting green, dining).
 - **Raw > corporate** — no heavy graphics/intros (reads as an ad).
-- Can **stitch segments from different timestamps** (e.g. intro + putting green).
+- Can **stitch segments from different timestamps** (e.g. intro + putting green)
+  — **use crossfade transitions, NOT hard cuts** (owner found hard cuts choppy).
 - Experiment with **muted** versions and **background music** (when a track is
   dropped in a Dropbox "Music" folder).
 
