@@ -603,6 +603,54 @@ def dump_thumbs() -> None:
             print(f"contact sheet {base}.jpg (dur={dur:.1f}s)")
 
 
+def fetch_ig_reference(brand_key: str = "hp", limit: int = 24) -> int:
+    """Pull a brand's already-posted Instagram media (thumbnails + captions) so
+    its established house style can be studied and matched on every new clip.
+    Read-only Graph API call — never posts. Stdlib only (urllib)."""
+    import json as _json  # lazy
+    import urllib.request
+    import urllib.parse
+    from services.publish.brands import get_brand  # lazy
+
+    creds = get_brand(brand_key)
+    token, ig = creds.meta_access_token, creds.ig_user_id
+    if not token or not ig:
+        print(f"ig_reference: missing creds for {brand_key} (need token + ig_user_id).")
+        return 0
+    fields = ("id,caption,media_type,media_product_type,thumbnail_url,media_url,"
+              "permalink,timestamp,like_count,comments_count")
+    url = (f"https://graph.facebook.com/v21.0/{ig}/media?fields={fields}"
+           f"&limit={int(limit)}&access_token={urllib.parse.quote(token)}")
+    out_dir = os.path.join(ROOT, "content", "reference", brand_key)
+    os.makedirs(out_dir, exist_ok=True)
+    try:
+        with urllib.request.urlopen(url, timeout=60) as r:
+            data = _json.loads(r.read().decode())
+    except Exception as ex:  # noqa: BLE001 — surface API/permission errors plainly
+        print(f"ig_reference: Graph API call failed: {ex}")
+        return 0
+    items = data.get("data", [])
+    lines = [f"# {brand_key.upper()} Instagram — {len(items)} recent posts (house-style reference)\n"]
+    n = 0
+    for it in items:
+        mid = it.get("id", "")
+        cap = (it.get("caption") or "").strip()
+        mt, pt = it.get("media_type", ""), it.get("media_product_type", "")
+        lines.append(f"\n## {mid}  [{mt}/{pt}]  ❤ {it.get('like_count')} 💬 {it.get('comments_count')}\n"
+                     f"{it.get('permalink', '')}\n\n{cap}\n")
+        thumb = it.get("thumbnail_url") or (it.get("media_url") if mt == "IMAGE" else None)
+        if thumb:
+            try:
+                urllib.request.urlretrieve(thumb, os.path.join(out_dir, f"{mid}.jpg"))
+                n += 1
+            except Exception as ex:  # noqa: BLE001
+                print(f"thumb fail {mid}: {ex}")
+    with open(os.path.join(out_dir, "captions.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    print(f"\nig_reference: {len(items)} posts, {n} thumbnails -> content/reference/{brand_key}/")
+    return n
+
+
 def fetch_previews(which: str = "all") -> int:
     """Download finished review clips from Dropbox into ``content/preview/`` so
     they can be viewed/sent directly (Dropbox is unreachable from some sandboxes).
@@ -874,6 +922,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.ls:
         debug_tree()
+        return 0
+
+    # IG_REFERENCE: pull a brand's posted IG media (thumbs+captions) to study its
+    # house style. Value = brand key, optional ":N" limit (e.g. "hp" or "hp:30").
+    igref = os.getenv("IG_REFERENCE", "").strip()
+    if igref:
+        bk = igref.split(":")[0] or "hp"
+        tail = igref.split(":")[1] if ":" in igref else ""
+        fetch_ig_reference(bk, int(tail) if tail.isdigit() else 24)
         return 0
 
     # FETCH_PREVIEWS: pull finished clips from Dropbox into content/preview/.

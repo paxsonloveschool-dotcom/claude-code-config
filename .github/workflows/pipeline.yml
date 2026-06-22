@@ -31,6 +31,10 @@ on:
         description: "'all' or comma ids: pull finished clips into content/preview/"
         required: false
         default: ""
+      ig_reference:
+        description: "Brand key to pull posted IG style from (e.g. hp or hp:30)"
+        required: false
+        default: ""
       video:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
@@ -64,6 +68,13 @@ jobs:
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          # Read-only: used by ig_reference to study a brand's posted house style.
+          BRAND_HP_META_ACCESS_TOKEN: ${{ secrets.BRAND_HP_META_ACCESS_TOKEN }}
+          BRAND_HP_IG_USER_ID: ${{ secrets.BRAND_HP_IG_USER_ID }}
+          BRAND_HP_FB_PAGE_ID: ${{ secrets.BRAND_HP_FB_PAGE_ID }}
+          BRAND_RESTORE_META_ACCESS_TOKEN: ${{ secrets.BRAND_RESTORE_META_ACCESS_TOKEN }}
+          BRAND_RESTORE_IG_USER_ID: ${{ secrets.BRAND_RESTORE_IG_USER_ID }}
+          BRAND_RESTORE_FB_PAGE_ID: ${{ secrets.BRAND_RESTORE_FB_PAGE_ID }}
           INGEST_DOWNLOAD_DIR: ./_ingest
           # Small/fast Whisper model + CPU (no GPU on the runner).
           WHISPER_MODEL: base
@@ -77,13 +88,14 @@ jobs:
           AUTO_HIGHLIGHTS: ${{ inputs.auto_highlights }}
           KEEP_IDS: ${{ inputs.keep_ids }}
           FETCH_PREVIEWS: ${{ inputs.fetch_previews }}
+          IG_REFERENCE: ${{ inputs.ig_reference }}
           PIPELINE_VIDEO: ${{ inputs.video }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
       - name: Commit review results (queue + processed set)
         run: |
-          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs 2>/dev/null || true
+          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/reference 2>/dev/null || true
           # Previews are *.mp4 (gitignored) — force-add so they can be viewed/sent.
           git add -f social-suite/content/preview 2>/dev/null || true
           if git diff --cached --quiet && git diff --quiet -- social-suite/content; then
@@ -92,7 +104,7 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs 2>/dev/null || true
+          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/reference 2>/dev/null || true
           git add -f social-suite/content/preview 2>/dev/null || true
           git commit -m "chore(pipeline): add review item(s) from Dropbox videos [skip ci]"
           git push
