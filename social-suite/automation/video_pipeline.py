@@ -205,23 +205,45 @@ _CAPTION_STYLE = (
 )
 
 
+def _brand_logo(brand_key: str) -> str | None:
+    """Path to a brand's watermark PNG (``content/brand/<key>-logo.png``) or None."""
+    p = os.path.join(ROOT, "content", "brand", f"{brand_key}-logo.png")
+    return p if os.path.exists(p) else None
+
+
 def _edit_short(src: str, a: float, b: float, out_path: str, srt: str | None = None,
-                mute: bool = False, music: str | None = None) -> str:
+                mute: bool = False, music: str | None = None, logo: str | None = None) -> str:
     """Cut [a,b], reframe vertical 1080x1920. Optional bold captions, mute audio,
-    or replace audio with looped background ``music``."""
+    looped background ``music``, and a top-right ``logo`` watermark (HP house style)."""
     import subprocess  # lazy, stdlib
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     dur = max(0.1, b - a)
-    vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
+    vchain = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
     if srt:
-        vf += f",subtitles={srt}:force_style='{_CAPTION_STYLE}'"
+        vchain += f",subtitles={srt}:force_style='{_CAPTION_STYLE}'"
     cmd = ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src]
     if music:
         cmd += ["-stream_loop", "-1", "-i", music]   # loop the track to fill the clip
-    cmd += ["-t", f"{dur:.2f}", "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
+    if logo:
+        cmd += ["-i", logo]
+    cmd += ["-t", f"{dur:.2f}"]
+    if logo:
+        li = 2 if music else 1   # logo is the last input
+        cmd += ["-filter_complex",
+                f"[0:v]{vchain}[bg];[{li}:v]scale=200:-1[lg];[bg][lg]overlay=W-w-28:28[v]",
+                "-map", "[v]"]
+        if music:
+            cmd += ["-map", "1:a:0"]
+        elif not mute:
+            cmd += ["-map", "0:a:0?"]
+    else:
+        cmd += ["-vf", vchain]
+        if music:
+            cmd += ["-map", "0:v:0", "-map", "1:a:0"]
+    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
     if music:
-        cmd += ["-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "160k"]
+        cmd += ["-c:a", "aac", "-b:a", "160k"]
     elif mute:
         cmd += ["-an"]
     else:
@@ -231,7 +253,29 @@ def _edit_short(src: str, a: float, b: float, out_path: str, srt: str | None = N
     return out_path
 
 
-def _concat(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
+# HP house caption voice (matched to their posted IG). Rotates a hook per clip.
+_HP_HOOKS = (
+    "Turned this backyard into a place you actually want to be.",
+    "Luxury landscaping, redefined. ✨\U0001F33F",
+    "A yard done right just hits different. \U0001F338\U0001F33F",
+    "This is what happens when vision meets execution. ✨",
+    "From overgrown to outdoor escape. \U0001F525\U0001F33F",
+    "Backyard goals, upgraded. \U0001F4AF\U0001F33F",
+    "Built to stand out and thrive. \U0001F331",
+    "Good landscaping starts below the surface. \U0001F331\U0001F4A7",
+)
+_HP_CTA = "Call (979) 777-8851!!"
+_HP_TAGS = "#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals"
+
+
+def _hp_caption(seed: str) -> str:
+    """HP house-style post caption: rotating hook -> phone CTA -> hashtags."""
+    import zlib
+    hook = _HP_HOOKS[zlib.crc32(seed.encode()) % len(_HP_HOOKS)]
+    return f"{hook}\n\n{_HP_CTA}\n•\n•\n{_HP_TAGS}"
+
+
+def _concat(parts: list[str], out_path: str, xfade: float = 0.8) -> str:
     """Join clips with smooth crossfades (not choppy hard cuts). Falls back to a
     plain concat if the crossfade graph fails (e.g. a part has no audio)."""
     import shutil  # lazy
@@ -842,7 +886,7 @@ def cut_windows(specs: list[dict]) -> list[dict]:
                     plocal = ctx[1]
                     pp = os.path.join(os.path.dirname(plocal), f"xv-{nm}-{j}.mp4")
                     _edit_short(plocal, float(part["start"]), float(part["end"]), pp,
-                                srt=None, mute=bool(sp.get("mute")))
+                                srt=None, mute=bool(sp.get("mute")), logo=_brand_logo(ctx[3][0]))
                     tmp.append(pp)
                 _f, local, base, brand, display = ctxs[0]
                 out_local = os.path.join(os.path.dirname(local), f"{base}-{nm}.mp4")
@@ -852,16 +896,19 @@ def cut_windows(specs: list[dict]) -> list[dict]:
                 if not ctx:
                     raise RuntimeError("video not found")
                 _f, local, base, brand, display = ctx
+                lg = _brand_logo(brand[0])
                 out_local = os.path.join(os.path.dirname(local), f"{base}-{nm}.mp4")
                 wins = sp.get("segments") or [[sp["start"], sp["end"]]]
                 if len(wins) == 1:
                     _edit_short(local, float(wins[0][0]), float(wins[0][1]), out_local, srt=None,
-                                mute=bool(sp.get("mute")), music=(music_path if sp.get("music") else None))
+                                mute=bool(sp.get("mute")), music=(music_path if sp.get("music") else None),
+                                logo=lg)
                 else:
                     pl = []
                     for j, w in enumerate(wins):
                         pp = os.path.join(os.path.dirname(local), f"{base}-{nm}-p{j}.mp4")
-                        _edit_short(local, float(w[0]), float(w[1]), pp, srt=None, mute=bool(sp.get("mute")))
+                        _edit_short(local, float(w[0]), float(w[1]), pp, srt=None,
+                                    mute=bool(sp.get("mute")), logo=lg)
                         pl.append(pp)
                     _concat(pl, out_local)
         except Exception as ex:  # noqa: BLE001
@@ -873,7 +920,7 @@ def cut_windows(specs: list[dict]) -> list[dict]:
         out_path = f"{display.rstrip('/')}/processed/{out_name}"
         dbx.upload(out_local, out_path)
         url = dbx.shared_link(out_path, raw=True)
-        caption = caption_for(local, base, dispname, tags)
+        caption = _hp_caption(nm) if brand_key == "hp" else caption_for(local, base, dispname, tags)
         keep = []
         for e in queue:
             if e.get("brand") == brand_key and e["id"].endswith(f"-{nm}"):
