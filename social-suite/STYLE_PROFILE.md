@@ -3,6 +3,25 @@
 The goal: learn the owner's taste well enough that the pipeline produces clips
 they'd approve on their own. Update this every time they react to a batch.
 
+## HP HOUSE STYLE — decoded from HP's own posted IG (match this on EVERY clip)
+Pulled 30 of HP's posts (`content/reference/hp/`). The established look:
+- **Logo watermark, TOP-RIGHT corner, on every clip** — the signature. Green
+  "HP" monogram + black cross + "LANDSCAPING" banner, overlaid semi-transparent
+  directly on the footage (no solid box). NEED a clean transparent PNG from owner.
+- **Cinematic luxury b-roll** — pergolas, pools, manicured hedges, stone work,
+  string lights; bright, lush, well-graded. Vertical 9:16.
+- **3-panel vertical stack** on some posts (3 horizontal shots tiled to fill 9:16)
+  — a clean way to use horizontal footage WITHOUT cropping. Good for our b-roll.
+- **No burned subtitles** — clean footage + just the logo. Caption lives in post.
+- Founder-led selfie/talking clips appear too (owner in straw hat).
+- **Caption voice (very consistent):** hook line (transformation/luxury) → a
+  feeling/benefit line → CTA **"Call (979) 777-8851!!"** (or "DM us 'YARD' for a
+  free quote" / "Ready for yours?") → optional "📍 Serving Texas" → `•`/`•`
+  separator → hashtags. Emojis: ✨🌿🌸💧🔥💯🌱📍📲.
+- **Hashtag core set:** #TXOutdoorLiving #DreamBackyard #OutdoorLiving
+  #backyardgoals (sometimes +#PatioGoal #BackyardBlissTX #landscape #landscaping).
+- Phone: **(979) 777-8851**. Brand reads faith-based ("Higher Purpose", cross).
+
 ## Hard rules (learned, do every time)
 - **Owner's clip target: 7–20s each** (vary it, not exact). Stitch different
   timestamps into one clip whenever that makes it better.
