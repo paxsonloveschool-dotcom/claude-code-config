@@ -603,6 +603,93 @@ def dump_thumbs() -> None:
             print(f"contact sheet {base}.jpg (dur={dur:.1f}s)")
 
 
+# ---- SupoClip-style auto highlight selection (free, local Whisper, no LLM) ----
+# Words that signal a strong hook/payoff in landscaping/reno talking-head clips.
+HOOK_WORDS = (
+    "finished", "finally", "reveal", "check it out", "check this out", "before",
+    "after", "transformation", "transformed", "renovated", "renovation", "favorite",
+    "beautiful", "expensive", "crazy", "insane", "look at", "turned out", "dream",
+    "results", "result", "best", "perfect", "love",
+)
+FILLER_WORDS = ("um ", "uh ", " like ", "you know", "i mean", "kind of", "sort of")
+
+
+def _score_segment_text(text: str, dur: float) -> float:
+    """Heuristic 'is this a good moment' score for a stretch of speech (no LLM).
+
+    Rewards lively delivery (words/sec) and hook words; penalizes filler and
+    lengths far from the ~15s sweet spot. Stands in for SupoClip's paid LLM.
+    """
+    t = (text or "").lower()
+    words = re.findall(r"[a-z']+", t)
+    if not words or dur <= 0:
+        return 0.0
+    density = min((len(words) / dur) / 3.0, 1.0)      # ~3 words/sec reads as lively
+    hooks = sum(1 for h in HOOK_WORDS if h in t)
+    filler = sum(t.count(f) for f in FILLER_WORDS)
+    score = density + 0.6 * hooks - 0.15 * filler
+    score -= abs(dur - 15.0) / 30.0                   # prefer a satisfying ~15s
+    return score
+
+
+def _pick_highlights(segments, n: int = 4, min_len: float = 7.0,
+                     max_len: float = 20.0) -> list[tuple[float, float, str]]:
+    """Pick up to ``n`` non-overlapping [start,end] windows snapped to sentence
+    (segment) boundaries, ranked by :func:`_score_segment_text`.
+
+    This is SupoClip's 'find the best moments' brain, done locally for $0. Silent
+    footage has no segments, so it returns [] (b-roll needs the montage path).
+    """
+    segs = [s for s in segments
+            if getattr(s, "end_seconds", 0) > getattr(s, "start_seconds", 0)
+            and (getattr(s, "text", "") or "").strip()]
+    candidates: list[tuple[float, float, float]] = []
+    for i in range(len(segs)):
+        j = i
+        while j < len(segs) and (segs[j].end_seconds - segs[i].start_seconds) <= max_len:
+            a, b = segs[i].start_seconds, segs[j].end_seconds
+            if (b - a) >= min_len:
+                text = " ".join(s.text for s in segs[i:j + 1])
+                candidates.append((_score_segment_text(text, b - a), a, b))
+            j += 1
+    candidates.sort(key=lambda c: c[0], reverse=True)
+    picked: list[tuple[float, float]] = []
+    for score, a, b in candidates:
+        if score <= 0:
+            continue
+        if all(b <= pa or a >= pb for pa, pb in picked):
+            picked.append((a, b))
+            if len(picked) >= n:
+                break
+    picked.sort()
+    return [(round(a, 2), round(b, 2), f"auto-{k + 1}") for k, (a, b) in enumerate(picked)]
+
+
+def auto_highlights(n: int = 4, match: str | None = None) -> list[dict]:
+    """Transcribe one narrated video locally and auto-cut its best moments into
+    review clips — SupoClip's brain, free (faster-whisper, no AssemblyAI/LLM key).
+
+    Targets the video whose filename contains ``match`` (or PIPELINE_VIDEO, else
+    the first video found). Silent b-roll yields nothing — use the montage path.
+    """
+    from services.caption import transcribe  # lazy
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    match = match or os.getenv("PIPELINE_VIDEO") or None
+    ctx = _first_video(dbx, match)
+    if not ctx:
+        print("auto_highlights: no matching video found.")
+        return []
+    _f, _local, base, _brand, _display = ctx
+    wins = _pick_highlights(transcribe(_local), n=n)
+    if not wins:
+        print(f"auto_highlights: no speech windows in {base} (silent b-roll?).")
+        return []
+    print(f"auto_highlights: {base} -> {[(a, b) for a, b, _ in wins]}")
+    specs = [{"name": nm, "video": match, "start": a, "end": b} for a, b, nm in wins]
+    return cut_windows(specs)
+
+
 def cut_windows(specs: list[dict]) -> list[dict]:
     """Cut explicit time windows: each spec is {name, start, end} (seconds).
 
@@ -741,6 +828,18 @@ def main(argv: list[str] | None = None) -> int:
     # Dump per-video contact sheets so the footage can be 'seen' to pick shots.
     if os.getenv("DUMP_THUMBS", "").strip().lower() in ("1", "true", "yes"):
         dump_thumbs()
+        return 0
+
+    # AUTO_HIGHLIGHTS: free SupoClip-style brain — auto-pick best moments from a
+    # narrated video (value = how many clips, e.g. "4"). Silent b-roll yields none.
+    auto = os.getenv("AUTO_HIGHLIGHTS", "").strip()
+    if auto:
+        try:
+            n = int(auto)
+        except ValueError:
+            n = 4
+        made = auto_highlights(n=n)
+        print(f"\nDone: {len(made)} auto highlight clip(s). Nothing posted (all status=review).")
         return 0
 
     # RECUT_SPECS json: explicit time windows [{"name","start","end"}] (preferred),

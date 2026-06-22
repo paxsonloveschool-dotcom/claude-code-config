@@ -88,6 +88,42 @@ def test_speech_bounds_from_segments():
     assert 9.0 <= e <= 9.5          # padded a little after last word
 
 
+@dataclass
+class _Sg:
+    text: str
+    start_seconds: float
+    end_seconds: float
+
+
+def test_score_rewards_hooks_and_density():
+    # a hooky, lively 15s line beats a sparse, filler-y one of the same length
+    good = vp._score_segment_text("We finally finished this beautiful backyard reveal", 15.0)
+    weak = vp._score_segment_text("um uh like you know i mean", 15.0)
+    assert good > weak
+    assert vp._score_segment_text("", 10.0) == 0.0
+    assert vp._score_segment_text("anything", 0.0) == 0.0
+
+
+def test_pick_highlights_picks_nonoverlapping_windows_in_range():
+    segs = [
+        _Sg("What's up nation today we finally finished", 0.0, 4.0),
+        _Sg("one of our favorite projects of the year", 4.0, 8.0),
+        _Sg("we renovated this entire backyard", 8.0, 12.0),
+        _Sg("beautiful stamped concrete patio and walkway", 12.0, 16.0),
+        _Sg("and check out this putting green it turned out perfect", 16.0, 22.0),
+    ]
+    wins = vp._pick_highlights(segs, n=2)
+    assert 1 <= len(wins) <= 2
+    for a, b, name in wins:
+        assert 7.0 <= (b - a) <= 20.0
+        assert name.startswith("auto-")
+    # non-overlapping
+    for (a1, b1, _), (a2, b2, _) in zip(wins, wins[1:]):
+        assert b1 <= a2
+    # silent footage -> nothing to pick
+    assert vp._pick_highlights([], n=4) == []
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):

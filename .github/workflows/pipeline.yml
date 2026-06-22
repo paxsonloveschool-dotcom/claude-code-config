@@ -19,6 +19,10 @@ on:
         description: "Set true to commit a contact-sheet image per video (to 'see' it)"
         required: false
         default: ""
+      auto_highlights:
+        description: "Number of clips to auto-pick from a narrated video (e.g. 4)"
+        required: false
+        default: ""
       video:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
@@ -62,6 +66,7 @@ jobs:
           RECUT_SPECS: ${{ inputs.recut_specs }}
           DUMP_TRANSCRIPT: ${{ inputs.dump_transcript }}
           DUMP_THUMBS: ${{ inputs.dump_thumbs }}
+          AUTO_HIGHLIGHTS: ${{ inputs.auto_highlights }}
           PIPELINE_VIDEO: ${{ inputs.video }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
