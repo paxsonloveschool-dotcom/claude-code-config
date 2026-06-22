@@ -603,6 +603,32 @@ def dump_thumbs() -> None:
             print(f"contact sheet {base}.jpg (dur={dur:.1f}s)")
 
 
+def prune_clips(keep_ids: list[str]) -> list[dict]:
+    """Delete every queued clip NOT in ``keep_ids`` — both its Dropbox file and
+    its queue entry — leaving only the kept set. Clears stale batches so the
+    review folder shows only the current clips. Never posts anything."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    keep = {k.strip() for k in keep_ids if k.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    kept, removed = [], 0
+    for e in queue:
+        if e.get("id") in keep:
+            kept.append(e)
+            continue
+        mp = e.get("media_path")
+        if mp:
+            try:
+                dbx.delete(mp)
+            except Exception as ex:  # noqa: BLE001 — a missing file shouldn't stop the purge
+                print(f"delete failed {mp}: {ex}")
+        print(f"pruned {e.get('id')}")
+        removed += 1
+    _save_json(QUEUE_PATH, kept)
+    print(f"\nPruned {removed} old clip(s); kept {len(kept)}.")
+    return kept
+
+
 # ---- SupoClip-style auto highlight selection (free, local Whisper, no LLM) ----
 # Words that signal a strong hook/payoff in landscaping/reno talking-head clips.
 HOOK_WORDS = (
@@ -818,6 +844,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.ls:
         debug_tree()
+        return 0
+
+    # KEEP_IDS: delete every clip (Dropbox file + queue entry) not in this
+    # comma-separated id list — clears stale batches from the review folder.
+    keep_ids = os.getenv("KEEP_IDS", "").strip()
+    if keep_ids:
+        prune_clips(keep_ids.split(","))
         return 0
 
     # Dump a timestamped transcript so clip windows can be chosen by time.

@@ -23,6 +23,10 @@ on:
         description: "Number of clips to auto-pick from a narrated video (e.g. 4)"
         required: false
         default: ""
+      keep_ids:
+        description: "Comma-separated clip ids to KEEP; all others are deleted"
+        required: false
+        default: ""
       video:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
@@ -67,6 +71,7 @@ jobs:
           DUMP_TRANSCRIPT: ${{ inputs.dump_transcript }}
           DUMP_THUMBS: ${{ inputs.dump_thumbs }}
           AUTO_HIGHLIGHTS: ${{ inputs.auto_highlights }}
+          KEEP_IDS: ${{ inputs.keep_ids }}
           PIPELINE_VIDEO: ${{ inputs.video }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
