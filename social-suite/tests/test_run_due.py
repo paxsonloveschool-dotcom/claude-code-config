@@ -382,6 +382,44 @@ def test_brand_missing_platform_creds_fails_only_that_post():
     assert "youtube" not in rec  # the failing post never reached the poster
 
 
+def test_tiktok_refresh_token_mints_fresh_access_token_before_posting():
+    rec: dict = {}
+    orig = _patch_new_adapters(rec)
+    from services.publish.direct import tiktok_oauth
+
+    refresh_calls: list = []
+
+    def _fake_refresh(client_key, client_secret, refresh_token):
+        refresh_calls.append((client_key, client_secret, refresh_token))
+        return {"access_token": "FRESH", "refresh_token": "ROTATED"}
+
+    orig_refresh = tiktok_oauth.refresh_access_token
+    tiktok_oauth.refresh_access_token = _fake_refresh
+    _clear_env()
+    # Self-refreshing TikTok creds: refresh_token + client_key/secret, NO static token.
+    os.environ["BRANDS_JSON"] = (
+        '{"acme": {"meta_access_token": "m", "tiktok": {'
+        '"refresh_token": "RFT", "client_key": "CK", "client_secret": "CS"}}}'
+    )
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "queue.json")
+            save_queue(path, [
+                QueuedPost(id="tk", text="tok", media_url="https://v/t.mp4",
+                           platforms=["tiktok"], brand="acme"),
+            ])
+            summary = run_due.run(path, now_iso=NOW)
+    finally:
+        tiktok_oauth.refresh_access_token = orig_refresh
+        _restore_new_adapters(orig)
+        _clear_env()
+
+    assert summary == {"posted": 1, "failed": 0, "skipped": 0}
+    assert refresh_calls == [("CK", "CS", "RFT")]
+    # The poster got the freshly-minted token, not a stored one.
+    assert rec["tiktok"][0]["access_token"] == "FRESH"
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):

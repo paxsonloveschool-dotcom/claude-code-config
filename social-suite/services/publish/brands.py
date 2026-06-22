@@ -44,7 +44,11 @@ class BrandCreds:
         ig_user_id: Instagram Professional account id (for "instagram").
         fb_page_id: Facebook Page id (for "facebook").
         x: Optional ``{"access_token": ...}`` — X (Twitter) OAuth2 bearer token.
-        tiktok: Optional ``{"access_token": ...}`` — TikTok OAuth token.
+        tiktok: Optional TikTok creds. For unattended posting use the
+            self-refreshing shape ``{"refresh_token", "client_key",
+            "client_secret", "privacy_level"}`` (the runner mints a fresh
+            ~24h access token each post). A static ``{"access_token"}`` also
+            works for one-off/sandbox use. See ``TIKTOK_SETUP.md``.
         youtube: Optional ``{"access_token": ...}`` — YouTube OAuth token.
         gbp: Optional ``{"access_token", "account_id", "location_id"}`` for
             Google Business Profile.

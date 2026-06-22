@@ -105,14 +105,43 @@ def _adapt_x(post: QueuedPost, creds: BrandCreds) -> None:
     x.post_x(text=post.text, access_token=token, media_urls=media_urls)
 
 
-def _adapt_tiktok(post: QueuedPost, creds: BrandCreds) -> None:
-    from services.publish.direct import tiktok  # lazy
+def _tiktok_access_token(creds: BrandCreds) -> str:
+    """Return a usable TikTok access token for this brand.
+
+    TikTok access tokens expire in ~24h, so a statically-pasted token is no good
+    for an unattended cron. When the brand carries a ``refresh_token`` (+ app
+    ``client_key``/``client_secret``), mint a fresh access token just-in-time;
+    otherwise fall back to a static ``access_token`` (e.g. a sandbox token).
+    """
+    refresh_token = creds.tiktok.get("refresh_token")
+    client_key = creds.tiktok.get("client_key")
+    client_secret = creds.tiktok.get("client_secret")
+    if refresh_token and client_key and client_secret:
+        from services.publish.direct import tiktok_oauth  # lazy
+
+        payload = tiktok_oauth.refresh_access_token(
+            client_key, client_secret, refresh_token
+        )
+        token = payload.get("access_token")
+        if not token:
+            raise RuntimeError(f"TikTok refresh returned no access_token: {payload!r}")
+        return token
 
     token = creds.tiktok.get("access_token")
     if not token:
-        raise RuntimeError("tiktok.access_token is not set for this brand (needed for tiktok).")
+        raise RuntimeError(
+            "tiktok needs either a refresh_token (+client_key/client_secret) or a "
+            "static access_token for this brand (see social-suite/TIKTOK_SETUP.md)."
+        )
+    return token
+
+
+def _adapt_tiktok(post: QueuedPost, creds: BrandCreds) -> None:
+    from services.publish.direct import tiktok  # lazy
+
     if not post.media_url:
         raise RuntimeError("tiktok requires a public video media_url.")
+    token = _tiktok_access_token(creds)
     privacy = creds.tiktok.get("privacy_level", "SELF_ONLY")
     tiktok.post_tiktok(
         access_token=token,

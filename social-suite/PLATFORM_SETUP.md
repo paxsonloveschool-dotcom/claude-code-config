@@ -101,6 +101,12 @@ Both IG and FB run through **one** Meta app.
    (TikTok reviews; ~1–2 weeks).
 → Paste into Postiz → Add Channel → TikTok.
 
+> **Direct posting (bypassing Postiz)?** To link a TikTok account straight to
+> the GitHub-Actions auto-poster — the parallel to the Meta IG/FB path — follow
+> **[`TIKTOK_SETUP.md`](TIKTOK_SETUP.md)**. It walks the OAuth flow end-to-end
+> and stores the long-lived **refresh** token so the cron mints fresh access
+> tokens on its own.
+
 ---
 
 ## Tracking sheet (fill as you go)
