@@ -25,7 +25,18 @@ they'd approve on their own. Update this every time they react to a batch.
 
 ## Owner's picks (fill in from feedback — this is what teaches taste)
 - Winners so far: _TBD — waiting on which clips from the batch they liked._
-- Disliked: phrase-based auto-cuts (fragile); ugly default subtitles.
+- Disliked: phrase-based auto-cuts (fragile); ugly default subtitles; hard-cut
+  stitches (choppy) — even crossfades feel jumpy when stitching ONE long
+  monologue. **Root cause: a single long talking-head take is a poor source.**
+
+## Winning recipe (from 2026 landscaper/hardscape trend research — apply every clip)
+- **Best input = many short 10–20s shots** (wide reveal, close-ups, medium),
+  edited together — NOT one long take. Assemble shots into a cohesive short.
+- **Hook in first ~1.5s**, lead with the finished result / before→after.
+- **15–30s** completion zone (60–90s only if the story is tight).
+- **Trending audio + format** is the reach lever (use a dropped music track).
+- Show **proof fast** (before→after), then the build/details.
+- Vertical, raw not corporate, no ugly burned subs.
 
 ## Niche notes (HP Landscaping)
 - Content = backyard/hardscape reveals. The transformation IS the hook.
