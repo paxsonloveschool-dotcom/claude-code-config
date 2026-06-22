@@ -90,9 +90,28 @@ what the brand stores.
 
 ## (d) Put the values into your brand credentials
 
-Add the brand's `tiktok` block to `BRANDS_JSON` (one secret holding every
-brand's creds) or `content/brands.json` — see
-[`content/brands.example.json`](content/brands.example.json):
+### Recommended: flat per-brand GitHub Secrets (how HP + Restore's Meta is set)
+
+Exactly the pattern already used for IG/FB — **one secret = one pasted value**,
+no JSON to mangle. Go to **repo → Settings → Secrets and variables → Actions →
+New repository secret** and add these (per brand; `<NAME>` = `HP`, `RESTORE`, …):
+
+| Secret name | Value |
+|---|---|
+| `BRAND_<NAME>_TIKTOK_REFRESH_TOKEN` | the `rft....` refresh token from step (c) |
+| `BRAND_<NAME>_TIKTOK_CLIENT_KEY` | your app's Client Key |
+| `BRAND_<NAME>_TIKTOK_CLIENT_SECRET` | your app's Client Secret |
+| `BRAND_<NAME>_TIKTOK_PRIVACY_LEVEL` | `PUBLIC_TO_EVERYONE` (or `SELF_ONLY` pre-audit) |
+
+`services/publish/brands.py` reads these into the brand's `tiktok` creds and the
+poster mints a fresh access token each run. The cron
+(`.github/workflows/social-post.yml`) already passes these secrets. Flat secrets
+override `BRANDS_JSON`, and stray spaces/newlines are trimmed automatically.
+
+### Alternative: one `BRANDS_JSON` secret / local `content/brands.json`
+
+Same values as one JSON object (see
+[`content/brands.example.json`](content/brands.example.json)):
 
 ```json
 "tiktok": {

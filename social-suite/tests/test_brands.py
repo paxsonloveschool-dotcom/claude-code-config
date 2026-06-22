@@ -173,6 +173,36 @@ def test_flat_env_strips_whitespace_and_newlines():
     assert brands["hp"].fb_page_id == "hpFB"
 
 
+def test_flat_env_builds_tiktok_subdict():
+    _clear_env()
+    # Same flat-secret pattern as Meta, extended to TikTok's sub-dict fields.
+    os.environ["BRAND_HP_META_ACCESS_TOKEN"] = "hpTOK"
+    os.environ["BRAND_HP_TIKTOK_REFRESH_TOKEN"] = "  hpRFT\n"
+    os.environ["BRAND_HP_TIKTOK_CLIENT_KEY"] = "CK"
+    os.environ["BRAND_HP_TIKTOK_CLIENT_SECRET"] = "CS"
+    os.environ["BRAND_HP_TIKTOK_PRIVACY_LEVEL"] = "PUBLIC_TO_EVERYONE"
+    os.environ["BRAND_RESTORE_TIKTOK_REFRESH_TOKEN"] = "rRFT"
+    os.environ["BRAND_RESTORE_TIKTOK_CLIENT_KEY"] = "CK"
+    os.environ["BRAND_RESTORE_TIKTOK_CLIENT_SECRET"] = "CS"
+    try:
+        brands = load_brands()
+    finally:
+        _clear_env()
+
+    assert set(brands) == {"hp", "restore"}
+    hp = brands["hp"]
+    assert hp.meta_access_token == "hpTOK"
+    # Whitespace/newline trimmed on the sub-dict value too.
+    assert hp.tiktok == {
+        "refresh_token": "hpRFT",
+        "client_key": "CK",
+        "client_secret": "CS",
+        "privacy_level": "PUBLIC_TO_EVERYONE",
+    }
+    assert brands["restore"].tiktok["refresh_token"] == "rRFT"
+    assert brands["restore"].meta_access_token == ""  # tiktok-only brand is fine
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):
