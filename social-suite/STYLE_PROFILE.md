@@ -4,6 +4,9 @@ The goal: learn the owner's taste well enough that the pipeline produces clips
 they'd approve on their own. Update this every time they react to a batch.
 
 ## Hard rules (learned, do every time)
+- **Owner's clip target: 7–20s each** (vary it, not exact). Stitch different
+  timestamps into one clip whenever that makes it better.
+- **Never use mess-ups / flubs / botched parts** — skip them entirely.
 - **No subtitles burned on the video.** A strong written caption rides with the
   POST instead (generated per clip).
 - **Vertical 9:16, 1080x1920.**
