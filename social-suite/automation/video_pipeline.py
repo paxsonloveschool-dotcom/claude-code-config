@@ -603,6 +603,36 @@ def dump_thumbs() -> None:
             print(f"contact sheet {base}.jpg (dur={dur:.1f}s)")
 
 
+def fetch_previews(which: str = "all") -> int:
+    """Download finished review clips from Dropbox into ``content/preview/`` so
+    they can be viewed/sent directly (Dropbox is unreachable from some sandboxes).
+    ``which`` is "all" or a comma-separated id list. Never posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    out_dir = os.path.join(ROOT, "content", "preview")
+    os.makedirs(out_dir, exist_ok=True)
+    sel = which.strip().lower()
+    ids = None if sel in ("all", "") else {x.strip() for x in which.split(",") if x.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    n = 0
+    for e in queue:
+        if ids is not None and e.get("id") not in ids:
+            continue
+        mp = e.get("media_path")
+        if not mp:
+            continue
+        dest = os.path.join(out_dir, f"{e['id']}.mp4")
+        try:
+            client.files_download_to_file(dest, mp)
+            print(f"fetched {e['id']}")
+            n += 1
+        except Exception as ex:  # noqa: BLE001
+            print(f"fetch failed {e['id']}: {ex}")
+    print(f"\n{n} preview(s) in content/preview/")
+    return n
+
+
 def prune_clips(keep_ids: list[str]) -> list[dict]:
     """Delete every queued clip NOT in ``keep_ids`` — both its Dropbox file and
     its queue entry — leaving only the kept set. Clears stale batches so the
@@ -844,6 +874,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.ls:
         debug_tree()
+        return 0
+
+    # FETCH_PREVIEWS: pull finished clips from Dropbox into content/preview/.
+    fp = os.getenv("FETCH_PREVIEWS", "").strip()
+    if fp:
+        fetch_previews(fp)
         return 0
 
     # KEEP_IDS: delete every clip (Dropbox file + queue entry) not in this

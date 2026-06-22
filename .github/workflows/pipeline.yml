@@ -27,6 +27,10 @@ on:
         description: "Comma-separated clip ids to KEEP; all others are deleted"
         required: false
         default: ""
+      fetch_previews:
+        description: "'all' or comma ids: pull finished clips into content/preview/"
+        required: false
+        default: ""
       video:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
@@ -72,19 +76,20 @@ jobs:
           DUMP_THUMBS: ${{ inputs.dump_thumbs }}
           AUTO_HIGHLIGHTS: ${{ inputs.auto_highlights }}
           KEEP_IDS: ${{ inputs.keep_ids }}
+          FETCH_PREVIEWS: ${{ inputs.fetch_previews }}
           PIPELINE_VIDEO: ${{ inputs.video }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
       - name: Commit review results (queue + processed set)
         run: |
-          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs 2>/dev/null || true
+          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/preview 2>/dev/null || true
           if git diff --cached --quiet && git diff --quiet -- social-suite/content; then
             echo "No new review items."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs 2>/dev/null || true
+          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/preview 2>/dev/null || true
           git commit -m "chore(pipeline): add review item(s) from Dropbox videos [skip ci]"
           git push
