@@ -8,9 +8,9 @@ from PIL import Image, ImageDraw, ImageFont
 
 S = 4
 W, H = 600 * S, 730 * S
-GREEN = (45, 180, 72)
-BLACK = (10, 10, 10)
-WHITE = (248, 248, 248)
+GREEN = (52, 192, 80)
+BLACK = (8, 8, 8)
+WHITE = (250, 250, 250)
 CX = W // 2
 
 img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
