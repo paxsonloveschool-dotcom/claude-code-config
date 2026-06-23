@@ -329,6 +329,42 @@ def _concat(parts: list[str], out_path: str, xfade: float = 0.8) -> str:
     return out_path
 
 
+def _edit_tile(src: str, a: float, b: float, out_path: str, w: int, h: int) -> str:
+    """Cut [a,b] as a ``w``x``h`` tile (scaled to fill, cropped). Muted. Used for
+    both row panels (1080xH) and side-by-side column panels (Wx1920)."""
+    import subprocess  # lazy
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    dur = max(0.1, b - a)
+    vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1"
+    subprocess.run(
+        ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{dur:.2f}", "-vf", vf,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an",
+         "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
+def _hstackN(parts: list[str], out_path: str) -> str:
+    """Side-by-side (column) stack of equal-height tiles into one 1080x1920 clip."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if len(parts) == 1:
+        shutil.copy(parts[0], out_path)
+        return out_path
+    cmd = ["ffmpeg", "-y"]
+    for p in parts:
+        cmd += ["-i", p]
+    n = len(parts)
+    fc = "".join(f"[{i}:v]" for i in range(n)) + f"hstack=inputs={n}[v]"
+    cmd += ["-filter_complex", fc, "-map", "[v]", "-shortest",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-movflags", "+faststart", out_path]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return out_path
+
+
 def _edit_panel(src: str, a: float, b: float, out_path: str, height: int) -> str:
     """Cut [a,b] as a full-width 1080x``height`` PANEL (keeps the horizontal
     framing) for vertical multi-panel stacks — HP's split-screen look. Muted;
@@ -995,15 +1031,26 @@ def cut_montage(spec: dict) -> dict | None:
         if base_ctx is None:
             base_ctx, workdir = ctx0, os.path.dirname(ctx0[1])
         out = os.path.join(workdir, f"mseg-{name}-{i}.mp4")
-        if len(shots) == 1:
+        n = len(shots)
+        if n == 1:
             v, a, b = shots[0]
             _edit_short(resolve(str(v))[1], float(a), float(b), out, mute=True)
+        elif seg.get("orient") == "cols":
+            # side-by-side vertical columns (each tile W/n x 1920)
+            w = 1080 // n
+            tiles = []
+            for k, (v, a, b) in enumerate(shots):
+                pp = os.path.join(workdir, f"mseg-{name}-{i}-c{k}.mp4")
+                _edit_tile(resolve(str(v))[1], float(a), float(b), pp, w, 1920)
+                tiles.append(pp)
+            _hstackN(tiles, out)
         else:
-            h = 1920 // len(shots)
+            # stacked rows (each tile 1080 x H/n)
+            h = 1920 // n
             panels = []
             for k, (v, a, b) in enumerate(shots):
                 pp = os.path.join(workdir, f"mseg-{name}-{i}-p{k}.mp4")
-                _edit_panel(resolve(str(v))[1], float(a), float(b), pp, h)
+                _edit_tile(resolve(str(v))[1], float(a), float(b), pp, 1080, h)
                 panels.append(pp)
             _stackN(panels, out)
         seg_clips.append(out)
