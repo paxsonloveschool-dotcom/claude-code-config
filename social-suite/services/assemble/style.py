@@ -52,6 +52,74 @@ def pick_top_shots(scored: list[dict], k: int = 6, min_gap: float = 0.0) -> list
     return picked
 
 
+def _beat_window(shot: dict, beat: float) -> tuple[float, float]:
+    """A ``beat``-second window centered in ``shot`` (or the whole shot if shorter)."""
+    s = float(shot.get("start", 0.0))
+    e = float(shot.get("end", s + beat))
+    if (e - s) <= beat:
+        return (round(s, 2), round(e, 2))
+    mid = (s + e) / 2.0
+    return (round(mid - beat / 2, 2), round(mid + beat / 2, 2))
+
+
+def _layout_for(n: int, preferred: str) -> str:
+    """A valid layout for ``n`` shots, honouring the rotation's intent."""
+    if n <= 1:
+        return "single"
+    if n == 2:
+        return preferred if preferred in ("rows2", "cols2") else "rows2"
+    return "rows3"
+
+
+def select_for_montage(scored: list[dict], *, target_s: float = 15.0,
+                       beat_s: float = 3.0, min_score: float = 50.0,
+                       min_gap: float = 1.0, xfade: float = 0.45) -> list[dict]:
+    """Plan a montage that lands in the 10–20s zone using ONLY good shots (pure).
+
+    Drops every shot below ``min_score`` (the "all good content" floor), then fills
+    layout-shifting segments — each trimmed to a ``beat_s`` beat — until the
+    accumulated runtime reaches ``target_s``. Returns a list of segments:
+    ``{layout, windows:[(start,end)...], scores:[...]}``. Empty if nothing clears
+    the bar, so a weak video yields no clip rather than bad content.
+    """
+    good = sorted((s for s in scored if s.get("fire_score", 0) >= min_score),
+                  key=lambda s: s.get("fire_score", 0), reverse=True)
+    if not good:
+        return []
+    sizes = {"single": 1, "rows2": 2, "cols2": 2, "rows3": 3}
+    pool = list(good)
+    chosen_starts: list[float] = []
+    plan: list[dict] = []
+    acc = 0.0
+    li = 0
+
+    def far_enough(s) -> bool:
+        return min_gap <= 0 or all(
+            abs(float(s.get("start", 0)) - c) >= min_gap for c in chosen_starts)
+
+    while acc < target_s and pool:
+        want = sizes[LAYOUT_CYCLE[li % len(LAYOUT_CYCLE)]]
+        li += 1
+        seg, k = [], 0
+        while len(seg) < want and k < len(pool):
+            if far_enough(pool[k]):
+                s = pool.pop(k)
+                seg.append(s)
+                chosen_starts.append(float(s.get("start", 0)))
+            else:
+                k += 1
+        if not seg:                       # spacing blocked everything left
+            seg = [pool.pop(0)]
+        layout = _layout_for(len(seg), LAYOUT_CYCLE[(li - 1) % len(LAYOUT_CYCLE)])
+        plan.append({
+            "layout": layout,
+            "windows": [_beat_window(s, beat_s) for s in seg],
+            "scores": [s.get("fire_score") for s in seg],
+        })
+        acc += beat_s - xfade
+    return plan
+
+
 # ---- serif text beats ------------------------------------------------------
 def _esc(text: str) -> str:
     """Escape a string for ffmpeg drawtext ``text=`` (quotes/colons/backslashes)."""

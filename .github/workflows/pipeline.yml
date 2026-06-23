@@ -56,7 +56,7 @@ on:
         required: false
         default: ""
       auto_montage:
-        description: "Auto-assemble a locked-style montage from a video's top shots (value = #shots, e.g. 6; use 'video' to target)"
+        description: "Auto-assemble a 10-20s locked-style montage from a video's BEST shots (value = target seconds, e.g. 15; use 'video' to target one)"
         required: false
         default: ""
       video:

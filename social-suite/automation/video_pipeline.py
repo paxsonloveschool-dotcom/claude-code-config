@@ -1179,21 +1179,26 @@ def _auto_beats(duration: float) -> list[dict]:
     return beats
 
 
-def auto_montage(match: str | None = None, k: int = 6, style: bool = True) -> dict | None:
-    """Phase 3: auto-build a locked-style montage from a video's top-scored shots.
+def auto_montage(match: str | None = None, target_s: float | None = None,
+                 style: bool = True) -> dict | None:
+    """Phase 3: auto-build a 10–20s locked-style montage from a video's BEST shots.
 
-    Picks the best ``k`` shots (from content/scores, scoring on the fly if needed),
-    assembles them with shifting layouts + crossfades (silent), then — when
-    ``style`` — burns the serif text beats, logos the corner, and crossfades on the
-    outro. Uploads to the brand's processed/ folder as a ``status:"review"`` entry
-    carrying its ``fire_score``. NEVER posts."""
+    Plans a clip that lands near ``target_s`` (default 15s, env MONTAGE_TARGET)
+    using ONLY shots at/above the quality floor (env MONTAGE_MIN_SCORE, default 50)
+    — a weak video yields no clip rather than bad content. Lays the chosen shots
+    out in shifting layouts (each trimmed to a beat), crossfades them, then — when
+    ``style`` — burns serif beats, logos the corner, and crossfades the outro on.
+    Uploads as a ``status:"review"`` entry carrying its ``fire_score``. NEVER posts."""
     from services.ingest import dropbox_client as dbx  # lazy
     from services.score.shots import detect_shots  # lazy
     from services.score.visual import score_shot  # lazy
     from services.assemble.style import (  # lazy
-        plan_layouts, pick_top_shots, serif_beats, add_logo, append_outro)
+        select_for_montage, serif_beats, add_logo, append_outro)
 
     match = match or os.getenv("PIPELINE_VIDEO") or None
+    target_s = target_s if target_s is not None else float(os.getenv("MONTAGE_TARGET", "15"))
+    min_score = float(os.getenv("MONTAGE_MIN_SCORE", "50"))
+    beat_s = float(os.getenv("MONTAGE_BEAT", "3.0"))
     ctx = _first_video(dbx, match)
     if not ctx:
         print("auto_montage: no matching video found.")
@@ -1207,42 +1212,39 @@ def auto_montage(match: str | None = None, k: int = 6, style: bool = True) -> di
     if not scored:
         shots = detect_shots(local)
         scored = [{**s, **score_shot(local, s["start"], s["end"])} for s in shots]
-    picked = pick_top_shots(scored, k=k, min_gap=1.0)
-    if not picked:
-        print(f"auto_montage: no shots to use for {base}.")
-        return None
 
-    # Assign picked shots into layout-shifting segments (1/2/3 shots each).
-    sizes = {"single": 1, "rows2": 2, "cols2": 2, "rows3": 3}
-    layouts = plan_layouts(len(picked))   # upper bound; we stop when shots run out
+    # Plan a target-length montage from only good shots (quality floor applied).
+    plan = select_for_montage(scored, target_s=target_s, beat_s=beat_s,
+                              min_score=min_score, min_gap=1.0, xfade=0.45)
+    if not plan:
+        print(f"auto_montage: no shots clear the quality bar ({min_score}) for "
+              f"{base} — skipping (no clip rather than weak content).")
+        return None
+    seg_scores = [sc for seg in plan for sc in seg["scores"] if sc is not None]
+
+    # Render each planned segment in its layout.
     workdir = os.path.dirname(local)
     seg_clips: list[str] = []
-    used = 0
-    li = 0
-    while used < len(picked) and li < len(layouts):
-        lay = layouts[li]
-        li += 1
-        n = min(sizes[lay], len(picked) - used)
-        group = picked[used:used + n]
-        used += n
+    for li, seg in enumerate(plan):
+        lay, wins = seg["layout"], seg["windows"]
+        n = len(wins)
         out = os.path.join(workdir, f"aseg-{base}-{li}.mp4")
         if n == 1:
-            _edit_short(local, float(group[0]["start"]), float(group[0]["end"]),
-                        out, mute=True)
+            _edit_short(local, float(wins[0][0]), float(wins[0][1]), out, mute=True)
         elif lay == "cols2":
             w = 1080 // n
             tiles = []
-            for j, g in enumerate(group):
+            for j, (a, b) in enumerate(wins):
                 pp = os.path.join(workdir, f"aseg-{base}-{li}-c{j}.mp4")
-                _edit_tile(local, float(g["start"]), float(g["end"]), pp, w, 1920)
+                _edit_tile(local, float(a), float(b), pp, w, 1920)
                 tiles.append(pp)
             _hstackN(tiles, out)
         else:  # rows2 / rows3
             h = 1920 // n
             panels = []
-            for j, g in enumerate(group):
+            for j, (a, b) in enumerate(wins):
                 pp = os.path.join(workdir, f"aseg-{base}-{li}-p{j}.mp4")
-                _edit_tile(local, float(g["start"]), float(g["end"]), pp, 1080, h)
+                _edit_tile(local, float(a), float(b), pp, 1080, h)
                 panels.append(pp)
             _stackN(panels, out)
         seg_clips.append(out)
@@ -1269,7 +1271,7 @@ def auto_montage(match: str | None = None, k: int = 6, style: bool = True) -> di
             print(f"auto_montage: styling skipped ({ex}); using unstyled montage.")
             final = montage
 
-    fire = round(sum(p.get("fire_score", 0) for p in picked) / len(picked), 1)
+    fire = round(sum(seg_scores) / len(seg_scores), 1) if seg_scores else 0.0
     out_path = f"{display.rstrip('/')}/processed/{base}-automontage.mp4"
     dbx.upload(final, out_path)
     url = dbx.shared_link(out_path, raw=True)
@@ -1587,10 +1589,10 @@ def main(argv: list[str] | None = None) -> int:
     am = os.getenv("AUTO_MONTAGE", "").strip()
     if am:
         try:
-            k = int(am)
+            target = float(am)
         except ValueError:
-            k = 6
-        made = auto_montage(k=k)
+            target = None   # "1"/"true" -> default 15s target
+        made = auto_montage(target_s=target)
         print(f"\nDone: {1 if made else 0} auto montage. Nothing posted (status=review).")
         return 0
 

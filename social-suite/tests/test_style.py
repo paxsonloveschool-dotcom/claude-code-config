@@ -48,6 +48,41 @@ def test_pick_top_shots_min_gap():
     assert 0.0 in starts and 5.0 in starts and 0.5 not in starts
 
 
+def _shots(scores):
+    return [{"start": i * 4.0, "end": i * 4.0 + 4.0, "fire_score": s}
+            for i, s in enumerate(scores)]
+
+
+def test_select_for_montage_hits_target_length():
+    # plenty of good shots -> plan should accumulate ~15s of beats.
+    plan = S.select_for_montage(_shots([80] * 12), target_s=15.0, beat_s=3.0,
+                                min_score=50, min_gap=0.0, xfade=0.45)
+    eff = sum(3.0 - 0.45 for _ in plan)
+    assert 12.0 <= eff <= 19.0, f"target ~15s, got {eff:.1f}s ({len(plan)} segs)"
+    # every chosen window is <= beat_s long
+    for seg in plan:
+        for a, b in seg["windows"]:
+            assert b - a <= 3.0 + 1e-6
+
+
+def test_select_for_montage_quality_floor():
+    """Only shots at/above min_score are ever used (all good content)."""
+    plan = S.select_for_montage(
+        _shots([90, 20, 85, 10, 30, 88]), target_s=15, beat_s=3.0,
+        min_score=50, min_gap=0.0)
+    used = [sc for seg in plan for sc in seg["scores"]]
+    assert used and all(s >= 50 for s in used), used
+
+
+def test_select_for_montage_empty_when_all_weak():
+    assert S.select_for_montage(_shots([10, 20, 30]), min_score=50) == []
+
+
+def test_select_for_montage_no_three_columns():
+    plan = S.select_for_montage(_shots([80] * 12), min_gap=0.0)
+    assert all(seg["layout"] in ("single", "rows2", "cols2", "rows3") for seg in plan)
+
+
 def test_build_serif_filter_word_and_fade():
     beats = [
         {"text": "Excellence Isn't Optional", "start": 0.3, "end": 3.0, "mode": "fade"},
