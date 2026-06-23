@@ -1,0 +1,29 @@
+{
+  "hp": {
+    "meta_access_token": "REPLACE_WITH_HP_LANDSCAPING_PAGE_TOKEN",
+    "ig_user_id": "REPLACE_WITH_HP_IG_USER_ID",
+    "fb_page_id": "REPLACE_WITH_HP_FB_PAGE_ID",
+    "x": {
+      "access_token": "REPLACE_WITH_HP_X_OAUTH2_BEARER_TOKEN"
+    },
+    "tiktok": {
+      "refresh_token": "REPLACE_WITH_HP_TIKTOK_REFRESH_TOKEN",
+      "client_key": "REPLACE_WITH_TIKTOK_APP_CLIENT_KEY",
+      "client_secret": "REPLACE_WITH_TIKTOK_APP_CLIENT_SECRET",
+      "privacy_level": "PUBLIC_TO_EVERYONE"
+    },
+    "youtube": {
+      "access_token": "REPLACE_WITH_HP_YOUTUBE_ACCESS_TOKEN"
+    },
+    "gbp": {
+      "access_token": "REPLACE_WITH_HP_GBP_ACCESS_TOKEN",
+      "account_id": "REPLACE_WITH_HP_GBP_ACCOUNT_ID",
+      "location_id": "REPLACE_WITH_HP_GBP_LOCATION_ID"
+    }
+  },
+  "restore": {
+    "meta_access_token": "REPLACE_WITH_RESTORE_PAGE_TOKEN",
+    "ig_user_id": "REPLACE_WITH_RESTORE_IG_USER_ID",
+    "fb_page_id": "REPLACE_WITH_RESTORE_FB_PAGE_ID"
+  }
+}

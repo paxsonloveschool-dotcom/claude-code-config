@@ -1,0 +1,1320 @@
+"""Video pipeline: Dropbox brand folders -> captioned clip -> REVIEW queue.
+
+Scans the TOP-LEVEL folders of the Dropbox app folder, matches each to a brand
+by keyword in its name (``…HP…`` -> hp, ``…Restore…`` -> restore), and for each
+matched folder pulls new videos, transcribes them, writes a caption (free $0
+writer), burns the captions on, uploads the finished clip to a ``processed/``
+subfolder the owner can watch, and appends a ``status:"review"`` queue entry.
+
+**Nothing is ever posted** — the poster only fires ``status:"pending"``. And only
+TOP-LEVEL folders are scanned (never recursing into a nested folder), so one
+brand's videos can never leak into another brand's posts.
+
+Run on GitHub Actions (heavy ffmpeg/whisper deps + Dropbox secrets live there):
+    python automation/video_pipeline.py        # process
+    python automation/video_pipeline.py --ls    # just list what the app sees
+Heavy imports (dropbox, faster-whisper, ffmpeg) are lazy.
+"""
+
+from __future__ import annotations
+
+import datetime as _dt
+import json
+import os
+import re
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+QUEUE_PATH = os.path.join(ROOT, "content", "queue.json")
+PROCESSED_PATH = os.path.join(ROOT, "content", "processed.json")
+
+VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv")
+
+# Brand classification by keyword in the folder name + that brand's look. Order
+# matters: check "restore" before "hp" so "Restore" never falls through to hp.
+BRAND_RULES = [
+    ("restore", "restore", "Restore Marketing",
+     ["RestoreMarketing", "marketingagency", "smallbusinessmarketing",
+      "contentcreator", "socialmediamarketing", "digitalmarketing"]),
+    ("hp", "hp", "HP Landscaping",
+     ["HPLandscaping", "landscaping", "hardscape", "patiodesign", "backyardgoals",
+      "outdoorliving", "stampedconcrete", "curbappeal"]),
+]
+# Kept for backward-compat/tests: folder-name -> (key, display, tags).
+BRANDS = {
+    "HP": ("hp", "HP Landscaping", ["HPLandscaping", "landscaping", "lawncare"]),
+    "Restore": ("restore", "Restore Marketing", ["RestoreMarketing", "marketing"]),
+}
+REVIEW_PLATFORMS = [p.strip() for p in os.getenv("REVIEW_PLATFORMS", "instagram,facebook").split(",") if p.strip()]
+
+
+def classify_brand(folder_name: str):
+    """Return (key, display, hashtags) for a folder name, or None if unmatched."""
+    low = (folder_name or "").lower()
+    for needle, key, display, tags in BRAND_RULES:
+        if needle in low:
+            return (key, display, list(tags))
+    return None
+
+
+def _load_json(path, default):
+    if not os.path.exists(path):
+        return default
+    with open(path, encoding="utf-8") as f:
+        text = f.read().strip()
+    return json.loads(text) if text else default
+
+
+def _save_json(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+def _slug(name: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9]+", "-", os.path.splitext(name)[0]).strip("-").lower()[:40]
+
+
+def _compose(copy) -> str:
+    tags = " ".join("#" + t.lstrip("#") for t in copy.hashtags)
+    return f"{copy.hook}\n\n{copy.caption}\n\n{tags}".strip()
+
+
+def _transcript_text(segments) -> str:
+    return " ".join(getattr(s, "text", "").strip() for s in segments).strip()
+
+
+def display_folder(brand_key: str) -> str:
+    """Map a brand key to its canonical Dropbox folder name (for tests/docs)."""
+    for folder, (key, *_rest) in BRANDS.items():
+        if key == brand_key:
+            return folder
+    return brand_key
+
+
+def _top_level_folders(dbx):
+    """Yield (path_lower, display_name) for each folder at the app-folder root."""
+    client = dbx._client()
+    res = client.files_list_folder("")
+    out = []
+    while True:
+        for e in res.entries:
+            if e.__class__.__name__ == "FolderMetadata":
+                out.append((getattr(e, "path_lower", ""), getattr(e, "path_display", e.name)))
+        if not getattr(res, "has_more", False):
+            break
+        res = client.files_list_folder_continue(res.cursor)
+    return out
+
+
+def process_folder(folder_path: str, folder_display: str, brand, dbx, *, dry_run: bool = False) -> list[dict]:
+    """Process the videos directly inside one matched brand folder."""
+    brand_key, display, default_tags = brand
+    processed = set(_load_json(PROCESSED_PATH, []))
+    created: list[dict] = []
+
+    for f in dbx.list_folder(folder_path):
+        if not f.name.lower().endswith(VIDEO_EXTS) or f.rev in processed:
+            continue
+        print(f"[{brand_key}] processing {f.name} from {folder_display}")
+        if dry_run:
+            created.append({"id": f"{brand_key}-DRYRUN-{_slug(f.name)}", "brand": brand_key})
+            continue
+        try:
+            entries = _process_one(f, folder_display, brand_key, display, default_tags, dbx)
+            created.extend(entries)
+            processed.add(f.rev)
+        except Exception as e:  # noqa: BLE001 — one bad video never kills the run
+            print(f"[{brand_key}] FAILED {f.name}: {e}")
+
+    _save_json(PROCESSED_PATH, sorted(processed))
+    return created
+
+
+def _speech_bounds(segments) -> tuple[float, float]:
+    """(start, end) seconds spanning the spoken content, with small padding."""
+    starts = [getattr(s, "start_seconds", None) for s in segments]
+    ends = [getattr(s, "end_seconds", None) for s in segments]
+    starts = [x for x in starts if x is not None]
+    ends = [x for x in ends if x is not None]
+    s0 = max(0.0, (min(starts) if starts else 0.0) - 0.2)
+    e0 = (max(ends) if ends else 0.0) + 0.3
+    if e0 <= s0:
+        e0 = s0 + 5.0
+    return s0, e0
+
+
+def _windows(s: float, e: float, target: float | None = None) -> list[tuple[float, float, str]]:
+    """Split [s, e] into back-to-back ~``target``-second chunks (default 20s).
+
+    Each chunk becomes its own post, so one minute of footage yields ~3-4 posts.
+    Chunks are equal-length and non-overlapping; a clip already near target
+    length stays whole. ``CLIP_TARGET_SECONDS`` overrides the default.
+    """
+    target = target or float(os.getenv("CLIP_TARGET_SECONDS", "20"))
+    total = max(0.0, e - s)
+    if total <= target * 1.5:
+        return [(round(s, 2), round(e, 2), "clip-1")]
+    n = max(1, round(total / target))
+    step = total / n
+    out = []
+    for i in range(n):
+        a = s + i * step
+        b = e if i == n - 1 else s + (i + 1) * step
+        out.append((round(a, 2), round(b, 2), f"clip-{i + 1}"))
+    return out
+
+
+def _write_srt(segments, a: float, b: float, path: str) -> str | None:
+    """Write an SRT for the segments inside [a,b], shifted to start at 0.
+
+    Returns the path, or None if no speech falls in the window.
+    """
+    def _ts(t: float) -> str:
+        t = max(0.0, t)
+        h, rem = divmod(t, 3600)
+        m, s = divmod(rem, 60)
+        return f"{int(h):02d}:{int(m):02d}:{s:06.3f}".replace(".", ",")
+
+    lines: list[str] = []
+    idx = 1
+    for seg in segments:
+        ss = getattr(seg, "start_seconds", None)
+        ee = getattr(seg, "end_seconds", None)
+        tx = (getattr(seg, "text", "") or "").strip()
+        if ss is None or ee is None or not tx or ee <= a or ss >= b:
+            continue
+        s = max(ss, a) - a
+        e = min(ee, b) - a
+        if e <= s:
+            continue
+        lines.append(f"{idx}\n{_ts(s)} --> {_ts(e)}\n{tx}\n")
+        idx += 1
+    if idx == 1:
+        return None
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return path
+
+
+# Bold, TikTok-style burned caption look (ASS force_style).
+_CAPTION_STYLE = (
+    "FontName=DejaVu Sans,Fontsize=22,Bold=1,PrimaryColour=&H00FFFFFF&,"
+    "OutlineColour=&H00000000&,BorderStyle=1,Outline=3,Shadow=1,"
+    "Alignment=2,MarginV=180"
+)
+
+
+def _brand_logo(brand_key: str) -> str | None:
+    """Path to a brand's watermark PNG (``content/brand/<key>-logo.png``) or None."""
+    p = os.path.join(ROOT, "content", "brand", f"{brand_key}-logo.png")
+    return p if os.path.exists(p) else None
+
+
+def _edit_short(src: str, a: float, b: float, out_path: str, srt: str | None = None,
+                mute: bool = False, music: str | None = None, logo: str | None = None) -> str:
+    """Cut [a,b], reframe vertical 1080x1920. Optional bold captions, mute audio,
+    looped background ``music``, and a top-right ``logo`` watermark (HP house style)."""
+    import subprocess  # lazy, stdlib
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    dur = max(0.1, b - a)
+    vchain = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1"
+    if srt:
+        vchain += f",subtitles={srt}:force_style='{_CAPTION_STYLE}'"
+    cmd = ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src]
+    if music:
+        cmd += ["-stream_loop", "-1", "-i", music]   # loop the track to fill the clip
+    if logo:
+        cmd += ["-i", logo]
+    cmd += ["-t", f"{dur:.2f}"]
+    if logo:
+        li = 2 if music else 1   # logo is the last input
+        cmd += ["-filter_complex",
+                f"[0:v]{vchain}[bg];[{li}:v]scale=200:-1[lg];[bg][lg]overlay=W-w-28:28[v]",
+                "-map", "[v]"]
+        if music:
+            cmd += ["-map", "1:a:0"]
+        elif not mute:
+            cmd += ["-map", "0:a:0?"]
+    else:
+        cmd += ["-vf", vchain]
+        if music:
+            cmd += ["-map", "0:v:0", "-map", "1:a:0"]
+    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
+    if music:
+        cmd += ["-c:a", "aac", "-b:a", "160k"]
+    elif mute:
+        cmd += ["-an"]
+    else:
+        cmd += ["-c:a", "aac", "-b:a", "128k"]
+    cmd += ["-movflags", "+faststart", out_path]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return out_path
+
+
+# HP house caption voice (matched to their posted IG). Rotates a hook per clip.
+_HP_HOOKS = (
+    "Turned this backyard into a place you actually want to be.",
+    "Luxury landscaping, redefined. ✨\U0001F33F",
+    "A yard done right just hits different. \U0001F338\U0001F33F",
+    "This is what happens when vision meets execution. ✨",
+    "From overgrown to outdoor escape. \U0001F525\U0001F33F",
+    "Backyard goals, upgraded. \U0001F4AF\U0001F33F",
+    "Built to stand out and thrive. \U0001F331",
+    "Good landscaping starts below the surface. \U0001F331\U0001F4A7",
+)
+_HP_CTA = "Call (979) 777-8851!!"
+_HP_TAGS = "#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals"
+
+
+def _hp_caption(seed: str) -> str:
+    """HP house-style post caption: rotating hook -> phone CTA -> hashtags."""
+    import zlib
+    hook = _HP_HOOKS[zlib.crc32(seed.encode()) % len(_HP_HOOKS)]
+    return f"{hook}\n\n{_HP_CTA}\n•\n•\n{_HP_TAGS}"
+
+
+def _concat(parts: list[str], out_path: str, xfade: float = 0.8) -> str:
+    """Join clips with smooth crossfades (not choppy hard cuts). Falls back to a
+    plain concat if the crossfade graph fails (e.g. a part has no audio)."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if len(parts) == 1:
+        shutil.copy(parts[0], out_path)
+        return out_path
+
+    durs = []
+    for p in parts:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", p],
+            capture_output=True, text=True,
+        )
+        try:
+            durs.append(float(r.stdout.strip()))
+        except ValueError:
+            durs.append(3.0)
+
+    cmd = ["ffmpeg", "-y"]
+    for p in parts:
+        cmd += ["-i", p]
+    fc = []
+    vlab, alab, off = "[0:v]", "[0:a]", durs[0] - xfade
+    for i in range(1, len(parts)):
+        nv, na = f"[v{i}]", f"[a{i}]"
+        fc.append(f"{vlab}[{i}:v]xfade=transition=fade:duration={xfade}:offset={off:.3f}{nv}")
+        fc.append(f"{alab}[{i}:a]acrossfade=d={xfade}{na}")
+        vlab, alab = nv, na
+        off += durs[i] - xfade
+    cmd += ["-filter_complex", ";".join(fc), "-map", vlab, "-map", alab,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        return out_path
+    except subprocess.CalledProcessError:
+        pass
+    # Fallback: plain (hard) concat.
+    lst = out_path + ".txt"
+    with open(lst, "w") as f:
+        for p in parts:
+            f.write(f"file '{os.path.abspath(p)}'\n")
+    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst,
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path],
+                   check=True, capture_output=True)
+    os.remove(lst)
+    return out_path
+
+
+def _edit_tile(src: str, a: float, b: float, out_path: str, w: int, h: int) -> str:
+    """Cut [a,b] as a ``w``x``h`` tile (scaled to fill, cropped). Muted. Used for
+    both row panels (1080xH) and side-by-side column panels (Wx1920)."""
+    import subprocess  # lazy
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    dur = max(0.1, b - a)
+    vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1"
+    subprocess.run(
+        ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{dur:.2f}", "-vf", vf,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an",
+         "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
+def _hstackN(parts: list[str], out_path: str) -> str:
+    """Side-by-side (column) stack of equal-height tiles into one 1080x1920 clip."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if len(parts) == 1:
+        shutil.copy(parts[0], out_path)
+        return out_path
+    cmd = ["ffmpeg", "-y"]
+    for p in parts:
+        cmd += ["-i", p]
+    n = len(parts)
+    fc = "".join(f"[{i}:v]" for i in range(n)) + f"hstack=inputs={n}[v]"
+    cmd += ["-filter_complex", fc, "-map", "[v]", "-shortest",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-movflags", "+faststart", out_path]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return out_path
+
+
+def _edit_panel(src: str, a: float, b: float, out_path: str, height: int) -> str:
+    """Cut [a,b] as a full-width 1080x``height`` PANEL (keeps the horizontal
+    framing) for vertical multi-panel stacks — HP's split-screen look. Muted;
+    the stack carries no audio (trending sound is added at post time)."""
+    import subprocess  # lazy
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    dur = max(0.1, b - a)
+    vf = (f"scale=1080:{height}:force_original_aspect_ratio=increase,"
+          f"crop=1080:{height},setsar=1")
+    subprocess.run(
+        ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{dur:.2f}", "-vf", vf,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an",
+         "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
+def _stackN(parts: list[str], out_path: str) -> str:
+    """Vertically stack equal-width panels into one 1080x1920 clip (HP split-screen).
+
+    Panels are trimmed to the shortest input so the stack stays in sync; the
+    result is silent (add trending audio in-app at post time)."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if len(parts) == 1:
+        shutil.copy(parts[0], out_path)
+        return out_path
+    cmd = ["ffmpeg", "-y"]
+    for p in parts:
+        cmd += ["-i", p]
+    n = len(parts)
+    fc = "".join(f"[{i}:v]" for i in range(n)) + f"vstack=inputs={n}[v]"
+    cmd += ["-filter_complex", fc, "-map", "[v]", "-shortest",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-movflags", "+faststart", out_path]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return out_path
+
+
+def _concat_v(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
+    """Crossfade-concat VIDEO only (silent output) — for mixed silent montage
+    segments where an audio crossfade isn't possible. Normalizes every segment to
+    1080x1920@30 so xfade never chokes on mismatched fps/size. Plain-concat fallback."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if len(parts) == 1:
+        shutil.copy(parts[0], out_path)
+        return out_path
+    durs = []
+    for p in parts:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", p], capture_output=True, text=True)
+        try:
+            durs.append(float(r.stdout.strip()))
+        except ValueError:
+            durs.append(3.0)
+    n = len(parts)
+    cmd = ["ffmpeg", "-y"]
+    for p in parts:
+        cmd += ["-i", p]
+    fc = [f"[{i}:v]fps=30,scale=1080:1920,setsar=1,format=yuv420p[n{i}]" for i in range(n)]
+    vlab, off = "[n0]", durs[0] - xfade
+    for i in range(1, n):
+        nv = f"[v{i}]"
+        fc.append(f"{vlab}[n{i}]xfade=transition=fade:duration={xfade}:offset={off:.3f}{nv}")
+        vlab, off = nv, off + durs[i] - xfade
+    cmd += ["-filter_complex", ";".join(fc), "-map", vlab, "-an",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-movflags", "+faststart", out_path]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        return out_path
+    except subprocess.CalledProcessError:
+        pass
+    lst = out_path + ".txt"
+    with open(lst, "w") as fh:
+        for p in parts:
+            fh.write(f"file '{os.path.abspath(p)}'\n")
+    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-an",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                    "-movflags", "+faststart", out_path], check=True, capture_output=True)
+    os.remove(lst)
+    return out_path
+
+
+def _find_music(dbx) -> str | None:
+    """Download the first audio file from a Dropbox folder whose name has 'music'."""
+    for path_lower, display in _top_level_folders(dbx):
+        if "music" in display.lower():
+            auds = [f for f in dbx.list_folder(path_lower)
+                    if f.name.lower().endswith((".mp3", ".wav", ".m4a", ".aac"))]
+            if auds:
+                return dbx.download(auds[0])
+    return None
+
+
+def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> list[dict]:
+    """Download -> transcribe -> make ~10 vertical cuts -> upload -> review entries."""
+    import shutil  # lazy, stdlib
+
+    from services.caption import transcribe  # lazy (whisper)
+    from services.write.free_writer import generate_caption  # lazy
+
+    raw = dbx.download(f)
+    # Safe filename (no spaces/commas) so ffmpeg paths never break on phone names.
+    ext = os.path.splitext(f.name)[1] or ".mp4"
+    base = _slug(f.name) or "clip"
+    local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
+    if os.path.abspath(local) != os.path.abspath(raw):
+        shutil.copy(raw, local)
+
+    segments = transcribe(local)
+    transcript = _transcript_text(segments)
+    copy = generate_caption(
+        {"transcript": transcript, "brand_name": display},
+        default_hashtags=default_tags,
+    )
+    caption = _compose(copy)
+
+    s0, e0 = _speech_bounds(segments)
+    queue = _load_json(QUEUE_PATH, [])
+    entries: list[dict] = []
+    stamp = _dt.datetime.utcnow().strftime("%Y%m%d%H%M%S")
+
+    # Vertical chunks, NO burned subtitles (owner's call). The strong post
+    # caption goes in the text field instead, used when the post is published.
+    for i, (a, b, label) in enumerate(_windows(s0, e0)):
+        out_name = f"{base}-{label}.mp4"
+        out_local = os.path.join(os.path.dirname(local), out_name)
+        try:
+            _edit_short(local, a, b, out_local, srt=None)
+        except Exception as ex:  # noqa: BLE001 — skip a bad cut, keep the rest
+            print(f"[{brand_key}] cut {label} failed: {ex}")
+            continue
+        out_path = f"{folder_display.rstrip('/')}/processed/{out_name}"
+        dbx.upload(out_local, out_path)
+        url = dbx.shared_link(out_path, raw=True)
+        entry = {
+            "id": f"{brand_key}-{stamp}-{label}",
+            "brand": brand_key,
+            "text": caption,
+            "media_url": url,
+            "media_path": out_path,   # Dropbox path, so old versions can be deleted
+            "platforms": list(REVIEW_PLATFORMS),
+            "schedule": None,
+            "status": "review",   # NEVER posts (poster only fires "pending")
+            "error": None,
+        }
+        queue.append(entry)
+        entries.append(entry)
+        print(f"[{brand_key}] cut {label}: {a:.0f}-{b:.0f}s ({b - a:.0f}s) -> {out_path}")
+
+    _save_json(QUEUE_PATH, queue)
+    print(f"[{brand_key}] {len(entries)} cuts ready for review. caption: {caption[:70]!r}")
+    return entries
+
+
+def debug_tree() -> None:
+    """Print what the Dropbox app can see (root + one level deep) for diagnosis."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    print("== Dropbox app-folder contents (root) ==")
+    res = client.files_list_folder("")
+    if not res.entries:
+        print("  (root is empty — nothing visible to the app)")
+    for e in res.entries:
+        is_dir = e.__class__.__name__ == "FolderMetadata"
+        tag = classify_brand(e.name)
+        label = f" -> brand={tag[0]}" if (is_dir and tag) else (" -> (unmatched)" if is_dir else "")
+        print(f"  {'DIR ' if is_dir else 'file'} {getattr(e, 'path_display', e.name)}{label}")
+        if is_dir:
+            try:
+                sub = client.files_list_folder(getattr(e, "path_lower", ""))
+                for se in sub.entries:
+                    print(f"        - {getattr(se, 'name', '?')}")
+                if not sub.entries:
+                    print("        (empty)")
+            except Exception as ex:  # noqa: BLE001
+                print(f"        (could not list: {ex})")
+
+
+def _find_phrase_end(segments, phrase: str) -> float | None:
+    """End-time (seconds) of where ``phrase`` is spoken, or None if not found.
+
+    Prefers word-level timing; falls back to the segment containing the phrase.
+    """
+    norm = lambda s: re.sub(r"[^a-z]", "", s.lower())
+    target = [norm(w) for w in phrase.split() if norm(w)]
+    if not target:
+        return None
+    words = []
+    for seg in segments:
+        for w in (getattr(seg, "words", None) or []):
+            words.append((norm(getattr(w, "text", "")), getattr(w, "end_seconds", None)))
+    n = len(target)
+    for i in range(len(words) - n + 1):
+        if [words[i + j][0] for j in range(n)] == target and words[i + n - 1][1] is not None:
+            return float(words[i + n - 1][1])
+    # fallback: a segment whose text contains the phrase
+    flat = " ".join(target)
+    for seg in segments:
+        txt = " ".join(norm(w) for w in (getattr(seg, "text", "") or "").split())
+        if flat in txt and getattr(seg, "end_seconds", None) is not None:
+            return float(seg.end_seconds)
+    return None
+
+
+def _first_word_after(segments, t0: float) -> float:
+    """Start time of the first spoken word at/after ``t0`` (else ``t0``)."""
+    times = []
+    for seg in segments:
+        for w in (getattr(seg, "words", None) or []):
+            st = getattr(w, "start_seconds", None)
+            if st is not None and st >= t0:
+                times.append(st)
+        ss = getattr(seg, "start_seconds", None)
+        if ss is not None and ss >= t0:
+            times.append(ss)
+    return min(times) if times else t0
+
+
+def recut(end_phrase: str, clip_index: int = 2, end_buffer: float = 1.0,
+          start_lead: float | None = None) -> list[dict]:
+    """Recut one chunk: start ``start_lead`` sec before the first word (if set),
+    end ``end_buffer`` sec after ``end_phrase``. Never burns subtitles.
+
+    Operates on the first video in the first matched brand folder. Returns the
+    review entries created (one).
+    """
+    import shutil
+
+    from services.caption import transcribe
+    from services.ingest import dropbox_client as dbx
+
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            continue
+        vids = [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+        if not vids:
+            continue
+        brand_key, dispname, _tags = brand
+        f = vids[0]
+        raw = dbx.download(f)
+        base = _slug(f.name) or "clip"
+        ext = os.path.splitext(f.name)[1] or ".mp4"
+        local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
+        if os.path.abspath(local) != os.path.abspath(raw):
+            shutil.copy(raw, local)
+
+        segments = transcribe(local)
+        s0, e0 = _speech_bounds(segments)
+        wins = _windows(s0, e0)
+        a_chunk, b, _label = wins[max(0, min(clip_index - 1, len(wins) - 1))]
+        if start_lead is not None:
+            a = max(0.0, _first_word_after(segments, a_chunk) - start_lead)
+        else:
+            a = a_chunk
+        t = _find_phrase_end(segments, end_phrase)
+        end = (t + end_buffer) if t is not None else b
+        print(f"[{brand_key}] recut clip {clip_index}: start {a:.1f}s, "
+              f"phrase {'found @ %.1fs' % t if t is not None else 'NOT found (kept chunk end)'}, "
+              f"end {end:.1f}s")
+        out_name = f"{base}-clip{clip_index}-recut.mp4"
+        out_local = os.path.join(os.path.dirname(local), out_name)
+        _edit_short(local, a, end, out_local, srt=None)
+        out_path = f"{display.rstrip('/')}/processed/{out_name}"
+        dbx.upload(out_local, out_path)
+        url = dbx.shared_link(out_path, raw=True)
+        from services.write.free_writer import generate_caption  # lazy
+        caption = _compose(generate_caption(
+            {"transcript": _transcript_text(segments), "brand_name": dispname},
+            default_hashtags=_tags,
+        ))
+        entry = {
+            "id": f"{brand_key}-{_dt.datetime.utcnow():%Y%m%d%H%M%S}-clip{clip_index}-recut",
+            "brand": brand_key, "text": caption, "media_url": url,
+            "media_path": out_path,
+            "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+            "status": "review", "error": None,
+        }
+        # Delete the old version(s) of THIS clip (queue entry + Dropbox file) so
+        # only the latest recut remains — no sifting through messed-up versions.
+        queue = _load_json(QUEUE_PATH, [])
+        keep = []
+        for e in queue:
+            same = e.get("brand") == brand_key and (
+                e["id"].endswith(f"clip-{clip_index}")
+                or e["id"].endswith(f"clip{clip_index}-recut")
+            )
+            if same:
+                mp = e.get("media_path")
+                if mp:
+                    try:
+                        dbx.delete(mp)
+                        print(f"[{brand_key}] deleted old: {mp}")
+                    except Exception as ex:  # noqa: BLE001
+                        print(f"[{brand_key}] could not delete {mp}: {ex}")
+            else:
+                keep.append(e)
+        keep.append(entry)
+        _save_json(QUEUE_PATH, keep)
+        print(f"[{brand_key}] recut -> {out_path} (replaced {len(queue) - len(keep) + 1} old)")
+        return [entry]
+    print("recut: no brand folder with a video found.")
+    return []
+
+
+def _first_video(dbx, match: str | None = None):
+    """(file, local_path, base, brand, display) for the first video (optionally
+    one whose filename contains ``match``), or None."""
+    import shutil
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            continue
+        vids = [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+        if match:
+            vids = [f for f in vids if match.lower() in f.name.lower()]
+        if not vids:
+            continue
+        f = vids[0]
+        raw = dbx.download(f)
+        base = _slug(f.name) or "clip"
+        ext = os.path.splitext(f.name)[1] or ".mp4"
+        local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
+        if os.path.abspath(local) != os.path.abspath(raw):
+            shutil.copy(raw, local)
+        return f, local, base, brand, display
+    return None
+
+
+def dump_transcript() -> None:
+    """Transcribe EVERY video in the brand folders and print/commit a timestamped
+    transcript per video, so good clip windows can be chosen by time."""
+    import shutil
+    from services.caption import transcribe  # lazy
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    out_dir = os.path.join(ROOT, "content", "transcripts")
+    os.makedirs(out_dir, exist_ok=True)
+    count = 0
+    for path_lower, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        for f in dbx.list_folder(path_lower):
+            if not f.name.lower().endswith(VIDEO_EXTS):
+                continue
+            raw = dbx.download(f)
+            base = _slug(f.name) or "clip"
+            ext = os.path.splitext(f.name)[1] or ".mp4"
+            local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
+            if os.path.abspath(local) != os.path.abspath(raw):
+                shutil.copy(raw, local)
+            segs = transcribe(local)
+            lines = [f"[{getattr(s, 'start_seconds', 0.0) or 0.0:6.1f} - "
+                     f"{getattr(s, 'end_seconds', 0.0) or 0.0:6.1f}] "
+                     f"{(getattr(s, 'text', '') or '').strip()}" for s in segs]
+            txt = "\n".join(lines)
+            with open(os.path.join(out_dir, f"{base}.txt"), "w", encoding="utf-8") as fp:
+                fp.write(f"# {display}/{f.name}  (base={base})\n{txt}\n")
+            print(f"=== TRANSCRIPT base={base}  ({display}/{f.name}, {len(segs)} seg) ===")
+            print(txt)
+            print()
+            count += 1
+    print(f"\nTranscribed {count} video(s).")
+
+
+def dump_thumbs() -> None:
+    """For every video, make a 3x2 contact sheet of sample frames (committed) so
+    the footage can be 'seen' to choose good shots."""
+    import subprocess  # lazy
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    out_dir = os.path.join(ROOT, "content", "thumbs")
+    os.makedirs(out_dir, exist_ok=True)
+    for path_lower, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        for f in dbx.list_folder(path_lower):
+            if not f.name.lower().endswith(VIDEO_EXTS):
+                continue
+            raw = dbx.download(f)
+            base = _slug(f.name) or "clip"
+            r = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=nw=1:nk=1", raw],
+                capture_output=True, text=True)
+            try:
+                dur = max(1.0, float(r.stdout.strip()))
+            except ValueError:
+                dur = 10.0
+            fps = max(0.05, 6.0 / dur)
+            sheet = os.path.join(out_dir, f"{base}.jpg")
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", raw, "-vf",
+                 f"fps={fps:.4f},scale=320:-1,tile=3x2:padding=6:margin=6",
+                 "-frames:v", "1", "-q:v", "4", sheet],
+                check=False, capture_output=True)
+            print(f"contact sheet {base}.jpg (dur={dur:.1f}s)")
+
+
+def fetch_ig_reference(brand_key: str = "hp", limit: int = 24) -> int:
+    """Pull a brand's already-posted Instagram media (thumbnails + captions) so
+    its established house style can be studied and matched on every new clip.
+    Read-only Graph API call — never posts. Stdlib only (urllib)."""
+    import json as _json  # lazy
+    import urllib.request
+    import urllib.parse
+    from services.publish.brands import get_brand  # lazy
+
+    creds = get_brand(brand_key)
+    token, ig = creds.meta_access_token, creds.ig_user_id
+    if not token or not ig:
+        print(f"ig_reference: missing creds for {brand_key} (need token + ig_user_id).")
+        return 0
+    fields = ("id,caption,media_type,media_product_type,thumbnail_url,media_url,"
+              "permalink,timestamp,like_count,comments_count")
+    url = (f"https://graph.facebook.com/v21.0/{ig}/media?fields={fields}"
+           f"&limit={int(limit)}&access_token={urllib.parse.quote(token)}")
+    out_dir = os.path.join(ROOT, "content", "reference", brand_key)
+    os.makedirs(out_dir, exist_ok=True)
+    try:
+        with urllib.request.urlopen(url, timeout=60) as r:
+            data = _json.loads(r.read().decode())
+    except Exception as ex:  # noqa: BLE001 — surface API/permission errors plainly
+        print(f"ig_reference: Graph API call failed: {ex}")
+        return 0
+    items = data.get("data", [])
+    lines = [f"# {brand_key.upper()} Instagram — {len(items)} recent posts (house-style reference)\n"]
+    n = 0
+    for it in items:
+        mid = it.get("id", "")
+        cap = (it.get("caption") or "").strip()
+        mt, pt = it.get("media_type", ""), it.get("media_product_type", "")
+        lines.append(f"\n## {mid}  [{mt}/{pt}]  ❤ {it.get('like_count')} 💬 {it.get('comments_count')}\n"
+                     f"{it.get('permalink', '')}\n\n{cap}\n")
+        thumb = it.get("thumbnail_url") or (it.get("media_url") if mt == "IMAGE" else None)
+        if thumb:
+            try:
+                urllib.request.urlretrieve(thumb, os.path.join(out_dir, f"{mid}.jpg"))
+                n += 1
+            except Exception as ex:  # noqa: BLE001
+                print(f"thumb fail {mid}: {ex}")
+    with open(os.path.join(out_dir, "captions.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    print(f"\nig_reference: {len(items)} posts, {n} thumbnails -> content/reference/{brand_key}/")
+    return n
+
+
+def ingest_clip(name: str, src_path: str, brand_key: str = "hp") -> dict | None:
+    """Upload a ready-made local clip into a brand's Dropbox processed/ folder and
+    add a ``status:"review"`` queue entry — used to save an externally-edited clip
+    as a keeper. Never posts (review only)."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    if not os.path.exists(src_path):
+        print(f"ingest_clip: file not found {src_path}")
+        return None
+    display = None
+    for path_lower, disp in _top_level_folders(dbx):
+        b = classify_brand(disp)
+        if b and b[0] == brand_key:
+            display = disp
+            break
+    if not display:
+        print(f"ingest_clip: no Dropbox folder for brand {brand_key}")
+        return None
+    nm = _slug(name) or "clip"
+    out_path = f"{display.rstrip('/')}/processed/{nm}.mp4"
+    dbx.upload(src_path, out_path)
+    url = dbx.shared_link(out_path, raw=True)
+    queue = [e for e in _load_json(QUEUE_PATH, []) if e.get("id") != f"{brand_key}-{nm}"]
+    entry = {
+        "id": f"{brand_key}-{nm}", "brand": brand_key,
+        "text": _hp_caption(nm) if brand_key == "hp" else "",
+        "media_url": url, "media_path": out_path,
+        "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+        "status": "review", "error": None,
+    }
+    queue.append(entry)
+    _save_json(QUEUE_PATH, queue)
+    print(f"ingest_clip: saved {brand_key}-{nm} -> {out_path} (status=review)")
+    return entry
+
+
+def fetch_previews(which: str = "all") -> int:
+    """Download finished review clips from Dropbox into ``content/preview/`` so
+    they can be viewed/sent directly (Dropbox is unreachable from some sandboxes).
+    ``which`` is "all" or a comma-separated id list. Never posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    out_dir = os.path.join(ROOT, "content", "preview")
+    os.makedirs(out_dir, exist_ok=True)
+    sel = which.strip().lower()
+    ids = None if sel in ("all", "") else {x.strip() for x in which.split(",") if x.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    n = 0
+    for e in queue:
+        if ids is not None and e.get("id") not in ids:
+            continue
+        mp = e.get("media_path")
+        if not mp:
+            continue
+        dest = os.path.join(out_dir, f"{e['id']}.mp4")
+        try:
+            client.files_download_to_file(dest, mp)
+            print(f"fetched {e['id']}")
+            n += 1
+        except Exception as ex:  # noqa: BLE001
+            print(f"fetch failed {e['id']}: {ex}")
+    print(f"\n{n} preview(s) in content/preview/")
+    return n
+
+
+def prune_clips(keep_ids: list[str]) -> list[dict]:
+    """Delete every queued clip NOT in ``keep_ids`` — both its Dropbox file and
+    its queue entry — leaving only the kept set. Clears stale batches so the
+    review folder shows only the current clips. Never posts anything."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    keep = {k.strip() for k in keep_ids if k.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    kept, removed = [], 0
+    for e in queue:
+        if e.get("id") in keep:
+            kept.append(e)
+            continue
+        mp = e.get("media_path")
+        if mp:
+            try:
+                dbx.delete(mp)
+            except Exception as ex:  # noqa: BLE001 — a missing file shouldn't stop the purge
+                print(f"delete failed {mp}: {ex}")
+        print(f"pruned {e.get('id')}")
+        removed += 1
+    _save_json(QUEUE_PATH, kept)
+    print(f"\nPruned {removed} old clip(s); kept {len(kept)}.")
+    return kept
+
+
+# ---- SupoClip-style auto highlight selection (free, local Whisper, no LLM) ----
+# Words that signal a strong hook/payoff in landscaping/reno talking-head clips.
+HOOK_WORDS = (
+    "finished", "finally", "reveal", "check it out", "check this out", "before",
+    "after", "transformation", "transformed", "renovated", "renovation", "favorite",
+    "beautiful", "expensive", "crazy", "insane", "look at", "turned out", "dream",
+    "results", "result", "best", "perfect", "love",
+)
+FILLER_WORDS = ("um ", "uh ", " like ", "you know", "i mean", "kind of", "sort of")
+
+
+def _score_segment_text(text: str, dur: float) -> float:
+    """Heuristic 'is this a good moment' score for a stretch of speech (no LLM).
+
+    Rewards lively delivery (words/sec) and hook words; penalizes filler and
+    lengths far from the ~15s sweet spot. Stands in for SupoClip's paid LLM.
+    """
+    t = (text or "").lower()
+    words = re.findall(r"[a-z']+", t)
+    if not words or dur <= 0:
+        return 0.0
+    density = min((len(words) / dur) / 3.0, 1.0)      # ~3 words/sec reads as lively
+    hooks = sum(1 for h in HOOK_WORDS if h in t)
+    filler = sum(t.count(f) for f in FILLER_WORDS)
+    score = density + 0.6 * hooks - 0.15 * filler
+    score -= abs(dur - 15.0) / 30.0                   # prefer a satisfying ~15s
+    return score
+
+
+def _pick_highlights(segments, n: int = 4, min_len: float = 7.0,
+                     max_len: float = 20.0) -> list[tuple[float, float, str]]:
+    """Pick up to ``n`` non-overlapping [start,end] windows snapped to sentence
+    (segment) boundaries, ranked by :func:`_score_segment_text`.
+
+    This is SupoClip's 'find the best moments' brain, done locally for $0. Silent
+    footage has no segments, so it returns [] (b-roll needs the montage path).
+    """
+    segs = [s for s in segments
+            if getattr(s, "end_seconds", 0) > getattr(s, "start_seconds", 0)
+            and (getattr(s, "text", "") or "").strip()]
+    candidates: list[tuple[float, float, float]] = []
+    for i in range(len(segs)):
+        j = i
+        while j < len(segs) and (segs[j].end_seconds - segs[i].start_seconds) <= max_len:
+            a, b = segs[i].start_seconds, segs[j].end_seconds
+            if (b - a) >= min_len:
+                text = " ".join(s.text for s in segs[i:j + 1])
+                candidates.append((_score_segment_text(text, b - a), a, b))
+            j += 1
+    candidates.sort(key=lambda c: c[0], reverse=True)
+    picked: list[tuple[float, float]] = []
+    for score, a, b in candidates:
+        if score <= 0:
+            continue
+        if all(b <= pa or a >= pb for pa, pb in picked):
+            picked.append((a, b))
+            if len(picked) >= n:
+                break
+    picked.sort()
+    return [(round(a, 2), round(b, 2), f"auto-{k + 1}") for k, (a, b) in enumerate(picked)]
+
+
+def auto_highlights(n: int = 4, match: str | None = None) -> list[dict]:
+    """Transcribe one narrated video locally and auto-cut its best moments into
+    review clips — SupoClip's brain, free (faster-whisper, no AssemblyAI/LLM key).
+
+    Targets the video whose filename contains ``match`` (or PIPELINE_VIDEO, else
+    the first video found). Silent b-roll yields nothing — use the montage path.
+    """
+    from services.caption import transcribe  # lazy
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    match = match or os.getenv("PIPELINE_VIDEO") or None
+    ctx = _first_video(dbx, match)
+    if not ctx:
+        print("auto_highlights: no matching video found.")
+        return []
+    _f, _local, base, _brand, _display = ctx
+    wins = _pick_highlights(transcribe(_local), n=n)
+    if not wins:
+        print(f"auto_highlights: no speech windows in {base} (silent b-roll?).")
+        return []
+    print(f"auto_highlights: {base} -> {[(a, b) for a, b, _ in wins]}")
+    specs = [{"name": nm, "video": match, "start": a, "end": b} for a, b, nm in wins]
+    return cut_windows(specs)
+
+
+def cut_montage(spec: dict) -> dict | None:
+    """Assemble a dynamic, layout-shifting montage from raw footage.
+
+    ``spec`` = {name, segments:[...], xfade?}. Each segment is either a single
+    shot ``{"shot": [video, start, end]}`` or an N-up stack
+    ``{"panels": [[video, start, end], ...]}`` (2 or 3 tiles). Segments render to
+    1080x1920 and crossfade together (video-only, silent — add trending audio at
+    post). Mixing 3-up -> single -> 2-up gives the energetic, changing-views feel."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    name = _slug(spec.get("name", "montage")) or "montage"
+    vid_cache: dict = {}
+
+    def resolve(match):
+        k = (match or "").lower()
+        if k not in vid_cache:
+            vid_cache[k] = _first_video(dbx, match or None)
+        return vid_cache[k]
+
+    seg_clips: list[str] = []
+    base_ctx = None
+    workdir = "."
+    for i, seg in enumerate(spec.get("segments", [])):
+        shots = seg.get("panels") or ([seg["shot"]] if seg.get("shot") else [])
+        if not shots:
+            continue
+        ctx0 = resolve(str(shots[0][0]))
+        if not ctx0:
+            raise RuntimeError(f"video not found: {shots[0][0]!r}")
+        if base_ctx is None:
+            base_ctx, workdir = ctx0, os.path.dirname(ctx0[1])
+        out = os.path.join(workdir, f"mseg-{name}-{i}.mp4")
+        n = len(shots)
+        if n == 1:
+            v, a, b = shots[0]
+            _edit_short(resolve(str(v))[1], float(a), float(b), out, mute=True)
+        elif seg.get("orient") == "cols":
+            # side-by-side vertical columns (each tile W/n x 1920)
+            w = 1080 // n
+            tiles = []
+            for k, (v, a, b) in enumerate(shots):
+                pp = os.path.join(workdir, f"mseg-{name}-{i}-c{k}.mp4")
+                _edit_tile(resolve(str(v))[1], float(a), float(b), pp, w, 1920)
+                tiles.append(pp)
+            _hstackN(tiles, out)
+        else:
+            # stacked rows (each tile 1080 x H/n)
+            h = 1920 // n
+            panels = []
+            for k, (v, a, b) in enumerate(shots):
+                pp = os.path.join(workdir, f"mseg-{name}-{i}-p{k}.mp4")
+                _edit_tile(resolve(str(v))[1], float(a), float(b), pp, 1080, h)
+                panels.append(pp)
+            _stackN(panels, out)
+        seg_clips.append(out)
+
+    if not seg_clips or base_ctx is None:
+        print("cut_montage: no segments rendered.")
+        return None
+    _f, local, base, brand, display = base_ctx
+    out_local = os.path.join(workdir, f"{base}-{name}.mp4")
+    _concat_v(seg_clips, out_local, xfade=float(spec.get("xfade", 0.4)))
+    brand_key, dispname, tags = brand
+    out_path = f"{display.rstrip('/')}/processed/{base}-{name}.mp4"
+    dbx.upload(out_local, out_path)
+    url = dbx.shared_link(out_path, raw=True)
+    queue = [e for e in _load_json(QUEUE_PATH, [])
+             if e.get("id") != f"{brand_key}-{name}"]
+    entry = {
+        "id": f"{brand_key}-{name}", "brand": brand_key,
+        "text": _hp_caption(name) if brand_key == "hp" else "",
+        "media_url": url, "media_path": out_path,
+        "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+        "status": "review", "error": None,
+    }
+    queue.append(entry)
+    _save_json(QUEUE_PATH, queue)
+    print(f"cut_montage: {brand_key}-{name} ({len(seg_clips)} segments) -> {out_path}")
+    return entry
+
+
+def cut_windows(specs: list[dict]) -> list[dict]:
+    """Cut explicit time windows: each spec is {name, start, end} (seconds).
+
+    Reliable (no phrase guessing): exactly [start, end], vertical, no subtitles.
+    Redoing a window with the same name auto-deletes the previous version.
+    """
+    from services.caption import transcribe  # lazy
+    from services.ingest import dropbox_client as dbx  # lazy
+    from services.write.free_writer import generate_caption  # lazy
+
+    default_match = os.getenv("PIPELINE_VIDEO") or None
+    vid_cache: dict = {}     # match -> (f, local, base, brand, display) or None
+    cap_cache: dict = {}     # base -> caption
+
+    def resolve(match):
+        key = (match or "").lower()
+        if key not in vid_cache:
+            vid_cache[key] = _first_video(dbx, match or None)
+        return vid_cache[key]
+
+    def caption_for(local, base, dispname, tags):
+        if base not in cap_cache:
+            cap_cache[base] = _compose(generate_caption(
+                {"transcript": _transcript_text(transcribe(local)), "brand_name": dispname},
+                default_hashtags=tags))
+        return cap_cache[base]
+
+    music_path = _find_music(dbx) if any(sp.get("music") for sp in specs) else None
+    if any(sp.get("music") for sp in specs) and not music_path:
+        print("No music track found — drop an .mp3 in a Dropbox folder named 'Music'.")
+
+    queue = _load_json(QUEUE_PATH, [])
+    made: list[dict] = []
+    for sp in specs:
+        nm = _slug(sp.get("name", "clip")) or "clip"
+        try:
+            parts_spec = sp.get("parts")
+            if parts_spec:
+                # CROSS-VIDEO: each part is {video, start, end} from possibly different videos.
+                # With "stack": true, the parts are tiled into vertical panels (HP's
+                # split-screen look) instead of crossfaded in sequence.
+                ctxs, tmp = [], []
+                stack = bool(sp.get("stack"))
+                ph = 1920 // len(parts_spec) if stack else 0
+                for j, part in enumerate(parts_spec):
+                    ctx = resolve(part.get("video") or default_match)
+                    if not ctx:
+                        raise RuntimeError(f"video not found: {part.get('video')!r}")
+                    ctxs.append(ctx)
+                    plocal = ctx[1]
+                    if stack:
+                        pp = os.path.join(os.path.dirname(plocal), f"pan-{nm}-{j}.mp4")
+                        _edit_panel(plocal, float(part["start"]), float(part["end"]), pp, ph)
+                    else:
+                        pp = os.path.join(os.path.dirname(plocal), f"xv-{nm}-{j}.mp4")
+                        _edit_short(plocal, float(part["start"]), float(part["end"]), pp,
+                                    srt=None, mute=bool(sp.get("mute")), logo=_brand_logo(ctx[3][0]))
+                    tmp.append(pp)
+                _f, local, base, brand, display = ctxs[0]
+                out_local = os.path.join(os.path.dirname(local), f"{base}-{nm}.mp4")
+                _stackN(tmp, out_local) if stack else _concat(tmp, out_local)
+            else:
+                ctx = resolve(sp.get("video") or default_match)
+                if not ctx:
+                    raise RuntimeError("video not found")
+                _f, local, base, brand, display = ctx
+                lg = _brand_logo(brand[0])
+                out_local = os.path.join(os.path.dirname(local), f"{base}-{nm}.mp4")
+                wins = sp.get("segments") or [[sp["start"], sp["end"]]]
+                if len(wins) == 1:
+                    _edit_short(local, float(wins[0][0]), float(wins[0][1]), out_local, srt=None,
+                                mute=bool(sp.get("mute")), music=(music_path if sp.get("music") else None),
+                                logo=lg)
+                else:
+                    pl = []
+                    for j, w in enumerate(wins):
+                        pp = os.path.join(os.path.dirname(local), f"{base}-{nm}-p{j}.mp4")
+                        _edit_short(local, float(w[0]), float(w[1]), pp, srt=None,
+                                    mute=bool(sp.get("mute")), logo=lg)
+                        pl.append(pp)
+                    _concat(pl, out_local)
+        except Exception as ex:  # noqa: BLE001
+            print(f"cut {nm} failed: {ex}")
+            continue
+
+        brand_key, dispname, tags = brand
+        out_name = os.path.basename(out_local)
+        out_path = f"{display.rstrip('/')}/processed/{out_name}"
+        dbx.upload(out_local, out_path)
+        url = dbx.shared_link(out_path, raw=True)
+        caption = _hp_caption(nm) if brand_key == "hp" else caption_for(local, base, dispname, tags)
+        keep = []
+        for e in queue:
+            if e.get("brand") == brand_key and e["id"] == f"{brand_key}-{nm}":
+                # Delete the prior file ONLY if it's a different path — a same-name
+                # re-render overwrites out_path, so never delete what we just uploaded.
+                if e.get("media_path") and e["media_path"] != out_path:
+                    try:
+                        dbx.delete(e["media_path"])
+                    except Exception:  # noqa: BLE001
+                        pass
+            else:
+                keep.append(e)
+        queue = keep
+        entry = {
+            "id": f"{brand_key}-{nm}", "brand": brand_key, "text": caption,
+            "media_url": url, "media_path": out_path,
+            "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+            "status": "review", "error": None,
+        }
+        queue.append(entry)
+        made.append(entry)
+        print(f"[{brand_key}] {nm} -> {out_path}")
+    _save_json(QUEUE_PATH, queue)
+    return made
+
+
+def run(*, dry_run: bool = False) -> list[dict]:
+    """Discover top-level brand folders and process each. Returns review entries."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    created: list[dict] = []
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            print(f"skip unrecognized folder: {display}")
+            continue
+        created += process_folder(path_lower, display, brand, dbx, dry_run=dry_run)
+    return created
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Process Dropbox brand videos into the review queue.")
+    parser.add_argument("--dry-run", action="store_true", help="List/route only; no download/transcribe.")
+    parser.add_argument("--ls", action="store_true", help="Print the Dropbox app-folder tree and exit.")
+    args = parser.parse_args(argv)
+
+    if args.ls:
+        debug_tree()
+        return 0
+
+    # IG_REFERENCE: pull a brand's posted IG media (thumbs+captions) to study its
+    # house style. Value = brand key, optional ":N" limit (e.g. "hp" or "hp:30").
+    igref = os.getenv("IG_REFERENCE", "").strip()
+    if igref:
+        bk = igref.split(":")[0] or "hp"
+        tail = igref.split(":")[1] if ":" in igref else ""
+        fetch_ig_reference(bk, int(tail) if tail.isdigit() else 24)
+        return 0
+
+    # MONTAGE_SPEC json: assemble a layout-shifting hype montage (3-up/2-up/single).
+    montage = os.getenv("MONTAGE_SPEC", "").strip()
+    if montage:
+        import json as _json
+        made = cut_montage(_json.loads(montage))
+        print(f"\nDone: montage {'created' if made else 'failed'}. Nothing posted (review only).")
+        return 0
+
+    # INGEST_CLIP "name:relpath": save a ready-made local clip into Dropbox +
+    # a review queue entry (e.g. an externally-combined keeper).
+    ingest = os.getenv("INGEST_CLIP", "").strip()
+    if ingest and ":" in ingest:
+        nm, rel = ingest.split(":", 1)
+        ingest_clip(nm.strip(), os.path.join(ROOT, rel.strip()))
+        return 0
+
+    # FETCH_PREVIEWS: pull finished clips from Dropbox into content/preview/.
+    fp = os.getenv("FETCH_PREVIEWS", "").strip()
+    if fp:
+        fetch_previews(fp)
+        return 0
+
+    # KEEP_IDS: delete every clip (Dropbox file + queue entry) not in this
+    # comma-separated id list — clears stale batches from the review folder.
+    keep_ids = os.getenv("KEEP_IDS", "").strip()
+    if keep_ids:
+        prune_clips(keep_ids.split(","))
+        return 0
+
+    # Dump a timestamped transcript so clip windows can be chosen by time.
+    if os.getenv("DUMP_TRANSCRIPT", "").strip().lower() in ("1", "true", "yes"):
+        dump_transcript()
+        return 0
+
+    # Dump per-video contact sheets so the footage can be 'seen' to pick shots.
+    if os.getenv("DUMP_THUMBS", "").strip().lower() in ("1", "true", "yes"):
+        dump_thumbs()
+        return 0
+
+    # AUTO_HIGHLIGHTS: free SupoClip-style brain — auto-pick best moments from a
+    # narrated video (value = how many clips, e.g. "4"). Silent b-roll yields none.
+    auto = os.getenv("AUTO_HIGHLIGHTS", "").strip()
+    if auto:
+        try:
+            n = int(auto)
+        except ValueError:
+            n = 4
+        made = auto_highlights(n=n)
+        print(f"\nDone: {len(made)} auto highlight clip(s). Nothing posted (all status=review).")
+        return 0
+
+    # RECUT_SPECS json: explicit time windows [{"name","start","end"}] (preferred),
+    # or legacy phrase recuts [{"clip","end_phrase",...}].
+    specs = os.getenv("RECUT_SPECS", "").strip()
+    if specs:
+        import json as _json
+
+        data = _json.loads(specs)
+        if data and ("parts" in data[0] or "segments" in data[0] or ("start" in data[0] and "end" in data[0])):
+            made = cut_windows(data)
+            print(f"\nDone: {len(made)} clip(s). Nothing posted (all status=review).")
+        else:
+            total = 0
+            for sp in data:
+                sl = sp.get("start_lead")
+                total += len(recut(
+                    sp.get("end_phrase", ""), int(sp.get("clip", 2)),
+                    float(sp.get("end_buffer", 1.0)),
+                    float(sl) if sl is not None else None,
+                ))
+            print(f"\nDone: {total} recut(s).")
+        return 0
+
+    created = run(dry_run=args.dry_run)
+    print(f"\nDone: {len(created)} review item(s) created. Nothing was posted (all status=review).")
+    if not created and not args.dry_run:
+        print("\nNo videos processed — here's what the app sees, to diagnose:")
+        try:
+            debug_tree()
+        except Exception as e:  # noqa: BLE001
+            print(f"(debug listing failed: {e})")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

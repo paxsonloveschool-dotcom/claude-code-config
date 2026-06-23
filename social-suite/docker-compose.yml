@@ -1,0 +1,52 @@
+# Social Suite local stack.
+# orchestrator (FastAPI API) + worker (queue consumer) + redis (queue).
+# whisper / ffmpeg services are commented placeholders — uncomment and supply
+# images once the transcribe/burn stages are implemented.
+
+services:
+  orchestrator:
+    build: .
+    command: uvicorn services.orchestrator.api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    volumes:
+      - ./media:/app/media
+
+  worker:
+    build: .
+    # Placeholder command: a real worker pulls jobs off the Redis queue and runs
+    # services.orchestrator.pipeline.run_pipeline(). Swap for `rq worker` etc.
+    command: python -m services.orchestrator.pipeline
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    volumes:
+      - ./media:/app/media
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # --- Placeholders: uncomment when the stages are implemented ---------------
+  #
+  # whisper:
+  #   # GPU-capable Whisper transcription service (e.g. faster-whisper server).
+  #   # image: ghcr.io/your-org/whisper-server:latest
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices: [{ capabilities: ["gpu"] }]
+  #   env_file:
+  #     - .env
+  #
+  # ffmpeg:
+  #   # Dedicated ffmpeg+libass worker for caption burn-in, if you split it out.
+  #   # image: jrottenberg/ffmpeg:6-ubuntu
+  #   volumes:
+  #     - ./media:/app/media

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Clients · Content Portal{% endblock %}
+{% block content %}
+<div class="flex items-end justify-between mb-6">
+  <h1 class="text-2xl font-bold">Clients</h1>
+  <p class="text-sm text-gray-500">{{ rows|length }} brand(s)</p>
+</div>
+
+<div class="mb-4 flex flex-wrap gap-4 text-xs text-gray-500">
+  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-green-500"></span> connected</span>
+  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-yellow-400"></span> needs attention</span>
+  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-red-500"></span> expired</span>
+  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-gray-300"></span> disconnected</span>
+</div>
+
+{% if rows %}
+<div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+      <tr>
+        <th class="text-left font-medium px-4 py-3">Brand</th>
+        {% for p in platforms %}
+        <th class="font-medium px-1 py-3 text-center">{{ p.value }}</th>
+        {% endfor %}
+        <th class="px-4 py-3"></th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-100">
+      {% for row in rows %}
+      <tr class="hover:bg-gray-50">
+        <td class="px-4 py-3 font-medium">
+          <a href="/brands/{{ row.brand.id }}" class="hover:underline">{{ row.brand.name }}</a>
+          <span class="ml-2 text-xs text-gray-400">{{ row.brand.status.value }}</span>
+        </td>
+        {% for p in platforms %}
+        <td class="px-1 py-3 text-center">
+          {% set ch = row.channels.get(p.value) %}
+          {% include "_dot.html" with context %}
+        </td>
+        {% endfor %}
+        <td class="px-4 py-3 text-right">
+          <a href="/brands/{{ row.brand.id }}"
+             class="text-indigo-600 hover:underline text-xs">View &rarr;</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="bg-white rounded-lg border border-dashed border-gray-300 p-10 text-center text-gray-500">
+  No brands yet. Run <code class="bg-gray-100 px-1 rounded">python -m portal.seed</code> to load demo data.
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,117 @@
+# Full-stack deployment for the in-house social media suite.
+#
+# Runs EVERYTHING needed to go live, on any Docker host:
+#   - Postiz (posting engine, pinned v2.11.2) + its Postgres + Redis
+#   - Caddy (automatic HTTPS for ${DOMAIN} -> Postiz; required for social OAuth)
+#   - social-suite orchestrator (FastAPI) + worker + its own Redis queue
+#
+# Go live:  cp .env.example .env  (fill it in)  ->  docker compose -f docker-compose.full.yml up -d
+# Then open https://${DOMAIN}, connect your accounts in Postiz, grab the API key,
+# put it in .env as POSTIZ_API_KEY, and re-run `up -d`.
+
+services:
+  # --- HTTPS reverse proxy (public entry point) ------------------------------
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [postiz]
+
+  # --- Postiz posting engine -------------------------------------------------
+  postiz:
+    image: ghcr.io/gitroomhq/postiz-app:v2.11.2
+    restart: always
+    environment:
+      MAIN_URL: "https://${DOMAIN}"
+      FRONTEND_URL: "https://${DOMAIN}"
+      NEXT_PUBLIC_BACKEND_URL: "https://${DOMAIN}/api"
+      BACKEND_INTERNAL_URL: "http://localhost:3000"
+      DATABASE_URL: "postgresql://postiz:${POSTGRES_PASSWORD}@postiz-postgres:5432/postiz"
+      REDIS_URL: "redis://postiz-redis:6379"
+      JWT_SECRET: "${JWT_SECRET}"
+      IS_GENERAL: "true"
+      DISABLE_REGISTRATION: "${DISABLE_REGISTRATION:-false}"
+      STORAGE_PROVIDER: "local"
+      UPLOAD_DIRECTORY: "/uploads"
+      NEXT_PUBLIC_UPLOAD_DIRECTORY: "/uploads"
+    volumes:
+      - postiz-config:/config/
+      - postiz-uploads:/uploads/
+    depends_on:
+      postiz-postgres: { condition: service_healthy }
+      postiz-redis: { condition: service_healthy }
+
+  postiz-postgres:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postiz
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postiz
+    volumes:
+      - postiz-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postiz -d postiz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postiz-redis:
+    image: redis:7.2-alpine
+    restart: always
+    volumes: [postiz-redis-data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # --- Social suite (our pipeline) -------------------------------------------
+  suite-orchestrator:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: always
+    command: uvicorn services.orchestrator.api:app --host 0.0.0.0 --port 8000
+    # Bound to localhost only — reach it via SSH tunnel, not the public internet.
+    ports: ["127.0.0.1:8000:8000"]
+    env_file: [.env]
+    environment:
+      POSTIZ_API_URL: "http://postiz:5000"   # internal network call
+      REDIS_URL: "redis://suite-redis:6379/0"
+    volumes: [suite-media:/app/media]
+    depends_on: [postiz, suite-redis]
+
+  suite-worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: always
+    command: python -m services.orchestrator.pipeline
+    env_file: [.env]
+    environment:
+      POSTIZ_API_URL: "http://postiz:5000"
+      REDIS_URL: "redis://suite-redis:6379/0"
+    volumes: [suite-media:/app/media]
+    depends_on: [postiz, suite-redis]
+
+  suite-redis:
+    image: redis:7.2-alpine
+    restart: always
+    volumes: [suite-redis-data:/data]
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postiz-config:
+  postiz-uploads:
+  postiz-pg:
+  postiz-redis-data:
+  suite-media:
+  suite-redis-data:

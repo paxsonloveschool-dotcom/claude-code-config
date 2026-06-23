@@ -21,9 +21,10 @@ services:
       - postiz
 
   postiz:
-    # amd64 servers: leave default. ARM servers (e.g. Oracle A1): set
-    # POSTIZ_IMAGE to a published -arm64 tag in your .env (see .env.example).
-    image: ${POSTIZ_IMAGE:-ghcr.io/gitroomhq/postiz-app:latest}
+    # Pinned to v2.11.2 — the last single-container release before Postiz
+    # required an external Temporal stack (v2.12+). ":latest" needs extra
+    # services and will fail this compose. Override via POSTIZ_IMAGE in .env.
+    image: ${POSTIZ_IMAGE:-ghcr.io/gitroomhq/postiz-app:v2.11.2}
     container_name: postiz
     restart: always
     environment:

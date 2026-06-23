@@ -1,0 +1,86 @@
+name: Social post (cron)
+
+# The free always-on robot: fires due posts from social-suite/content/queue.json
+# at the Instagram + Facebook APIs every 30 minutes. No server, no card, no Mac.
+#
+# ⏸️  PAUSED 2026-06-18 at the owner's request — the auto-schedule (cron) below is
+# disabled so NOTHING posts automatically. To resume auto-posting, uncomment the
+# two `schedule:` lines. Manual runs still work via the "Run workflow" button, but
+# the queue is also paused (all posts status="paused"), so a manual run posts
+# nothing until those are flipped back to "pending".
+on:
+  # schedule:
+  #   - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+# Allow the job to push the updated queue back to the branch.
+permissions:
+  contents: write
+
+jobs:
+  post-due:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install social-suite (core)
+        run: pip install -e social-suite
+
+      - name: Check Meta token(s) (fail loud if expired/revoked)
+        # Validates EVERY configured brand's token. Flat BRAND_* secrets (one
+        # value each, no JSON) take priority over BRANDS_JSON; both are passed.
+        env:
+          BRAND_HP_META_ACCESS_TOKEN: ${{ secrets.BRAND_HP_META_ACCESS_TOKEN }}
+          BRAND_HP_FB_PAGE_ID: ${{ secrets.BRAND_HP_FB_PAGE_ID }}
+          BRAND_HP_IG_USER_ID: ${{ secrets.BRAND_HP_IG_USER_ID }}
+          BRAND_RESTORE_META_ACCESS_TOKEN: ${{ secrets.BRAND_RESTORE_META_ACCESS_TOKEN }}
+          BRAND_RESTORE_FB_PAGE_ID: ${{ secrets.BRAND_RESTORE_FB_PAGE_ID }}
+          BRAND_RESTORE_IG_USER_ID: ${{ secrets.BRAND_RESTORE_IG_USER_ID }}
+          BRANDS_JSON: ${{ secrets.BRANDS_JSON }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+        run: python social-suite/services/publish/check_token.py
+
+      - name: Publish due posts
+        # Flat BRAND_* secrets (one value each, no JSON) take priority over
+        # BRANDS_JSON; both passed. Legacy single-account secrets remain for the
+        # "default" brand (posts with no "brand").
+        env:
+          BRAND_HP_META_ACCESS_TOKEN: ${{ secrets.BRAND_HP_META_ACCESS_TOKEN }}
+          BRAND_HP_FB_PAGE_ID: ${{ secrets.BRAND_HP_FB_PAGE_ID }}
+          BRAND_HP_IG_USER_ID: ${{ secrets.BRAND_HP_IG_USER_ID }}
+          BRAND_RESTORE_META_ACCESS_TOKEN: ${{ secrets.BRAND_RESTORE_META_ACCESS_TOKEN }}
+          BRAND_RESTORE_FB_PAGE_ID: ${{ secrets.BRAND_RESTORE_FB_PAGE_ID }}
+          BRAND_RESTORE_IG_USER_ID: ${{ secrets.BRAND_RESTORE_IG_USER_ID }}
+          # TikTok (per-brand flat secrets — same pattern as Meta above). The
+          # runner mints a fresh ~24h access token from the refresh token each run.
+          BRAND_HP_TIKTOK_REFRESH_TOKEN: ${{ secrets.BRAND_HP_TIKTOK_REFRESH_TOKEN }}
+          BRAND_HP_TIKTOK_CLIENT_KEY: ${{ secrets.BRAND_HP_TIKTOK_CLIENT_KEY }}
+          BRAND_HP_TIKTOK_CLIENT_SECRET: ${{ secrets.BRAND_HP_TIKTOK_CLIENT_SECRET }}
+          BRAND_HP_TIKTOK_PRIVACY_LEVEL: ${{ secrets.BRAND_HP_TIKTOK_PRIVACY_LEVEL }}
+          BRAND_RESTORE_TIKTOK_REFRESH_TOKEN: ${{ secrets.BRAND_RESTORE_TIKTOK_REFRESH_TOKEN }}
+          BRAND_RESTORE_TIKTOK_CLIENT_KEY: ${{ secrets.BRAND_RESTORE_TIKTOK_CLIENT_KEY }}
+          BRAND_RESTORE_TIKTOK_CLIENT_SECRET: ${{ secrets.BRAND_RESTORE_TIKTOK_CLIENT_SECRET }}
+          BRAND_RESTORE_TIKTOK_PRIVACY_LEVEL: ${{ secrets.BRAND_RESTORE_TIKTOK_PRIVACY_LEVEL }}
+          BRANDS_JSON: ${{ secrets.BRANDS_JSON }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+        run: python social-suite/services/publish/run_due.py social-suite/content/queue.json
+
+      - name: Commit updated queue (if changed)
+        run: |
+          if git diff --quiet -- social-suite/content/queue.json; then
+            echo "Queue unchanged — nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add social-suite/content/queue.json
+          git commit -m "chore(social): update post queue statuses [skip ci]"
+          git push
