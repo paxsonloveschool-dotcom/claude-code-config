@@ -1,0 +1,4 @@
+# /HP-Content Auto./ACAM20250529_5811.MP4  (base=acam20250529-5811)
+[   0.0 -    1.9] Sausage
+[  11.5 -   12.9] Vanilla
+[  27.7 -   30.5] 1.5 cc

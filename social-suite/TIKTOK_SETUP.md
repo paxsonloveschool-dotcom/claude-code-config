@@ -28,19 +28,24 @@ credentials (`BRANDS_JSON` / `content/brands.json`):
 
 1. Go to **https://developers.tiktok.com** → register / log in with the account
    that owns the brand → **Manage apps → Connect an app**.
-2. Add the **Content Posting API** product (this is what `video.publish` needs).
-3. Fill app details, add your **privacy policy URL** and **terms URL** (a simple
+2. Add the **Content Posting API** product and choose **Direct Post** (this is
+   what `video.publish` needs). Adding **Login Kit** too is fine.
+3. **Scopes:** enable `user.info.basic`, `video.upload`, and `video.publish`.
+4. Fill app details, add your **privacy policy URL** and **terms URL** (a simple
    page on the business site is fine — see [`legal/`](legal/)).
-4. Under **Login Kit / redirect URIs**, add a redirect URI you control, e.g.
+5. Under **Login Kit / redirect URIs**, add a redirect URI you control, e.g.
    `https://<your-site>/tiktok/callback` (it does **not** need to be a live
    server — you only read the `code` out of the redirected URL by hand). Copy it
    **exactly**; it must match byte-for-byte in step (b).
-5. Copy the **Client Key** and **Client Secret** from the app's credentials.
+6. **Add Target Users / testers:** add the HP **and** Restore TikTok accounts as
+   testers. While the app is unaudited it can ONLY post to accounts added here —
+   without this, even a private `SELF_ONLY` post is rejected.
+7. Copy the **Client Key** and **Client Secret** from the app's credentials.
 
 > ⚠️ **Audit / privacy levels.** Until your app passes TikTok's Content Posting
-> API **audit**, posts can only go out as **`SELF_ONLY`** (private). Submit for
-> audit to unlock `PUBLIC_TO_EVERYONE`. You can wire everything up and test in
-> `SELF_ONLY` while the audit is pending — see (e).
+> API **audit**, posts can only go out as **`SELF_ONLY`** (private) to the
+> testers from step 6. Submit for audit to unlock `PUBLIC_TO_EVERYONE`. You can
+> wire everything up and test in `SELF_ONLY` while the audit is pending — see (e).
 
 ---
 

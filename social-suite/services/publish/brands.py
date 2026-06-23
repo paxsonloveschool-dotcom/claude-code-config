@@ -113,6 +113,7 @@ _FLAT_FIELDS = {
     "TIKTOK_CLIENT_SECRET": ("tiktok", "client_secret"),
     "TIKTOK_PRIVACY_LEVEL": ("tiktok", "privacy_level"),
     "TIKTOK_ACCESS_TOKEN": ("tiktok", "access_token"),
+    "TIKTOK_OPEN_ID": ("tiktok", "open_id"),
 }
 
 
