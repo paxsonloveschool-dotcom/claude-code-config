@@ -1,91 +1,233 @@
-# TikTok connection — setup guide (for the parallel Claude Code session)
+# TikTok setup — link an account to the auto-poster
 
-Goal: let the social suite post HP Landscaping + Restore clips to **TikTok**, on the
-same rules as the rest of the suite: **$0, no credit card, nothing posts until the
-owner approves.** TikTok dev accounts are free and need no card.
+This is the definitive guide to posting to **your own** TikTok account via the
+**Content Posting API**, the TikTok parallel to [`META_SETUP.md`](META_SETUP.md).
 
-> Honest caveat (read first): TikTok's Content Posting API, while your app is
-> **unaudited**, can only post to **your own** connected TikTok account(s) and forces
-> videos to **SELF_ONLY (private)** until TikTok approves the app for public posting.
-> That's fine here — the suite already holds everything for manual approval. Public,
-> multi-account auto-posting needs the app to pass TikTok's audit later (free, but a
-> review). This mirrors the Meta "dev mode" situation we already accepted.
+> **The one thing to understand up front:** a TikTok **access** token lives only
+> **~24 hours**; the **refresh** token lives **~365 days**. So we never store a
+> bare access token — we store the **refresh token** (plus the app's
+> `client_key` / `client_secret`) and the poster mints a fresh access token
+> just-in-time before every post. This is the same refresh-token pattern the
+> Dropbox ingest already uses.
 
----
+The result of this guide, per brand, is the values you paste into your brand
+credentials (`BRANDS_JSON` / `content/brands.json`):
 
-## PART A — Browser steps (owner does these; Claude walks them through)
-1. Go to **developers.tiktok.com** → log in with the HP TikTok account → **Manage apps**
-   → **Connect an app** (create one, e.g. "HP Social Suite"). Free, no card.
-2. In the app, **add products**: **Login Kit** and **Content Posting API**.
-   - Under Content Posting API choose **Direct Post**.
-3. **Scopes**: enable `user.info.basic`, `video.upload`, `video.publish`.
-4. **Redirect URI**: add `https://localhost/callback` (we'll use a manual code paste,
-   no server needed) — or any URI you control.
-5. Copy the **Client Key** and **Client Secret** (keep them private).
-6. **Add target users / testers**: add the HP TikTok account (and Restore's) as
-   testers so the unaudited app can post to them.
-7. (Only if using PULL_FROM_URL later) verify a **URL Prefix** you own. We'll use
-   **FILE_UPLOAD** (direct bytes) instead, so you can skip this.
-
-## PART B — Get an access token per account (OAuth, manual paste)
-For EACH brand account (HP, then Restore):
-1. Build the authorize URL (Claude will fill in CLIENT_KEY):
-   `https://www.tiktok.com/v2/auth/authorize/?client_key=CLIENT_KEY&scope=user.info.basic,video.upload,video.publish&response_type=code&redirect_uri=https://localhost/callback&state=hp`
-2. Open it, log into the brand's TikTok, approve. The browser redirects to
-   `https://localhost/callback?code=XXXX&...` — copy the **code** value from the URL.
-3. Exchange it for tokens (Claude runs this, or owner pastes in a terminal):
-   ```
-   curl -X POST https://open.tiktokapis.com/v2/oauth/token/ \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -d "client_key=CLIENT_KEY&client_secret=CLIENT_SECRET&code=XXXX&grant_type=authorization_code&redirect_uri=https://localhost/callback"
-   ```
-   Save from the JSON: `access_token`, `refresh_token`, `open_id`, `expires_in`.
-   (Tokens are short-lived; the `refresh_token` flow renews them — same pattern as
-   Dropbox in this repo.)
-
-## PART C — Wire into the repo (Claude implements)
-1. **GitHub Secrets** (repo Settings → Secrets → Actions), flat per-brand:
-   `BRAND_HP_TIKTOK_CLIENT_KEY`, `BRAND_HP_TIKTOK_CLIENT_SECRET`,
-   `BRAND_HP_TIKTOK_ACCESS_TOKEN`, `BRAND_HP_TIKTOK_REFRESH_TOKEN`,
-   `BRAND_HP_TIKTOK_OPEN_ID` (and the same `BRAND_RESTORE_TIKTOK_*` set).
-2. **`services/publish/brands.py`** — extend `_from_flat_env()` / `_FLAT_FIELDS` to
-   parse the `TIKTOK_*` suffixes into the existing `BrandCreds.tiktok` sub-dict
-   (`{"client_key","client_secret","access_token","refresh_token","open_id"}`).
-3. **New publisher** `services/publish/tiktok.py`:
-   - Refresh the access token if expired (POST `/v2/oauth/token/`,
-     `grant_type=refresh_token`).
-   - Direct Post via **FILE_UPLOAD**: POST `/v2/post/publish/video/init/` with
-     `{"post_info":{"title": <caption>, "privacy_level":"SELF_ONLY"}, "source_info":
-     {"source":"FILE_UPLOAD","video_size":N,"chunk_size":N,"total_chunk_count":1}}`,
-     then PUT the bytes to the returned `upload_url`. Poll
-     `/v2/post/publish/status/fetch/` until done.
-   - Keep `privacy_level` SELF_ONLY until the app is audited.
-4. **Hook into `run_due`** so a queued item with `"tiktok"` in `platforms` routes to
-   this publisher — but ONLY when `status=="pending"`. Leave the cron paused; the
-   suite still never posts on its own.
-5. **Test** with one HP clip set to a private SELF_ONLY post, confirm it lands in the
-   HP TikTok as private, then delete it. Do NOT flip anything to public.
-
-## Constraints to preserve (do not violate)
-- **Nothing posts automatically.** Poster only fires `status=="pending"`; keep the
-  cron in `.github/workflows/social-post.yml` commented out.
-- **$0 / no credit card.** TikTok dev + API are free; never add billing.
-- Per-brand only — an HP clip can only ever go to HP's TikTok.
-- Commit trailers used in this repo:
-  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` and the `Claude-Session:`
-  line. Never put any model identifier in commits/PRs/code.
-- Read `CLAUDE.md` and `STYLE_PROFILE.md` first for full project context.
+```json
+"tiktok": {
+  "refresh_token": "...",        // the long-lived (~365d) token — the key one
+  "client_key": "...",           // your TikTok app's Client Key
+  "client_secret": "...",        // your TikTok app's Client Secret
+  "privacy_level": "PUBLIC_TO_EVERYONE"
+}
+```
 
 ---
 
-### Ready-to-paste prompt for the other Claude Code session
-> I'm working in the `claude-code-config` repo (social-suite). Read
-> `social-suite/TIKTOK_SETUP.md`, `social-suite/services/publish/brands.py`, and
-> `CLAUDE.md` first. Goal: connect my HP Landscaping and Restore **TikTok** accounts
-> so the suite can post to them — but keep the hard rules: $0, no credit card, and
-> **nothing posts until I approve** (poster only fires `status=="pending"`, cron stays
-> off). Walk me through the TikTok developer-portal steps (Part A/B), then implement
-> Part C (brands.py TikTok creds, a `tiktok.py` Direct-Post publisher using
-> FILE_UPLOAD + SELF_ONLY privacy, and routing in `run_due`). Add the
-> `BRAND_HP_TIKTOK_*` / `BRAND_RESTORE_TIKTOK_*` GitHub secrets. Commit to `main`.
-> Don't post anything public; test one private SELF_ONLY clip then delete it.
+## (a) Create the TikTok app (developers.tiktok.com)
+
+1. Go to **https://developers.tiktok.com** → register / log in with the account
+   that owns the brand → **Manage apps → Connect an app**.
+2. Add the **Content Posting API** product and choose **Direct Post** (this is
+   what `video.publish` needs). Adding **Login Kit** too is fine.
+3. **Scopes:** enable `user.info.basic`, `video.upload`, and `video.publish`.
+4. Fill app details, add your **privacy policy URL** and **terms URL** (a simple
+   page on the business site is fine — see [`legal/`](legal/)).
+5. Under **Login Kit / redirect URIs**, add a redirect URI you control, e.g.
+   `https://<your-site>/tiktok/callback` (it does **not** need to be a live
+   server — you only read the `code` out of the redirected URL by hand). Copy it
+   **exactly**; it must match byte-for-byte in step (b).
+6. **Add Target Users / testers:** add the HP **and** Restore TikTok accounts as
+   testers. While the app is unaudited it can ONLY post to accounts added here —
+   without this, even a private `SELF_ONLY` post is rejected.
+7. Copy the **Client Key** and **Client Secret** from the app's credentials.
+
+> ⚠️ **Audit / privacy levels.** Until your app passes TikTok's Content Posting
+> API **audit**, posts can only go out as **`SELF_ONLY`** (private) to the
+> testers from step 6. Submit for audit to unlock `PUBLIC_TO_EVERYONE`. You can
+> wire everything up and test in `SELF_ONLY` while the audit is pending — see (e).
+
+---
+
+## (b) Authorize the account once (get the one-time `code`)
+
+Build the consent URL (requests the `video.publish` scope) and open it in the
+browser **logged in as the brand's TikTok account**:
+
+```bash
+python social-suite/services/publish/direct/tiktok_oauth.py authorize \
+  --client-key "YOUR_CLIENT_KEY" \
+  --redirect-uri "https://<your-site>/tiktok/callback"
+```
+
+Approve the screen. TikTok redirects to
+`https://<your-site>/tiktok/callback?code=THE_CODE&scope=...`. Copy `THE_CODE`
+out of the address bar (it is single-use and expires within minutes).
+
+---
+
+## (c) Exchange the `code` for the refresh token
+
+```bash
+python social-suite/services/publish/direct/tiktok_oauth.py exchange \
+  --client-key "YOUR_CLIENT_KEY" \
+  --client-secret "YOUR_CLIENT_SECRET" \
+  --code "THE_CODE" \
+  --redirect-uri "https://<your-site>/tiktok/callback"
+```
+
+Response (trimmed):
+
+```json
+{
+  "access_token": "act....",        // ~24h — we don't store this
+  "refresh_token": "rft....",       // ~365d — THIS is what we store
+  "refresh_expires_in": 31536000,
+  "open_id": "...",
+  "scope": "user.info.basic,video.publish"
+}
+```
+
+Take the **`refresh_token`** → that, with the `client_key` + `client_secret`, is
+what the brand stores.
+
+---
+
+## (d) Put the values into your brand credentials
+
+### Recommended: flat per-brand GitHub Secrets (how HP + Restore's Meta is set)
+
+Exactly the pattern already used for IG/FB — **one secret = one pasted value**,
+no JSON to mangle. Go to **repo → Settings → Secrets and variables → Actions →
+New repository secret** and add these (per brand; `<NAME>` = `HP`, `RESTORE`, …):
+
+| Secret name | Value |
+|---|---|
+| `BRAND_<NAME>_TIKTOK_REFRESH_TOKEN` | the `rft....` refresh token from step (c) |
+| `BRAND_<NAME>_TIKTOK_CLIENT_KEY` | your app's Client Key |
+| `BRAND_<NAME>_TIKTOK_CLIENT_SECRET` | your app's Client Secret |
+| `BRAND_<NAME>_TIKTOK_PRIVACY_LEVEL` | `PUBLIC_TO_EVERYONE` (or `SELF_ONLY` pre-audit) |
+
+`services/publish/brands.py` reads these into the brand's `tiktok` creds and the
+poster mints a fresh access token each run. The cron
+(`.github/workflows/social-post.yml`) already passes these secrets. Flat secrets
+override `BRANDS_JSON`, and stray spaces/newlines are trimmed automatically.
+
+### Alternative: one `BRANDS_JSON` secret / local `content/brands.json`
+
+Same values as one JSON object (see
+[`content/brands.example.json`](content/brands.example.json)):
+
+```json
+"tiktok": {
+  "refresh_token": "rft....",
+  "client_key": "YOUR_CLIENT_KEY",
+  "client_secret": "YOUR_CLIENT_SECRET",
+  "privacy_level": "PUBLIC_TO_EVERYONE"
+}
+```
+
+At post time, `run_due.py` sees the `refresh_token` and calls
+`tiktok_oauth.refresh_access_token(...)` to mint a fresh ~24h access token, then
+posts — no manual token babysitting.
+
+> TikTok **rotates** the refresh token on each refresh, but the previous one
+> keeps working until it nears expiry, so an unattended cron stays valid for the
+> full ~365-day window without re-storing. Re-run (b)–(c) once a year (or if a
+> token is ever revoked) to re-link.
+
+---
+
+## (e) Verify it works
+
+**Check a fresh access token can post** (cheapest authenticated call —
+`creator_info/query`):
+
+```bash
+# Mint one from the refresh token, then check it:
+python social-suite/services/publish/direct/tiktok_oauth.py refresh \
+  --client-key "YOUR_CLIENT_KEY" --client-secret "YOUR_CLIENT_SECRET" \
+  --refresh-token "rft...."        # copy access_token from the output
+
+TIKTOK_ACCESS_TOKEN="act...." \
+  python social-suite/services/publish/direct/tiktok_oauth.py check
+# -> "TikTok access token OK — creator info reachable, posting scope present."
+```
+
+**Verify every brand's link at once** (refreshes + checks each brand that has
+TikTok creds in `BRANDS_JSON` / `content/brands.json`):
+
+```bash
+python social-suite/services/publish/direct/tiktok_oauth.py check --all-brands
+# -> "[hp] OK"  "[restore] OK"  "All 2 brand TikTok link(s) OK."
+```
+
+**Dry-run the queue** (routes nothing, just shows what would post):
+
+```bash
+python social-suite/services/publish/run_due.py social-suite/content/queue.json --dry-run
+```
+
+While the audit is pending, set `"privacy_level": "SELF_ONLY"` so a real run
+posts a private video you can confirm in the app, then flip it to
+`PUBLIC_TO_EVERYONE` once audited.
+
+---
+
+## (f) Media: a LOCAL file (no public host needed)
+
+The publisher uploads the bytes directly via **FILE_UPLOAD**, so a post's
+`media_url` can be a **local video file path** (e.g. the rendered clip on disk) —
+**no public host, no verified domain, $0**. An `http(s)` URL also works (it's
+downloaded first), but you don't need one. This is the opposite of Meta, which
+must fetch your media server-side.
+
+---
+
+## (g) Test ONE private SELF_ONLY clip, then delete it
+
+Nothing here goes public: `SELF_ONLY` posts a **private** video only you can see.
+Post one from a local clip with the brand's token, confirm it in the TikTok app,
+then delete it.
+
+```bash
+# Use a fresh access token (mint from the refresh token if needed — see (e)).
+python - <<'PY'
+from services.publish.direct import tiktok
+pub_id = tiktok.post_tiktok(
+    access_token="act....",          # the brand's TikTok access token
+    caption="suite test — private",
+    video="media/clips/test.mp4",     # a LOCAL clip path
+    privacy_level="SELF_ONLY",        # private; nothing public
+)
+print("publish_id:", pub_id)
+# Optional: poll until done
+import time
+for _ in range(20):
+    s = tiktok.fetch_status("act....", pub_id)
+    st = (s.get("data") or {}).get("status")
+    print(st)
+    if st in ("PUBLISH_COMPLETE", "FAILED"):
+        break
+    time.sleep(3)
+PY
+```
+
+Then open the **TikTok app → your profile → the private video** and **delete it**.
+(Because it's `SELF_ONLY`, no follower ever saw it.)
+
+> The suite's own queue stays **paused**: the cron in
+> `.github/workflows/social-post.yml` is off, and `run_due.py` only fires posts
+> with `status == "pending"`. So nothing posts on its own until you flip a post
+> to `pending` yourself.
+
+---
+
+## Recap — what each piece is
+
+| Value | What it is | Lifetime |
+|---|---|---|
+| `client_key` / `client_secret` | The TikTok **app** identity (developers.tiktok.com) | until rotated |
+| `code` | One-time grant from the consent screen | minutes |
+| `access_token` | Used to post; minted just-in-time, never stored | ~24h |
+| `refresh_token` | **Stored** — mints access tokens for the cron | ~365d |

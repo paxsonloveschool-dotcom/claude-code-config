@@ -44,7 +44,11 @@ class BrandCreds:
         ig_user_id: Instagram Professional account id (for "instagram").
         fb_page_id: Facebook Page id (for "facebook").
         x: Optional ``{"access_token": ...}`` — X (Twitter) OAuth2 bearer token.
-        tiktok: Optional ``{"access_token": ...}`` — TikTok OAuth token.
+        tiktok: Optional TikTok creds. For unattended posting use the
+            self-refreshing shape ``{"refresh_token", "client_key",
+            "client_secret", "privacy_level"}`` (the runner mints a fresh
+            ~24h access token each post). A static ``{"access_token"}`` also
+            works for one-off/sandbox use. See ``TIKTOK_SETUP.md``.
         youtube: Optional ``{"access_token": ...}`` — YouTube OAuth token.
         gbp: Optional ``{"access_token", "account_id", "location_id"}`` for
             Google Business Profile.
@@ -96,11 +100,20 @@ def _from_mapping(data: dict) -> dict[str, BrandCreds]:
 # Flat per-brand env vars: BRAND_<NAME>_<FIELD>. No JSON to mangle — each secret
 # is a single pasted value. Far more robust than hand-edited BRANDS_JSON.
 #   BRAND_HP_META_ACCESS_TOKEN, BRAND_HP_FB_PAGE_ID, BRAND_HP_IG_USER_ID, ...
+#   BRAND_HP_TIKTOK_REFRESH_TOKEN, BRAND_HP_TIKTOK_CLIENT_KEY, ...
+# Each field maps to a path into the brand's creds dict: a 1-tuple is a top-level
+# Meta field; a 2-tuple lands in a per-platform sub-dict (e.g. ("tiktok", ...)).
 _FLAT_PREFIX = "BRAND_"
 _FLAT_FIELDS = {
-    "META_ACCESS_TOKEN": "meta_access_token",
-    "FB_PAGE_ID": "fb_page_id",
-    "IG_USER_ID": "ig_user_id",
+    "META_ACCESS_TOKEN": ("meta_access_token",),
+    "FB_PAGE_ID": ("fb_page_id",),
+    "IG_USER_ID": ("ig_user_id",),
+    "TIKTOK_REFRESH_TOKEN": ("tiktok", "refresh_token"),
+    "TIKTOK_CLIENT_KEY": ("tiktok", "client_key"),
+    "TIKTOK_CLIENT_SECRET": ("tiktok", "client_secret"),
+    "TIKTOK_PRIVACY_LEVEL": ("tiktok", "privacy_level"),
+    "TIKTOK_ACCESS_TOKEN": ("tiktok", "access_token"),
+    "TIKTOK_OPEN_ID": ("tiktok", "open_id"),
 }
 
 
@@ -111,14 +124,24 @@ def _from_flat_env() -> dict[str, BrandCreds]:
     "not configured this way" and fall through to the other sources.
     """
     raw: dict[str, dict] = {}
+    # Longest suffix first so a field that ends in a shorter field's name can
+    # never be misclassified (e.g. ``..._TIKTOK_ACCESS_TOKEN`` must not match the
+    # bare ``..._ACCESS_TOKEN`` of a future field).
+    suffixes = sorted(_FLAT_FIELDS, key=len, reverse=True)
     for key, value in os.environ.items():
         if not key.startswith(_FLAT_PREFIX):
             continue
-        for suffix, field in _FLAT_FIELDS.items():
+        for suffix in suffixes:
             if key.endswith("_" + suffix):
                 name = key[len(_FLAT_PREFIX): -(len(suffix) + 1)].lower()
                 if name:
-                    raw.setdefault(name, {})[field] = value
+                    path = _FLAT_FIELDS[suffix]
+                    target = raw.setdefault(name, {})
+                    for part in path[:-1]:
+                        target = target.setdefault(part, {})
+                    # Sub-dict values aren't stripped by ``_coerce`` (only the
+                    # top-level Meta fields are), so trim them here.
+                    target[path[-1]] = value.strip() if len(path) > 1 else value
                 break
     return _from_mapping(raw)
 

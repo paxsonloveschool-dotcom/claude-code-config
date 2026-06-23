@@ -7,7 +7,9 @@
       "access_token": "REPLACE_WITH_HP_X_OAUTH2_BEARER_TOKEN"
     },
     "tiktok": {
-      "access_token": "REPLACE_WITH_HP_TIKTOK_ACCESS_TOKEN",
+      "refresh_token": "REPLACE_WITH_HP_TIKTOK_REFRESH_TOKEN",
+      "client_key": "REPLACE_WITH_TIKTOK_APP_CLIENT_KEY",
+      "client_secret": "REPLACE_WITH_TIKTOK_APP_CLIENT_SECRET",
       "privacy_level": "PUBLIC_TO_EVERYONE"
     },
     "youtube": {

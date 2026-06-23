@@ -57,6 +57,16 @@ jobs:
           BRAND_RESTORE_META_ACCESS_TOKEN: ${{ secrets.BRAND_RESTORE_META_ACCESS_TOKEN }}
           BRAND_RESTORE_FB_PAGE_ID: ${{ secrets.BRAND_RESTORE_FB_PAGE_ID }}
           BRAND_RESTORE_IG_USER_ID: ${{ secrets.BRAND_RESTORE_IG_USER_ID }}
+          # TikTok (per-brand flat secrets — same pattern as Meta above). The
+          # runner mints a fresh ~24h access token from the refresh token each run.
+          BRAND_HP_TIKTOK_REFRESH_TOKEN: ${{ secrets.BRAND_HP_TIKTOK_REFRESH_TOKEN }}
+          BRAND_HP_TIKTOK_CLIENT_KEY: ${{ secrets.BRAND_HP_TIKTOK_CLIENT_KEY }}
+          BRAND_HP_TIKTOK_CLIENT_SECRET: ${{ secrets.BRAND_HP_TIKTOK_CLIENT_SECRET }}
+          BRAND_HP_TIKTOK_PRIVACY_LEVEL: ${{ secrets.BRAND_HP_TIKTOK_PRIVACY_LEVEL }}
+          BRAND_RESTORE_TIKTOK_REFRESH_TOKEN: ${{ secrets.BRAND_RESTORE_TIKTOK_REFRESH_TOKEN }}
+          BRAND_RESTORE_TIKTOK_CLIENT_KEY: ${{ secrets.BRAND_RESTORE_TIKTOK_CLIENT_KEY }}
+          BRAND_RESTORE_TIKTOK_CLIENT_SECRET: ${{ secrets.BRAND_RESTORE_TIKTOK_CLIENT_SECRET }}
+          BRAND_RESTORE_TIKTOK_PRIVACY_LEVEL: ${{ secrets.BRAND_RESTORE_TIKTOK_PRIVACY_LEVEL }}
           BRANDS_JSON: ${{ secrets.BRANDS_JSON }}
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
