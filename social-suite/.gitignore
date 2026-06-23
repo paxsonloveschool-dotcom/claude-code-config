@@ -30,3 +30,11 @@ venv/
 *.mp3
 *.ass
 *.srt
+
+# Keep the reusable HP end-card deliverables (brand assets, not throwaway content)
+!content/brand/outro/hp-outro.mp4
+!content/brand/outro/hp-outro-silent.mp4
+# Throwaway build artifacts from the outro render
+content/brand/outro/frames/
+content/brand/outro/sting.wav
+content/brand/outro/_contact_sheet.png
