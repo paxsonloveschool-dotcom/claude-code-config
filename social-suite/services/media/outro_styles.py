@@ -47,25 +47,9 @@ def ease_in_out(t):
 
 
 def base_dark(green_pool=1.0, cx=0.5, cy=0.40):
-    """Near-black backdrop with an optional green glow pool + vignette."""
-    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
-    base = np.zeros((H, W, 3), np.float32)
-    g = (1 - yy / H)
-    base[..., 0] = 3 + 3 * g
-    base[..., 1] = 6 + 11 * g
-    base[..., 2] = 4 + 5 * g
-    if green_pool > 0:
-        r = np.sqrt((xx - W * cx) ** 2 + (yy - H * cy) ** 2)
-        glow = np.clip(1 - r / (W * 0.60), 0, 1) ** 2.4
-        base[..., 0] += glow * 14 * green_pool
-        base[..., 1] += glow * 42 * green_pool
-        base[..., 2] += glow * 12 * green_pool
-    img = Image.fromarray(np.clip(base, 0, 255).astype(np.uint8), "RGB")
-    vig = Image.new("L", (W, H), 0)
-    ImageDraw.Draw(vig).ellipse((-W * 0.35, -H * 0.2, W * 1.35, H * 1.2), fill=255)
-    vig = vig.filter(ImageFilter.GaussianBlur(180))
-    img = Image.composite(img, Image.new("RGB", (W, H), (0, 0, 0)), vig)
-    return img.convert("RGBA")
+    """Pure-black backdrop. The logo is the hero; styles add their own accents
+    on top. (green_pool/cx/cy kept for call-compat; background stays black.)"""
+    return Image.new("RGBA", (W, H), (0, 0, 0, 255))
 
 
 def info_rise(frame, info, t, a=1.25, b=1.85):
@@ -314,10 +298,33 @@ def f_chrome(t, seconds, ctx):
 
 
 # --------------------------------------------------------------- style: SLAM
+SLAM_GREEN = (130, 232, 60)     # hotter green for slam effects
+SLAM_HI = (188, 255, 118)
+
+
+def _tint(layer, color):
+    out = Image.new("RGBA", layer.size, color + (0,))
+    out.putalpha(layer.split()[-1])
+    return out
+
+
+def _frame_shake(frame, t):
+    """Kick the whole frame for a few frames right after impact."""
+    land = seg(t, 0.50, 0.74)
+    amp = (1 - land) * 24 if 0.50 < t < 0.74 else 0
+    if amp < 0.6:
+        return frame
+    sx = int(math.sin(t * 130) * amp)
+    sy = int(math.cos(t * 110) * amp)
+    canvas = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+    canvas.alpha_composite(frame, (sx, sy))
+    return canvas
+
+
 def f_slam(t, seconds, ctx):
     mark, info = ctx["mark"], ctx["info"]
-    frame = base_dark(green_pool=0.7).copy()
-    bs = 0.80
+    frame = base_dark().copy()
+    bs = 1.0
 
     # diagonal swipe bars wiping across early
     sw = ease_in_out(seg(t, 0.0, 0.45))
@@ -326,48 +333,62 @@ def f_slam(t, seconds, ctx):
         db = ImageDraw.Draw(bar)
         off = int((sw) * (W + H) * 1.4 - H)
         db.polygon([(off, 0), (off + 260, 0), (off + 260 - H, H), (off - H, H)],
-                   fill=GREEN + (255,))
+                   fill=SLAM_GREEN + (255,))
         db.polygon([(off + 300, 0), (off + 330, 0), (off + 330 - H, H),
                     (off + 300 - H, H)], fill=WHITE + (220,))
         frame.alpha_composite(bar)
 
-    # mark slams in: big -> settle with shake + motion-blur streak
     m = seg(t, 0.18, 0.5)
     if t < 0.18:
-        return _slam_overlays(frame, t, info)
+        return _frame_shake(_slam_overlays(frame, t, info), t)
     m_scale = bs * (1.6 - 0.6 * ease_out_back(m))      # 1.6x -> ~1.0
     m_alpha = ease_out(seg(t, 0.18, 0.34))
-    # shake decays after landing
-    land = seg(t, 0.5, 0.72)
-    shake = (1 - land) * 18 if t > 0.5 else 0
-    sx = int(math.sin(t * 90) * shake)
-    sy = int(math.cos(t * 80) * shake)
     ml = mark_layers(mark, m_scale)
-    # motion-blur streak while still flying in
+    mx = W // 2 - ml.width // 2
+    my = MARK_CY - ml.height // 2
+
+    # radial speed lines bursting outward on impact
+    imp = math.exp(-((t - 0.50) ** 2) / (2 * 0.055 ** 2))
+    if imp > 0.03:
+        sl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        dsl = ImageDraw.Draw(sl)
+        for ang in range(0, 360, 9):
+            a = math.radians(ang)
+            r0, r1 = 110, 110 + W * 0.65 * imp
+            dsl.line((W/2 + math.cos(a)*r0, MARK_CY + math.sin(a)*r0,
+                      W/2 + math.cos(a)*r1, MARK_CY + math.sin(a)*r1),
+                     fill=SLAM_HI + (int(190 * imp),), width=3)
+        frame.alpha_composite(sl.filter(ImageFilter.GaussianBlur(1)))
+
+    # motion-blur ghost trail while still flying in
     if m < 1:
-        streak = ml.copy()
         for off in range(1, 7):
-            ghost = set_alpha(ml, 0.10)
-            frame.alpha_composite(ghost,
-                                  (W // 2 - ml.width // 2,
-                                   MARK_CY - ml.height // 2 + off * 14))
-    frame.alpha_composite(add_glow(ml, GREEN_HI, 26, 0.7 * m_alpha),
-                          (W // 2 - ml.width // 2 + sx, MARK_CY - ml.height // 2 + sy))
-    frame.alpha_composite(set_alpha(ml, m_alpha),
-                          (W // 2 - ml.width // 2 + sx, MARK_CY - ml.height // 2 + sy))
-    # impact shock ring
-    ring = seg(t, 0.5, 0.85)
-    if 0 < ring < 1:
-        rr = int(ring * W * 0.7)
-        rl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        ImageDraw.Draw(rl).ellipse((W//2 - rr, MARK_CY - rr, W//2 + rr, MARK_CY + rr),
-                                   outline=GREEN_HI + (int(200 * (1 - ring)),), width=8)
-        frame.alpha_composite(rl.filter(ImageFilter.GaussianBlur(2)))
-    return _slam_overlays(frame, t, info)
+            frame.alpha_composite(set_alpha(ml, 0.10), (mx, my + off * 14))
+
+    frame.alpha_composite(add_glow(ml, SLAM_HI, 28, 0.85 * m_alpha + 0.5 * imp),
+                          (mx, my))
+    frame.alpha_composite(set_alpha(ml, m_alpha), (mx, my))
+    # white impact flash ON the logo at landing
+    if imp > 0.05:
+        frame.alpha_composite(set_alpha(_tint(ml, (255, 255, 255)), 0.8 * imp),
+                              (mx, my))
+
+    # double shock ring
+    for delay, mul, w in ((0.50, 0.70, 9), (0.56, 1.0, 5)):
+        ring = seg(t, delay, delay + 0.34)
+        if 0 < ring < 1:
+            rr = int(ring * W * mul)
+            rl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            ImageDraw.Draw(rl).ellipse(
+                (W//2 - rr, MARK_CY - rr, W//2 + rr, MARK_CY + rr),
+                outline=SLAM_HI + (int(210 * (1 - ring)),), width=w)
+            frame.alpha_composite(rl.filter(ImageFilter.GaussianBlur(2)))
+
+    return _frame_shake(_slam_overlays(frame, t, info), t)
 
 
 def _slam_overlays(frame, t, info):
-    # diagonal accent bars bottom + info
+    # diagonal accent bar above the contact block
     u = ease_out(seg(t, 0.8, 1.2))
     if u > 0:
         bar = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -376,8 +397,8 @@ def _slam_overlays(frame, t, info):
         half = int(W * 0.4 * u)
         db.polygon([(W//2 - half, y - 6), (W//2 + half, y - 6),
                     (W//2 + half + 14, y + 6), (W//2 - half + 14, y + 6)],
-                   fill=GREEN + (255,))
-        frame.alpha_composite(add_glow(bar, GREEN_HI, 12, 0.9))
+                   fill=SLAM_GREEN + (255,))
+        frame.alpha_composite(add_glow(bar, SLAM_HI, 12, 0.9))
         frame.alpha_composite(bar)
     info_rise(frame, info, t, 1.05, 1.6)
     return frame
