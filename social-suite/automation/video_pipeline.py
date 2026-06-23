@@ -972,8 +972,10 @@ def cut_windows(specs: list[dict]) -> list[dict]:
         caption = _hp_caption(nm) if brand_key == "hp" else caption_for(local, base, dispname, tags)
         keep = []
         for e in queue:
-            if e.get("brand") == brand_key and e["id"].endswith(f"-{nm}"):
-                if e.get("media_path"):
+            if e.get("brand") == brand_key and e["id"] == f"{brand_key}-{nm}":
+                # Delete the prior file ONLY if it's a different path — a same-name
+                # re-render overwrites out_path, so never delete what we just uploaded.
+                if e.get("media_path") and e["media_path"] != out_path:
                     try:
                         dbx.delete(e["media_path"])
                     except Exception:  # noqa: BLE001
