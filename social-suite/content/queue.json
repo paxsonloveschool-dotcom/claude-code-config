@@ -82,5 +82,19 @@
     "schedule": null,
     "status": "review",
     "error": null
+  },
+  {
+    "id": "hp-reveal-final",
+    "brand": "hp",
+    "text": "Backyard goals, upgraded. 💯🌿\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/332qr23qaats149tr0yj6/reveal-final.mp4?rlkey=pjyga9qm8uo8jwdq6nz2aqgqf&raw=1",
+    "media_path": "/HP-Content Auto./processed/reveal-final.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
   }
 ]
