@@ -114,12 +114,42 @@ DROP_FOLDER = "Drop Content Here"
 READY_FOLDER = "Ready To Post"
 
 
+def _list_videos_recursive(dbx, folder: str):
+    """Every video file under ``folder`` at ANY depth (the owner drops whole
+    subfolders of downloaded content). Returns dropbox_client.DropboxFile objects;
+    empty list if the folder is missing."""
+    client = dbx._client()
+    out = []
+    try:
+        res = client.files_list_folder(folder, recursive=True)
+    except Exception as ex:  # noqa: BLE001 — missing folder shouldn't crash
+        if "not_found" in str(ex).lower():
+            return []
+        raise
+    while True:
+        for e in res.entries:
+            if e.__class__.__name__ != "FileMetadata":
+                continue
+            if not e.name.lower().endswith(VIDEO_EXTS):
+                continue
+            out.append(dbx.DropboxFile(
+                path=getattr(e, "path_display", "") or getattr(e, "path_lower", ""),
+                name=getattr(e, "name", ""),
+                size_bytes=int(getattr(e, "size", 0) or 0),
+                rev=getattr(e, "rev", "") or "",
+            ))
+        if not getattr(res, "has_more", False):
+            break
+        res = client.files_list_folder_continue(res.cursor)
+    return out
+
+
 def _brand_videos(dbx, path_lower: str):
-    """Videos to process for a brand: the '<Brand>/Drop Content Here' subfolder
-    if it has any, otherwise the brand-folder root (back-compat). Never returns
-    clips sitting in Ready To Post / processed."""
+    """Videos to process for a brand: every video under '<Brand>/Drop Content
+    Here' (recursively, since the owner drops whole subfolders), else the brand
+    root (back-compat). Never returns clips in Ready To Post / processed."""
     drop = f"{path_lower.rstrip('/')}/{DROP_FOLDER.lower()}"
-    vids = [f for f in dbx.list_folder(drop) if f.name.lower().endswith(VIDEO_EXTS)]
+    vids = _list_videos_recursive(dbx, drop)
     if vids:
         return vids
     return [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
@@ -1355,9 +1385,18 @@ def main(argv: list[str] | None = None) -> int:
         debug_tree()
         return 0
 
-    # DROPBOX_LS: print the Dropbox app-folder tree (root + one level) and exit.
+    # DROPBOX_LS: print the Dropbox tree + the videos discovered under each
+    # brand's Drop Content Here (recursively), then exit.
     if os.getenv("DROPBOX_LS", "").strip().lower() in ("1", "true", "yes"):
         debug_tree()
+        from services.ingest import dropbox_client as _dbx  # lazy
+        for path_lower, display in _top_level_folders(_dbx):
+            if not classify_brand(display):
+                continue
+            vids = _brand_videos(_dbx, path_lower)
+            print(f"\n== {display}: {len(vids)} video(s) discoverable ==")
+            for v in vids:
+                print(f"   {getattr(v, 'path', v.name)}  ({getattr(v,'size_bytes',0)//1_000_000} MB)")
         return 0
 
     # DROPBOX_ORGANIZE: build the Ready-To-Post + Drop-Content-Here layout.
