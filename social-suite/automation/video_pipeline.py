@@ -829,6 +829,109 @@ def detect_shots_bulk(match: str | None = None, force: bool = False) -> int:
     return made
 
 
+def score_shots_bulk(match: str | None = None, force: bool = False) -> int:
+    """Phase 2: score every shot's postability and rank them best-first.
+
+    For each brand video it (re)detects shots if needed, scores each shot with
+    the free visual brain (sharpness/motion/exposure/colour, + optional CLIP),
+    and writes ``content/scores/<brand>-<base>.json`` — the ranked feed Phase 4
+    surfaces. Dedupes on Dropbox ``rev``. NEVER touches the queue or posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+    from services.score.shots import detect_shots  # lazy
+    from services.score.visual import score_shot  # lazy (PIL+ffmpeg)
+
+    shots_dir = os.path.join(ROOT, "content", "shots")
+    scores_dir = os.path.join(ROOT, "content", "scores")
+    os.makedirs(scores_dir, exist_ok=True)
+    scorer = os.getenv("SCORER", "heuristic")
+    made = 0
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            continue
+        brand_key = brand[0]
+        for f in dbx.list_folder(path_lower):
+            if not f.name.lower().endswith(VIDEO_EXTS):
+                continue
+            if match and match.lower() not in f.name.lower():
+                continue
+            base = _slug(f.name) or "clip"
+            score_path = os.path.join(scores_dir, f"{brand_key}-{base}.json")
+            if not force and os.path.exists(score_path):
+                prev = _load_json(score_path, {})
+                if prev.get("rev") and prev.get("rev") == getattr(f, "rev", ""):
+                    print(f"[{brand_key}] scores up-to-date: {base} (skip)")
+                    continue
+            try:
+                raw = dbx.download(f)
+                shot_file = os.path.join(shots_dir, f"{brand_key}-{base}.json")
+                shots = _load_json(shot_file, {}).get("shots") or detect_shots(raw)
+                scored = []
+                for sh in shots:
+                    m = score_shot(raw, float(sh["start"]), float(sh["end"]))
+                    scored.append({**sh, **m})
+            except Exception as ex:  # noqa: BLE001 — one bad video never kills the run
+                print(f"[{brand_key}] score FAILED {f.name}: {ex}")
+                continue
+            ranked = sorted(range(len(scored)),
+                            key=lambda i: scored[i].get("fire_score", 0), reverse=True)
+            best = scored[ranked[0]]["fire_score"] if scored else 0
+            _save_json(score_path, {
+                "video": f.name, "base": base, "brand": brand_key,
+                "rev": getattr(f, "rev", ""), "scorer": scorer,
+                "n_shots": len(scored), "best_score": best,
+                "ranked": ranked, "shots": scored,
+            })
+            made += 1
+            print(f"[{brand_key}] {base}: scored {len(scored)} shots, "
+                  f"best={best:.1f} -> content/scores/{brand_key}-{base}.json")
+    print(f"\nscore_shots_bulk: wrote/updated {made} score file(s). "
+          f"Nothing posted (analysis only).")
+    return made
+
+
+def build_review_feed() -> str:
+    """Phase 4: write content/review/index.html — a best-first page of the
+    clips in review, scored where known. Reads the queue + content/scores/*.json;
+    plays local content/preview/*.mp4 when present, else the Dropbox media_url.
+    Never posts; purely a fast keep/kill surface for the owner."""
+    import glob  # lazy, stdlib
+    from services.review.feed import render_review_html  # lazy
+
+    # base/brand -> best_score, so a clip can inherit a score even if its entry
+    # didn't carry one (e.g. a montage named after the source video's base).
+    best_by_base: dict[str, float] = {}
+    for sp in glob.glob(os.path.join(ROOT, "content", "scores", "*.json")):
+        d = _load_json(sp, {})
+        if d.get("base"):
+            best_by_base[f"{d.get('brand')}-{d['base']}"] = d.get("best_score")
+
+    preview_dir = os.path.join(ROOT, "content", "preview")
+    items = []
+    for e in _load_json(QUEUE_PATH, []):
+        if e.get("status") != "review":
+            continue
+        cid = e.get("id", "")
+        score = e.get("fire_score")
+        if score is None:
+            for key, val in best_by_base.items():
+                if cid.startswith(key):
+                    score = val
+                    break
+        local = os.path.join(preview_dir, f"{cid}.mp4")
+        src = f"../preview/{cid}.mp4" if os.path.exists(local) else (e.get("media_url") or "")
+        items.append({"id": cid, "brand": e.get("brand", ""), "fire_score": score,
+                      "text": e.get("text", ""), "src": src})
+
+    out_dir = os.path.join(ROOT, "content", "review")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "index.html")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(render_review_html(items))
+    print(f"build_review_feed: {len(items)} clip(s) -> content/review/index.html")
+    return out_path
+
+
 def fetch_ig_reference(brand_key: str = "hp", limit: int = 24) -> int:
     """Pull a brand's already-posted Instagram media (thumbnails + captions) so
     its established house style can be studied and matched on every new clip.
@@ -1337,6 +1440,21 @@ def main(argv: list[str] | None = None) -> int:
         force = low in ("force", "all-force")
         match = None if low in ("1", "true", "yes", "all", "force", "all-force") else ds
         detect_shots_bulk(match=match, force=force)
+        return 0
+
+    # SCORE_SHOTS: Phase 2 — score + rank every shot best-first into
+    # content/scores/*.json. Same value grammar as DETECT_SHOTS.
+    ss = os.getenv("SCORE_SHOTS", "").strip()
+    if ss:
+        low = ss.lower()
+        force = low in ("force", "all-force")
+        match = None if low in ("1", "true", "yes", "all", "force", "all-force") else ss
+        score_shots_bulk(match=match, force=force)
+        return 0
+
+    # REVIEW_FEED: Phase 4 — (re)build the best-first review page.
+    if os.getenv("REVIEW_FEED", "").strip().lower() in ("1", "true", "yes"):
+        build_review_feed()
         return 0
 
     # AUTO_HIGHLIGHTS: free SupoClip-style brain — auto-pick best moments from a

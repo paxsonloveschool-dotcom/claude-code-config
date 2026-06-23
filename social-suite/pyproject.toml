@@ -34,6 +34,9 @@ cards = ["pillow>=10.0"]
 # plus sharpness/motion/CLIP shot scoring. Phase 1 (shot split) is ffmpeg-only and
 # needs NONE of this, so it stays optional and lazy-imported.
 score = ["scenedetect", "opencv-python-headless", "numpy"]
+# Optional CLIP "is this shot fire?" judge (Phase 5 upgrade hook). Heavy; opt-in
+# via USE_CLIP=1. The pipeline runs for $0 on the heuristic scorer without it.
+clip = ["open-clip-torch", "torch"]
 dev = ["ruff", "mypy", "pytest"]
 
 [tool.setuptools]
