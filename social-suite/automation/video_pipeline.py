@@ -1186,38 +1186,76 @@ def cut_montage(spec: dict) -> dict | None:
     seg_clips: list[str] = []
     base_ctx = None
     workdir = "."
+    import subprocess as _sp  # lazy
+
+    def _clip_dur(path: str) -> float:
+        r = _sp.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=nw=1:nk=1", path], capture_output=True, text=True)
+        try:
+            return float(r.stdout.strip())
+        except ValueError:
+            return 0.0
+
+    def _win(local_path, a, b):
+        """Clamp [a,b] to the clip; guarantee >=1.5s. Returns (a,b) or None if unusable."""
+        d = _clip_dur(local_path)
+        if d <= 0:
+            return float(a), float(b)
+        a = max(0.0, min(float(a), max(0.0, d - 1.5)))
+        b = min(float(b), d)
+        if b - a < 1.0:
+            b = min(d, a + 2.0)
+        return (a, b) if b - a >= 0.8 else None
+
     for i, seg in enumerate(spec.get("segments", [])):
         shots = seg.get("panels") or ([seg["shot"]] if seg.get("shot") else [])
         if not shots:
             continue
         ctx0 = resolve(str(shots[0][0]))
         if not ctx0:
-            raise RuntimeError(f"video not found: {shots[0][0]!r}")
+            print(f"montage seg {i}: video not found {shots[0][0]!r} — skipping")
+            continue
         if base_ctx is None:
             base_ctx, workdir = ctx0, os.path.dirname(ctx0[1])
         out = os.path.join(workdir, f"mseg-{name}-{i}.mp4")
         n = len(shots)
-        if n == 1:
-            v, a, b = shots[0]
-            _edit_short(resolve(str(v))[1], float(a), float(b), out, mute=True)
-        elif seg.get("orient") == "cols":
-            # side-by-side vertical columns (each tile W/n x 1920)
-            w = 1080 // n
-            tiles = []
-            for k, (v, a, b) in enumerate(shots):
-                pp = os.path.join(workdir, f"mseg-{name}-{i}-c{k}.mp4")
-                _edit_tile(resolve(str(v))[1], float(a), float(b), pp, w, 1920)
-                tiles.append(pp)
-            _hstackN(tiles, out)
-        else:
-            # stacked rows (each tile 1080 x H/n)
-            h = 1920 // n
-            panels = []
-            for k, (v, a, b) in enumerate(shots):
-                pp = os.path.join(workdir, f"mseg-{name}-{i}-p{k}.mp4")
-                _edit_tile(resolve(str(v))[1], float(a), float(b), pp, 1080, h)
-                panels.append(pp)
-            _stackN(panels, out)
+        try:
+            if n == 1:
+                v, a, b = shots[0]
+                lp = resolve(str(v))[1]
+                w = _win(lp, a, b)
+                if not w:
+                    continue
+                _edit_short(lp, w[0], w[1], out, mute=True)
+            elif seg.get("orient") == "cols":
+                # side-by-side vertical columns (each tile W/n x 1920)
+                w = 1080 // n
+                tiles = []
+                for k, (v, a, b) in enumerate(shots):
+                    lp = resolve(str(v))[1]
+                    win = _win(lp, a, b)
+                    if not win:
+                        win = (0.0, 3.0)
+                    pp = os.path.join(workdir, f"mseg-{name}-{i}-c{k}.mp4")
+                    _edit_tile(lp, win[0], win[1], pp, w, 1920)
+                    tiles.append(pp)
+                _hstackN(tiles, out)
+            else:
+                # stacked rows (each tile 1080 x H/n)
+                h = 1920 // n
+                panels = []
+                for k, (v, a, b) in enumerate(shots):
+                    lp = resolve(str(v))[1]
+                    win = _win(lp, a, b)
+                    if not win:
+                        win = (0.0, 3.0)
+                    pp = os.path.join(workdir, f"mseg-{name}-{i}-p{k}.mp4")
+                    _edit_tile(lp, win[0], win[1], pp, 1080, h)
+                    panels.append(pp)
+                _stackN(panels, out)
+        except Exception as ex:  # noqa: BLE001 — skip a bad segment, keep the rest
+            print(f"montage seg {i} failed ({ex}); skipping")
+            continue
         seg_clips.append(out)
 
     if not seg_clips or base_ctx is None:
