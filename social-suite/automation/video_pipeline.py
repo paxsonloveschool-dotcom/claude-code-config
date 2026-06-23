@@ -1463,12 +1463,23 @@ def main(argv: list[str] | None = None) -> int:
         fetch_ig_reference(bk, int(tail) if tail.isdigit() else 24)
         return 0
 
-    # MONTAGE_SPEC json: assemble a layout-shifting hype montage (3-up/2-up/single).
+    # MONTAGE_SPEC json: one montage (object) OR a BATCH (list of objects). A batch
+    # builds many montages in ONE run with a single sequential queue write — high
+    # throughput and no concurrent-run clobber.
     montage = os.getenv("MONTAGE_SPEC", "").strip()
     if montage:
         import json as _json
-        made = cut_montage(_json.loads(montage))
-        print(f"\nDone: montage {'created' if made else 'failed'}. Nothing posted (review only).")
+        data = _json.loads(montage)
+        specs = data if isinstance(data, list) else [data]
+        made = []
+        for sp in specs:
+            try:
+                m = cut_montage(sp)
+                if m:
+                    made.append(m)
+            except Exception as ex:  # noqa: BLE001 — one bad montage shouldn't kill the batch
+                print(f"montage {sp.get('name','?')!r} failed: {ex}")
+        print(f"\nDone: {len(made)}/{len(specs)} montage(s). Nothing posted (review only).")
         return 0
 
     # INGEST_CLIP "name:relpath": save a ready-made local clip into Dropbox +
