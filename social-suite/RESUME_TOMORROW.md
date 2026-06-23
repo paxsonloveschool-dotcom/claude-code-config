@@ -12,7 +12,16 @@
   `content/brand/hp-logo.png`. **Owner is bringing a CLEAN transparent PNG tomorrow**
   — swap it in at the same path when it arrives.
 
-## Next steps (the "make every clip match HP" pass) — NOT yet coded
+## Next steps (the "make every clip match HP" pass)
+STATUS: items 2 (HP caption voice), 3 (0.8 dissolve), and 4 (3-panel stack via
+`"stack": true`, helpers `_edit_panel`/`_stackN`, demo `hp-stack-demo`) are DONE
+and pushed. All clips re-rendered in HP voice. ONLY item 1 (logo) remains — code
+is ready, just drop the clean PNG at `content/brand/hp-logo.png` and re-render.
+
+Waiting on owner: (a) keepers vs kills on the 11 review clips; (b) single-shot vs
+3-panel stack as the default for horizontal b-roll; (c) the clean logo PNG; (d)
+more luxury/finished-project footage (cleanup b-roll ≠ HP's polished reveals).
+
 1. **Logo watermark, top-right, on every clip.** Add a `logo` param to
    `_edit_short` (ffmpeg: extra `-i logo`, `filter_complex`
    `[0:v]<vchain>[bg];[L:v]scale=200:-1[lg];[bg][lg]overlay=W-w-28:28[v]`).
