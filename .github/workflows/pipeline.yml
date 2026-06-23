@@ -39,6 +39,10 @@ on:
         description: "Save a ready-made clip: 'name:relpath' (uploads + review entry)"
         required: false
         default: ""
+      montage_spec:
+        description: "JSON: layout-shifting hype montage (3-up/2-up/single segments)"
+        required: false
+        default: ""
       video:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
@@ -94,6 +98,7 @@ jobs:
           FETCH_PREVIEWS: ${{ inputs.fetch_previews }}
           IG_REFERENCE: ${{ inputs.ig_reference }}
           INGEST_CLIP: ${{ inputs.ingest_clip }}
+          MONTAGE_SPEC: ${{ inputs.montage_spec }}
           PIPELINE_VIDEO: ${{ inputs.video }}
         working-directory: social-suite
         run: python automation/video_pipeline.py

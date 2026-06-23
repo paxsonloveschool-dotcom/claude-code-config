@@ -370,6 +370,54 @@ def _stackN(parts: list[str], out_path: str) -> str:
     return out_path
 
 
+def _concat_v(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
+    """Crossfade-concat VIDEO only (silent output) — for mixed silent montage
+    segments where an audio crossfade isn't possible. Normalizes every segment to
+    1080x1920@30 so xfade never chokes on mismatched fps/size. Plain-concat fallback."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if len(parts) == 1:
+        shutil.copy(parts[0], out_path)
+        return out_path
+    durs = []
+    for p in parts:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", p], capture_output=True, text=True)
+        try:
+            durs.append(float(r.stdout.strip()))
+        except ValueError:
+            durs.append(3.0)
+    n = len(parts)
+    cmd = ["ffmpeg", "-y"]
+    for p in parts:
+        cmd += ["-i", p]
+    fc = [f"[{i}:v]fps=30,scale=1080:1920,setsar=1,format=yuv420p[n{i}]" for i in range(n)]
+    vlab, off = "[n0]", durs[0] - xfade
+    for i in range(1, n):
+        nv = f"[v{i}]"
+        fc.append(f"{vlab}[n{i}]xfade=transition=fade:duration={xfade}:offset={off:.3f}{nv}")
+        vlab, off = nv, off + durs[i] - xfade
+    cmd += ["-filter_complex", ";".join(fc), "-map", vlab, "-an",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-movflags", "+faststart", out_path]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        return out_path
+    except subprocess.CalledProcessError:
+        pass
+    lst = out_path + ".txt"
+    with open(lst, "w") as fh:
+        for p in parts:
+            fh.write(f"file '{os.path.abspath(p)}'\n")
+    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-an",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                    "-movflags", "+faststart", out_path], check=True, capture_output=True)
+    os.remove(lst)
+    return out_path
+
+
 def _find_music(dbx) -> str | None:
     """Download the first audio file from a Dropbox folder whose name has 'music'."""
     for path_lower, display in _top_level_folders(dbx):
@@ -915,6 +963,76 @@ def auto_highlights(n: int = 4, match: str | None = None) -> list[dict]:
     return cut_windows(specs)
 
 
+def cut_montage(spec: dict) -> dict | None:
+    """Assemble a dynamic, layout-shifting montage from raw footage.
+
+    ``spec`` = {name, segments:[...], xfade?}. Each segment is either a single
+    shot ``{"shot": [video, start, end]}`` or an N-up stack
+    ``{"panels": [[video, start, end], ...]}`` (2 or 3 tiles). Segments render to
+    1080x1920 and crossfade together (video-only, silent — add trending audio at
+    post). Mixing 3-up -> single -> 2-up gives the energetic, changing-views feel."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    name = _slug(spec.get("name", "montage")) or "montage"
+    vid_cache: dict = {}
+
+    def resolve(match):
+        k = (match or "").lower()
+        if k not in vid_cache:
+            vid_cache[k] = _first_video(dbx, match or None)
+        return vid_cache[k]
+
+    seg_clips: list[str] = []
+    base_ctx = None
+    workdir = "."
+    for i, seg in enumerate(spec.get("segments", [])):
+        shots = seg.get("panels") or ([seg["shot"]] if seg.get("shot") else [])
+        if not shots:
+            continue
+        ctx0 = resolve(str(shots[0][0]))
+        if not ctx0:
+            raise RuntimeError(f"video not found: {shots[0][0]!r}")
+        if base_ctx is None:
+            base_ctx, workdir = ctx0, os.path.dirname(ctx0[1])
+        out = os.path.join(workdir, f"mseg-{name}-{i}.mp4")
+        if len(shots) == 1:
+            v, a, b = shots[0]
+            _edit_short(resolve(str(v))[1], float(a), float(b), out, mute=True)
+        else:
+            h = 1920 // len(shots)
+            panels = []
+            for k, (v, a, b) in enumerate(shots):
+                pp = os.path.join(workdir, f"mseg-{name}-{i}-p{k}.mp4")
+                _edit_panel(resolve(str(v))[1], float(a), float(b), pp, h)
+                panels.append(pp)
+            _stackN(panels, out)
+        seg_clips.append(out)
+
+    if not seg_clips or base_ctx is None:
+        print("cut_montage: no segments rendered.")
+        return None
+    _f, local, base, brand, display = base_ctx
+    out_local = os.path.join(workdir, f"{base}-{name}.mp4")
+    _concat_v(seg_clips, out_local, xfade=float(spec.get("xfade", 0.4)))
+    brand_key, dispname, tags = brand
+    out_path = f"{display.rstrip('/')}/processed/{base}-{name}.mp4"
+    dbx.upload(out_local, out_path)
+    url = dbx.shared_link(out_path, raw=True)
+    queue = [e for e in _load_json(QUEUE_PATH, [])
+             if e.get("id") != f"{brand_key}-{name}"]
+    entry = {
+        "id": f"{brand_key}-{name}", "brand": brand_key,
+        "text": _hp_caption(name) if brand_key == "hp" else "",
+        "media_url": url, "media_path": out_path,
+        "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+        "status": "review", "error": None,
+    }
+    queue.append(entry)
+    _save_json(QUEUE_PATH, queue)
+    print(f"cut_montage: {brand_key}-{name} ({len(seg_clips)} segments) -> {out_path}")
+    return entry
+
+
 def cut_windows(specs: list[dict]) -> list[dict]:
     """Cut explicit time windows: each spec is {name, start, end} (seconds).
 
@@ -1065,6 +1183,14 @@ def main(argv: list[str] | None = None) -> int:
         bk = igref.split(":")[0] or "hp"
         tail = igref.split(":")[1] if ":" in igref else ""
         fetch_ig_reference(bk, int(tail) if tail.isdigit() else 24)
+        return 0
+
+    # MONTAGE_SPEC json: assemble a layout-shifting hype montage (3-up/2-up/single).
+    montage = os.getenv("MONTAGE_SPEC", "").strip()
+    if montage:
+        import json as _json
+        made = cut_montage(_json.loads(montage))
+        print(f"\nDone: montage {'created' if made else 'failed'}. Nothing posted (review only).")
         return 0
 
     # INGEST_CLIP "name:relpath": save a ready-made local clip into Dropbox +
