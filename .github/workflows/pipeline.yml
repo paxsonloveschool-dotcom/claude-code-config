@@ -55,6 +55,10 @@ on:
         description: "Set true to (re)build the best-first review page content/review/index.html"
         required: false
         default: ""
+      auto_montage:
+        description: "Auto-assemble a locked-style montage from a video's top shots (value = #shots, e.g. 6; use 'video' to target)"
+        required: false
+        default: ""
       video:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
@@ -115,6 +119,7 @@ jobs:
           DETECT_SHOTS: ${{ inputs.detect_shots }}
           SCORE_SHOTS: ${{ inputs.score_shots }}
           REVIEW_FEED: ${{ inputs.review_feed }}
+          AUTO_MONTAGE: ${{ inputs.auto_montage }}
           PIPELINE_VIDEO: ${{ inputs.video }}
         working-directory: social-suite
         run: python automation/video_pipeline.py

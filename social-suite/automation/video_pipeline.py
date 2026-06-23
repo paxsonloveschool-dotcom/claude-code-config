@@ -1159,6 +1159,136 @@ def auto_highlights(n: int = 4, match: str | None = None) -> list[dict]:
     return cut_windows(specs)
 
 
+_HP_BEATS = (
+    ("Excellence Isn't Optional", "fade"),
+    ("It's Our Standard", "word"),
+    ("Transform Your Outdoors", "fade"),
+)
+
+
+def _auto_beats(duration: float) -> list[dict]:
+    """Spread the default HP serif lines across a montage's duration."""
+    n = len(_HP_BEATS)
+    usable = max(2.0, duration - 0.6)
+    span = usable / n
+    beats = []
+    for i, (text, mode) in enumerate(_HP_BEATS):
+        s = 0.3 + i * span
+        beats.append({"text": text, "start": round(s, 2),
+                      "end": round(s + span - 0.15, 2), "mode": mode})
+    return beats
+
+
+def auto_montage(match: str | None = None, k: int = 6, style: bool = True) -> dict | None:
+    """Phase 3: auto-build a locked-style montage from a video's top-scored shots.
+
+    Picks the best ``k`` shots (from content/scores, scoring on the fly if needed),
+    assembles them with shifting layouts + crossfades (silent), then — when
+    ``style`` — burns the serif text beats, logos the corner, and crossfades on the
+    outro. Uploads to the brand's processed/ folder as a ``status:"review"`` entry
+    carrying its ``fire_score``. NEVER posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+    from services.score.shots import detect_shots  # lazy
+    from services.score.visual import score_shot  # lazy
+    from services.assemble.style import (  # lazy
+        plan_layouts, pick_top_shots, serif_beats, add_logo, append_outro)
+
+    match = match or os.getenv("PIPELINE_VIDEO") or None
+    ctx = _first_video(dbx, match)
+    if not ctx:
+        print("auto_montage: no matching video found.")
+        return None
+    _f, local, base, brand, display = ctx
+    brand_key, dispname, tags = brand
+
+    # Load (or compute) shot scores for this video.
+    score_file = os.path.join(ROOT, "content", "scores", f"{brand_key}-{base}.json")
+    scored = _load_json(score_file, {}).get("shots")
+    if not scored:
+        shots = detect_shots(local)
+        scored = [{**s, **score_shot(local, s["start"], s["end"])} for s in shots]
+    picked = pick_top_shots(scored, k=k, min_gap=1.0)
+    if not picked:
+        print(f"auto_montage: no shots to use for {base}.")
+        return None
+
+    # Assign picked shots into layout-shifting segments (1/2/3 shots each).
+    sizes = {"single": 1, "rows2": 2, "cols2": 2, "rows3": 3}
+    layouts = plan_layouts(len(picked))   # upper bound; we stop when shots run out
+    workdir = os.path.dirname(local)
+    seg_clips: list[str] = []
+    used = 0
+    li = 0
+    while used < len(picked) and li < len(layouts):
+        lay = layouts[li]
+        li += 1
+        n = min(sizes[lay], len(picked) - used)
+        group = picked[used:used + n]
+        used += n
+        out = os.path.join(workdir, f"aseg-{base}-{li}.mp4")
+        if n == 1:
+            _edit_short(local, float(group[0]["start"]), float(group[0]["end"]),
+                        out, mute=True)
+        elif lay == "cols2":
+            w = 1080 // n
+            tiles = []
+            for j, g in enumerate(group):
+                pp = os.path.join(workdir, f"aseg-{base}-{li}-c{j}.mp4")
+                _edit_tile(local, float(g["start"]), float(g["end"]), pp, w, 1920)
+                tiles.append(pp)
+            _hstackN(tiles, out)
+        else:  # rows2 / rows3
+            h = 1920 // n
+            panels = []
+            for j, g in enumerate(group):
+                pp = os.path.join(workdir, f"aseg-{base}-{li}-p{j}.mp4")
+                _edit_tile(local, float(g["start"]), float(g["end"]), pp, 1080, h)
+                panels.append(pp)
+            _stackN(panels, out)
+        seg_clips.append(out)
+
+    montage = os.path.join(workdir, f"{base}-automontage.mp4")
+    _concat_v(seg_clips, montage, xfade=0.45)
+
+    final = montage
+    if style:
+        try:
+            import subprocess
+            dur = float(subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=nw=1:nk=1", montage],
+                capture_output=True, text=True).stdout.strip() or "12")
+            styled = os.path.join(workdir, f"{base}-styled.mp4")
+            tmp1 = os.path.join(workdir, f"{base}-t1.mp4")
+            tmp2 = os.path.join(workdir, f"{base}-t2.mp4")
+            serif_beats(montage, tmp1, _auto_beats(dur))   # b-roll: text overlay OK
+            add_logo(tmp1, tmp2)
+            append_outro(tmp2, styled)
+            final = styled
+        except Exception as ex:  # noqa: BLE001 — styling is best-effort; ship the montage
+            print(f"auto_montage: styling skipped ({ex}); using unstyled montage.")
+            final = montage
+
+    fire = round(sum(p.get("fire_score", 0) for p in picked) / len(picked), 1)
+    out_path = f"{display.rstrip('/')}/processed/{base}-automontage.mp4"
+    dbx.upload(final, out_path)
+    url = dbx.shared_link(out_path, raw=True)
+    queue = [e for e in _load_json(QUEUE_PATH, [])
+             if e.get("id") != f"{brand_key}-{base}-auto"]
+    entry = {
+        "id": f"{brand_key}-{base}-auto", "brand": brand_key,
+        "text": _hp_caption(base) if brand_key == "hp" else "",
+        "media_url": url, "media_path": out_path,
+        "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+        "status": "review", "error": None, "fire_score": fire,
+    }
+    queue.append(entry)
+    _save_json(QUEUE_PATH, queue)
+    print(f"auto_montage: {brand_key}-{base}-auto ({len(seg_clips)} segments, "
+          f"fire={fire}) -> {out_path}")
+    return entry
+
+
 def cut_montage(spec: dict) -> dict | None:
     """Assemble a dynamic, layout-shifting montage from raw footage.
 
@@ -1450,6 +1580,18 @@ def main(argv: list[str] | None = None) -> int:
         force = low in ("force", "all-force")
         match = None if low in ("1", "true", "yes", "all", "force", "all-force") else ss
         score_shots_bulk(match=match, force=force)
+        return 0
+
+    # AUTO_MONTAGE: Phase 3 — auto-assemble a locked-style montage from a video's
+    # top-scored shots (value = how many shots to use, e.g. "6").
+    am = os.getenv("AUTO_MONTAGE", "").strip()
+    if am:
+        try:
+            k = int(am)
+        except ValueError:
+            k = 6
+        made = auto_montage(k=k)
+        print(f"\nDone: {1 if made else 0} auto montage. Nothing posted (status=review).")
         return 0
 
     # REVIEW_FEED: Phase 4 — (re)build the best-first review page.
