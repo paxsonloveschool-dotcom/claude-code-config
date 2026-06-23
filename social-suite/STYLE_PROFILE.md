@@ -3,6 +3,23 @@
 The goal: learn the owner's taste well enough that the pipeline produces clips
 they'd approve on their own. Update this every time they react to a batch.
 
+## ⭐ LOCKED MONTAGE RECIPE (work-clip / b-roll montages) — owner approved 2026-06-23
+Reference keeper: `content/approved/hp-yardwork-hype-final.mp4`. Match this every time:
+- **Shifting layouts** per segment (vary it): 3-rows → 2-rows → single → 2-columns
+  (side by side) → single. Mix stacked rows + side-by-side columns. **No 3-columns.**
+- **Crossfade dissolves** (~0.4–0.5s) between every segment.
+- **Serif text overlays** — Libre Baskerville, white + soft shadow, centered ~0.44 height.
+  Lines **crossfade into each other** (no gaps); **every other line reveals one word at
+  a time**. HP voice (e.g. "Excellence Isn't Optional / It's Our Standard / Transform
+  Your Outdoors"). Owner: words don't need to be exact, the style is what matters.
+- **Logo top-right the whole video** — `content/brand/hp-logo.png` (~130px wide, ~30 margin).
+- **Outro end-card** appended (crossfade) — `content/brand/outro.mp4` (actual logo + green
+  glow + phone/url/SERVING TEXAS + slam audio).
+- **MONTAGES ARE SILENT** (`-an`) — owner adds trending music on IG. **Talking/narrated
+  clips KEEP their audio**, get logo + outro, and **NO text overlay** (don't cover talking).
+- Vertical 1080x1920. Send previews compressed to 720p so they play on a phone.
+- Fonts live in `/mnt/skills/.../canvas-fonts/`; full `ffmpeg` (drawtext) installed locally.
+
 ## HP HOUSE STYLE — decoded from HP's own posted IG (match this on EVERY clip)
 Pulled 30 of HP's posts (`content/reference/hp/`). The established look:
 - **Logo watermark, TOP-RIGHT corner, on every clip** — the signature. Green
