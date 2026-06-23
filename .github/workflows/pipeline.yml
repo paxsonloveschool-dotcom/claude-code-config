@@ -35,6 +35,10 @@ on:
         description: "Brand key to pull posted IG style from (e.g. hp or hp:30)"
         required: false
         default: ""
+      ingest_clip:
+        description: "Save a ready-made clip: 'name:relpath' (uploads + review entry)"
+        required: false
+        default: ""
       video:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
@@ -89,6 +93,7 @@ jobs:
           KEEP_IDS: ${{ inputs.keep_ids }}
           FETCH_PREVIEWS: ${{ inputs.fetch_previews }}
           IG_REFERENCE: ${{ inputs.ig_reference }}
+          INGEST_CLIP: ${{ inputs.ingest_clip }}
           PIPELINE_VIDEO: ${{ inputs.video }}
         working-directory: social-suite
         run: python automation/video_pipeline.py

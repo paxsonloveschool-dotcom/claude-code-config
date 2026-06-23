@@ -736,6 +736,42 @@ def fetch_ig_reference(brand_key: str = "hp", limit: int = 24) -> int:
     return n
 
 
+def ingest_clip(name: str, src_path: str, brand_key: str = "hp") -> dict | None:
+    """Upload a ready-made local clip into a brand's Dropbox processed/ folder and
+    add a ``status:"review"`` queue entry — used to save an externally-edited clip
+    as a keeper. Never posts (review only)."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    if not os.path.exists(src_path):
+        print(f"ingest_clip: file not found {src_path}")
+        return None
+    display = None
+    for path_lower, disp in _top_level_folders(dbx):
+        b = classify_brand(disp)
+        if b and b[0] == brand_key:
+            display = disp
+            break
+    if not display:
+        print(f"ingest_clip: no Dropbox folder for brand {brand_key}")
+        return None
+    nm = _slug(name) or "clip"
+    out_path = f"{display.rstrip('/')}/processed/{nm}.mp4"
+    dbx.upload(src_path, out_path)
+    url = dbx.shared_link(out_path, raw=True)
+    queue = [e for e in _load_json(QUEUE_PATH, []) if e.get("id") != f"{brand_key}-{nm}"]
+    entry = {
+        "id": f"{brand_key}-{nm}", "brand": brand_key,
+        "text": _hp_caption(nm) if brand_key == "hp" else "",
+        "media_url": url, "media_path": out_path,
+        "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+        "status": "review", "error": None,
+    }
+    queue.append(entry)
+    _save_json(QUEUE_PATH, queue)
+    print(f"ingest_clip: saved {brand_key}-{nm} -> {out_path} (status=review)")
+    return entry
+
+
 def fetch_previews(which: str = "all") -> int:
     """Download finished review clips from Dropbox into ``content/preview/`` so
     they can be viewed/sent directly (Dropbox is unreachable from some sandboxes).
@@ -1029,6 +1065,14 @@ def main(argv: list[str] | None = None) -> int:
         bk = igref.split(":")[0] or "hp"
         tail = igref.split(":")[1] if ":" in igref else ""
         fetch_ig_reference(bk, int(tail) if tail.isdigit() else 24)
+        return 0
+
+    # INGEST_CLIP "name:relpath": save a ready-made local clip into Dropbox +
+    # a review queue entry (e.g. an externally-combined keeper).
+    ingest = os.getenv("INGEST_CLIP", "").strip()
+    if ingest and ":" in ingest:
+        nm, rel = ingest.split(":", 1)
+        ingest_clip(nm.strip(), os.path.join(ROOT, rel.strip()))
         return 0
 
     # FETCH_PREVIEWS: pull finished clips from Dropbox into content/preview/.
