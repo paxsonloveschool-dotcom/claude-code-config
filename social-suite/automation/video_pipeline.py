@@ -329,6 +329,47 @@ def _concat(parts: list[str], out_path: str, xfade: float = 0.8) -> str:
     return out_path
 
 
+def _edit_panel(src: str, a: float, b: float, out_path: str, height: int) -> str:
+    """Cut [a,b] as a full-width 1080x``height`` PANEL (keeps the horizontal
+    framing) for vertical multi-panel stacks — HP's split-screen look. Muted;
+    the stack carries no audio (trending sound is added at post time)."""
+    import subprocess  # lazy
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    dur = max(0.1, b - a)
+    vf = (f"scale=1080:{height}:force_original_aspect_ratio=increase,"
+          f"crop=1080:{height},setsar=1")
+    subprocess.run(
+        ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{dur:.2f}", "-vf", vf,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an",
+         "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
+def _stackN(parts: list[str], out_path: str) -> str:
+    """Vertically stack equal-width panels into one 1080x1920 clip (HP split-screen).
+
+    Panels are trimmed to the shortest input so the stack stays in sync; the
+    result is silent (add trending audio in-app at post time)."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if len(parts) == 1:
+        shutil.copy(parts[0], out_path)
+        return out_path
+    cmd = ["ffmpeg", "-y"]
+    for p in parts:
+        cmd += ["-i", p]
+    n = len(parts)
+    fc = "".join(f"[{i}:v]" for i in range(n)) + f"vstack=inputs={n}[v]"
+    cmd += ["-filter_complex", fc, "-map", "[v]", "-shortest",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-movflags", "+faststart", out_path]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return out_path
+
+
 def _find_music(dbx) -> str | None:
     """Download the first audio file from a Dropbox folder whose name has 'music'."""
     for path_lower, display in _top_level_folders(dbx):
@@ -877,20 +918,28 @@ def cut_windows(specs: list[dict]) -> list[dict]:
             parts_spec = sp.get("parts")
             if parts_spec:
                 # CROSS-VIDEO: each part is {video, start, end} from possibly different videos.
+                # With "stack": true, the parts are tiled into vertical panels (HP's
+                # split-screen look) instead of crossfaded in sequence.
                 ctxs, tmp = [], []
+                stack = bool(sp.get("stack"))
+                ph = 1920 // len(parts_spec) if stack else 0
                 for j, part in enumerate(parts_spec):
                     ctx = resolve(part.get("video") or default_match)
                     if not ctx:
                         raise RuntimeError(f"video not found: {part.get('video')!r}")
                     ctxs.append(ctx)
                     plocal = ctx[1]
-                    pp = os.path.join(os.path.dirname(plocal), f"xv-{nm}-{j}.mp4")
-                    _edit_short(plocal, float(part["start"]), float(part["end"]), pp,
-                                srt=None, mute=bool(sp.get("mute")), logo=_brand_logo(ctx[3][0]))
+                    if stack:
+                        pp = os.path.join(os.path.dirname(plocal), f"pan-{nm}-{j}.mp4")
+                        _edit_panel(plocal, float(part["start"]), float(part["end"]), pp, ph)
+                    else:
+                        pp = os.path.join(os.path.dirname(plocal), f"xv-{nm}-{j}.mp4")
+                        _edit_short(plocal, float(part["start"]), float(part["end"]), pp,
+                                    srt=None, mute=bool(sp.get("mute")), logo=_brand_logo(ctx[3][0]))
                     tmp.append(pp)
                 _f, local, base, brand, display = ctxs[0]
                 out_local = os.path.join(os.path.dirname(local), f"{base}-{nm}.mp4")
-                _concat(tmp, out_local)
+                _stackN(tmp, out_local) if stack else _concat(tmp, out_local)
             else:
                 ctx = resolve(sp.get("video") or default_match)
                 if not ctx:
