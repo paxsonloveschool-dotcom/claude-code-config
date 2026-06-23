@@ -847,7 +847,9 @@ def _first_video(dbx, match: str | None = None):
             continue
         vids = _brand_videos(dbx, path_lower)
         if match:
-            vids = [f for f in vids if match.lower() in f.name.lower()]
+            m = match.lower()
+            vids = [f for f in vids
+                    if m in f.name.lower() or m in (getattr(f, "path", "") or "").lower()]
         if not vids:
             continue
         f = vids[0]
@@ -903,12 +905,20 @@ def dump_thumbs() -> None:
 
     out_dir = os.path.join(ROOT, "content", "thumbs")
     os.makedirs(out_dir, exist_ok=True)
+    # PIPELINE_VIDEO filters to one project/folder (matched against the FULL path,
+    # e.g. "Alice Carport") so we don't thumbnail every video in the drop folder.
+    match = (os.getenv("PIPELINE_VIDEO") or "").strip().lower()
     for path_lower, display in _top_level_folders(dbx):
         if not classify_brand(display):
             continue
         for f in _brand_videos(dbx, path_lower):
+            fp = getattr(f, "path", "") or f.name
+            if match and match not in fp.lower():
+                continue
             raw = dbx.download(f)
-            base = _slug(f.name) or "clip"
+            # Base from parent folder + name so same-named clips don't collide.
+            parent = os.path.basename(os.path.dirname(fp)) if fp else ""
+            base = _slug(f"{parent}-{f.name}") or "clip"
             r = subprocess.run(
                 ["ffprobe", "-v", "error", "-show_entries", "format=duration",
                  "-of", "default=nw=1:nk=1", raw],
