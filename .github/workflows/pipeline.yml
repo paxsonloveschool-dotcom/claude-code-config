@@ -127,4 +127,11 @@ jobs:
           git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/reference 2>/dev/null || true
           git add -f social-suite/content/preview 2>/dev/null || true
           git commit -m "chore(pipeline): add review item(s) from Dropbox videos [skip ci]"
-          git push
+          # Rebase-and-retry so concurrent runs don't clobber each other's pushes.
+          branch=claude/happy-faraday-poh621
+          for i in 1 2 3 4 5 6; do
+            if git push origin "HEAD:$branch"; then echo "pushed"; break; fi
+            echo "push rejected (attempt $i) — rebasing on origin/$branch"
+            git pull --rebase --autostash origin "$branch" || true
+            sleep $(( (RANDOM % 4) + i ))
+          done
