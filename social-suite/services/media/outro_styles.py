@@ -36,7 +36,7 @@ from services.media.outro import (
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 OUT_DIR = os.path.join(ROOT, "content", "brand", "outro")
-MARK_CY = int(H * 0.37)
+MARK_CY = int(H * 0.35)
 INFO_Y = int(H * 0.66)
 
 
@@ -324,7 +324,7 @@ def _frame_shake(frame, t):
 def f_slam(t, seconds, ctx):
     mark, info = ctx["mark"], ctx["info"]
     frame = base_dark().copy()
-    bs = 1.4
+    bs = 1.55
 
     # diagonal swipe bars wiping across early
     sw = ease_in_out(seg(t, 0.0, 0.45))
