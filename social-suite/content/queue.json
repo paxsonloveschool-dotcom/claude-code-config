@@ -152,5 +152,47 @@
     "schedule": null,
     "status": "review",
     "error": null
+  },
+  {
+    "id": "hp-stack-grind",
+    "brand": "hp",
+    "text": "Luxury landscaping, redefined. ✨🌿\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/mh9s0811jqph4jd2v4em7/acam20250529-5803-stack-grind.mp4?rlkey=wsno0gzsd8smaqtukjqhwkbn2&raw=1",
+    "media_path": "/HP-Content Auto./processed/acam20250529-5803-stack-grind.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
+  },
+  {
+    "id": "hp-stack-haul",
+    "brand": "hp",
+    "text": "Built to stand out and thrive. 🌱\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/421or4gg5fr3rdybwrt7b/acam20250529-5813-stack-haul.mp4?rlkey=t1p1k9v13296c3chk4xf0hj1w&raw=1",
+    "media_path": "/HP-Content Auto./processed/acam20250529-5813-stack-haul.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
+  },
+  {
+    "id": "hp-stack-detail",
+    "brand": "hp",
+    "text": "From overgrown to outdoor escape. 🔥🌿\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/bvxxg5q7x8ig6r1eu1mcr/acam20250529-5803-stack-detail.mp4?rlkey=cp5uqfrn2ifwn1ufmlh8vhitj&raw=1",
+    "media_path": "/HP-Content Auto./processed/acam20250529-5803-stack-detail.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
   }
 ]
