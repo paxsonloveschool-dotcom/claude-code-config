@@ -43,6 +43,10 @@ on:
         description: "JSON: layout-shifting hype montage (3-up/2-up/single segments)"
         required: false
         default: ""
+      detect_shots:
+        description: "Scene-split brand videos -> content/shots/*.json. '1'/'true'=all, 'force'=redo, or a filename substring"
+        required: false
+        default: ""
       video:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
@@ -99,13 +103,14 @@ jobs:
           IG_REFERENCE: ${{ inputs.ig_reference }}
           INGEST_CLIP: ${{ inputs.ingest_clip }}
           MONTAGE_SPEC: ${{ inputs.montage_spec }}
+          DETECT_SHOTS: ${{ inputs.detect_shots }}
           PIPELINE_VIDEO: ${{ inputs.video }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
       - name: Commit review results (queue + processed set)
         run: |
-          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/reference 2>/dev/null || true
+          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/reference social-suite/content/shots 2>/dev/null || true
           # Previews are *.mp4 (gitignored) — force-add so they can be viewed/sent.
           git add -f social-suite/content/preview 2>/dev/null || true
           if git diff --cached --quiet && git diff --quiet -- social-suite/content; then
@@ -114,7 +119,7 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/reference 2>/dev/null || true
+          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/reference social-suite/content/shots 2>/dev/null || true
           git add -f social-suite/content/preview 2>/dev/null || true
           git commit -m "chore(pipeline): add review item(s) from Dropbox videos [skip ci]"
           git push

@@ -772,6 +772,63 @@ def dump_thumbs() -> None:
             print(f"contact sheet {base}.jpg (dur={dur:.1f}s)")
 
 
+def detect_shots_bulk(match: str | None = None, force: bool = False) -> int:
+    """Scene-split every brand video into a shot list — Phase 1 of the bulk
+    pipeline. Writes ``content/shots/<brand>-<base>.json`` (start/end per shot)
+    for the scoring stage to consume. NEVER touches the queue or posts anything.
+
+    Dedupe is the shot file itself: a video is re-detected only when its Dropbox
+    ``rev`` changed (or ``force``). ``match`` limits to filenames containing it.
+    Uses the free ffmpeg scene filter (PySceneDetect if installed) — no API keys.
+    """
+    from services.ingest import dropbox_client as dbx  # lazy
+    from services.score.shots import detect_shots  # lazy (ffmpeg)
+
+    out_dir = os.path.join(ROOT, "content", "shots")
+    os.makedirs(out_dir, exist_ok=True)
+    made = 0
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            continue
+        brand_key = brand[0]
+        for f in dbx.list_folder(path_lower):
+            if not f.name.lower().endswith(VIDEO_EXTS):
+                continue
+            if match and match.lower() not in f.name.lower():
+                continue
+            base = _slug(f.name) or "clip"
+            shot_path = os.path.join(out_dir, f"{brand_key}-{base}.json")
+            if not force and os.path.exists(shot_path):
+                prev = _load_json(shot_path, {})
+                if prev.get("rev") and prev.get("rev") == getattr(f, "rev", ""):
+                    print(f"[{brand_key}] shots up-to-date: {base} (skip)")
+                    continue
+            try:
+                raw = dbx.download(f)
+                shots = detect_shots(raw)
+            except Exception as ex:  # noqa: BLE001 — one bad video never kills the run
+                print(f"[{brand_key}] shot-detect FAILED {f.name}: {ex}")
+                continue
+            dur = shots[-1]["end"] if shots else 0.0
+            _save_json(shot_path, {
+                "video": f.name,
+                "base": base,
+                "brand": brand_key,
+                "rev": getattr(f, "rev", ""),
+                "duration": round(dur, 2),
+                "n_shots": len(shots),
+                "detector": getattr(detect_shots, "last_detector", "ffmpeg"),
+                "shots": shots,
+            })
+            made += 1
+            print(f"[{brand_key}] {base}: {len(shots)} shots ({dur:.1f}s) -> "
+                  f"content/shots/{brand_key}-{base}.json")
+    print(f"\ndetect_shots_bulk: wrote/updated {made} shot list(s). "
+          f"Nothing posted (analysis only).")
+    return made
+
+
 def fetch_ig_reference(brand_key: str = "hp", limit: int = 24) -> int:
     """Pull a brand's already-posted Instagram media (thumbnails + captions) so
     its established house style can be studied and matched on every new clip.
@@ -1269,6 +1326,17 @@ def main(argv: list[str] | None = None) -> int:
     # Dump per-video contact sheets so the footage can be 'seen' to pick shots.
     if os.getenv("DUMP_THUMBS", "").strip().lower() in ("1", "true", "yes"):
         dump_thumbs()
+        return 0
+
+    # DETECT_SHOTS: Phase 1 of the bulk pipeline — scene-split every brand video
+    # into content/shots/*.json for scoring. "1"/"true" = all; "force" to redo
+    # unchanged videos; any other value = a filename substring to target one.
+    ds = os.getenv("DETECT_SHOTS", "").strip()
+    if ds:
+        low = ds.lower()
+        force = low in ("force", "all-force")
+        match = None if low in ("1", "true", "yes", "all", "force", "all-force") else ds
+        detect_shots_bulk(match=match, force=force)
         return 0
 
     # AUTO_HIGHLIGHTS: free SupoClip-style brain — auto-pick best moments from a
