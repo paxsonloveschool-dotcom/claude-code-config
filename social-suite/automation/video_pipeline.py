@@ -329,6 +329,51 @@ def _concat(parts: list[str], out_path: str, xfade: float = 0.8) -> str:
     return out_path
 
 
+def _append_outro(main_path: str, outro_path: str, out_path: str, xfade: float = 0.6) -> str:
+    """Crossfade the brand outro end-card onto the tail of a talking clip (keeps
+    audio). Normalizes both to 1080x1920@30 so xfade/acrossfade never stutter on
+    mismatched fps/size. Falls back to video-only xfade if the outro has no audio."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if not os.path.exists(outro_path):
+        shutil.copy(main_path, out_path)
+        return out_path
+
+    def _dur(p: str) -> float:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", p], capture_output=True, text=True)
+        try:
+            return float(r.stdout.strip())
+        except ValueError:
+            return 3.0
+
+    off = max(0.0, _dur(main_path) - xfade)
+    norm = ("fps=30,scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920,setsar=1,format=yuv420p")
+    vfc = (f"[0:v]{norm}[v0];[1:v]{norm}[v1];"
+           f"[v0][v1]xfade=transition=fade:duration={xfade}:offset={off:.3f}[v]")
+    afc = ("[0:a]aformat=sample_rates=48000:channel_layouts=stereo[a0];"
+           "[1:a]aformat=sample_rates=48000:channel_layouts=stereo[a1];"
+           f"[a0][a1]acrossfade=d={xfade}[a]")
+    base = ["ffmpeg", "-y", "-i", main_path, "-i", outro_path]
+    full = base + ["-filter_complex", f"{vfc};{afc}", "-map", "[v]", "-map", "[a]",
+                   "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                   "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out_path]
+    try:
+        subprocess.run(full, check=True, capture_output=True)
+        return out_path
+    except subprocess.CalledProcessError:
+        pass
+    # Fallback: outro has no audio track — fade video, carry the main clip's audio.
+    vonly = base + ["-filter_complex", vfc, "-map", "[v]", "-map", "0:a:0?",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out_path]
+    subprocess.run(vonly, check=True, capture_output=True)
+    return out_path
+
+
 def _edit_tile(src: str, a: float, b: float, out_path: str, w: int, h: int) -> str:
     """Cut [a,b] as a ``w``x``h`` tile (scaled to fill, cropped). Muted. Used for
     both row panels (1080xH) and side-by-side column panels (Wx1920)."""
@@ -1161,6 +1206,13 @@ def cut_windows(specs: list[dict]) -> list[dict]:
                                     mute=bool(sp.get("mute")), logo=lg)
                         pl.append(pp)
                     _concat(pl, out_local)
+            # Optional: crossfade the brand outro end-card onto the tail (talking
+            # clips keep audio). Set "outro": true in the spec.
+            if sp.get("outro"):
+                outro = os.path.join(ROOT, "content", "brand", "outro.mp4")
+                fin = os.path.join(os.path.dirname(out_local), f"{base}-{nm}-fin.mp4")
+                _append_outro(out_local, outro, fin)
+                out_local = fin
         except Exception as ex:  # noqa: BLE001
             print(f"cut {nm} failed: {ex}")
             continue
