@@ -107,14 +107,98 @@ def _top_level_folders(dbx):
     return out
 
 
+# Per-brand Dropbox layout the owner asked for:
+#   <Brand>/Drop Content Here/  -> raw videos the owner drops in (the input)
+#   <Brand>/Ready To Post/      -> approved keepers, ready to publish
+DROP_FOLDER = "Drop Content Here"
+READY_FOLDER = "Ready To Post"
+
+
+def _brand_videos(dbx, path_lower: str):
+    """Videos to process for a brand: the '<Brand>/Drop Content Here' subfolder
+    if it has any, otherwise the brand-folder root (back-compat). Never returns
+    clips sitting in Ready To Post / processed."""
+    drop = f"{path_lower.rstrip('/')}/{DROP_FOLDER.lower()}"
+    vids = [f for f in dbx.list_folder(drop) if f.name.lower().endswith(VIDEO_EXTS)]
+    if vids:
+        return vids
+    return [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+
+
+def organize_dropbox(execute: bool = False) -> None:
+    """Create the owner's clean per-brand layout and tidy existing files.
+
+    Always prints the current tree. With ``execute`` True, for each brand folder:
+      * create ``Ready To Post`` and ``Drop Content Here`` (idempotent),
+      * move loose root-level raw videos into ``Drop Content Here``,
+      * move saved keepers (queue items, from ``processed/``) into ``Ready To
+        Post`` and refresh their queue ``media_path``/``media_url``.
+    """
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    print("== Dropbox BEFORE ==")
+    debug_tree()
+    if not execute:
+        print("\n(dry run — set DROPBOX_ORGANIZE=go to create folders + move files)")
+        return
+
+    queue = _load_json(QUEUE_PATH, [])
+    changed = False
+    for path_lower, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        base = display.rstrip("/")
+        ready, drop = f"{base}/{READY_FOLDER}", f"{base}/{DROP_FOLDER}"
+        for folder in (ready, drop):
+            try:
+                client.files_create_folder_v2(folder)
+                print(f"created  {folder}")
+            except Exception as ex:  # noqa: BLE001 — already exists is fine
+                print(("exists   " if "conflict" in str(ex).lower() else "FAILED   ") + folder)
+        # Move loose root-level raw videos into Drop Content Here.
+        for f in dbx.list_folder(path_lower):
+            if not f.name.lower().endswith(VIDEO_EXTS):
+                continue
+            try:
+                client.files_move_v2(f.path, f"{drop}/{f.name}", autorename=True)
+                print(f"moved IN  {f.name} -> {DROP_FOLDER}")
+            except Exception as ex:  # noqa: BLE001
+                print(f"move-in failed {f.name}: {ex}")
+
+    # Move saved keepers out of processed/ into their brand's Ready To Post.
+    for e in queue:
+        mp = e.get("media_path") or ""
+        if "/processed/" not in mp:
+            continue
+        prefix, fname = mp.split("/processed/", 1)[0], mp.rsplit("/", 1)[-1]
+        dest = f"{prefix}/{READY_FOLDER}/{fname}"
+        try:
+            client.files_move_v2(mp, dest, autorename=True)
+            e["media_path"] = dest
+            try:
+                e["media_url"] = dbx.shared_link(dest, raw=True)
+            except Exception:  # noqa: BLE001
+                pass
+            changed = True
+            print(f"moved OUT {fname} -> {READY_FOLDER}")
+        except Exception as ex:  # noqa: BLE001
+            print(f"move-out failed {fname}: {ex}")
+
+    if changed:
+        _save_json(QUEUE_PATH, queue)
+    print("\n== Dropbox AFTER ==")
+    debug_tree()
+
+
 def process_folder(folder_path: str, folder_display: str, brand, dbx, *, dry_run: bool = False) -> list[dict]:
     """Process the videos directly inside one matched brand folder."""
     brand_key, display, default_tags = brand
     processed = set(_load_json(PROCESSED_PATH, []))
     created: list[dict] = []
 
-    for f in dbx.list_folder(folder_path):
-        if not f.name.lower().endswith(VIDEO_EXTS) or f.rev in processed:
+    for f in _brand_videos(dbx, folder_path):
+        if f.rev in processed:
             continue
         print(f"[{brand_key}] processing {f.name} from {folder_display}")
         if dry_run:
@@ -653,7 +737,7 @@ def recut(end_phrase: str, clip_index: int = 2, end_buffer: float = 1.0,
         brand = classify_brand(display)
         if not brand:
             continue
-        vids = [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+        vids = _brand_videos(dbx, path_lower)
         if not vids:
             continue
         brand_key, dispname, _tags = brand
@@ -731,7 +815,7 @@ def _first_video(dbx, match: str | None = None):
         brand = classify_brand(display)
         if not brand:
             continue
-        vids = [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+        vids = _brand_videos(dbx, path_lower)
         if match:
             vids = [f for f in vids if match.lower() in f.name.lower()]
         if not vids:
@@ -760,9 +844,7 @@ def dump_transcript() -> None:
     for path_lower, display in _top_level_folders(dbx):
         if not classify_brand(display):
             continue
-        for f in dbx.list_folder(path_lower):
-            if not f.name.lower().endswith(VIDEO_EXTS):
-                continue
+        for f in _brand_videos(dbx, path_lower):
             raw = dbx.download(f)
             base = _slug(f.name) or "clip"
             ext = os.path.splitext(f.name)[1] or ".mp4"
@@ -794,9 +876,7 @@ def dump_thumbs() -> None:
     for path_lower, display in _top_level_folders(dbx):
         if not classify_brand(display):
             continue
-        for f in dbx.list_folder(path_lower):
-            if not f.name.lower().endswith(VIDEO_EXTS):
-                continue
+        for f in _brand_videos(dbx, path_lower):
             raw = dbx.download(f)
             base = _slug(f.name) or "clip"
             r = subprocess.run(
@@ -1273,6 +1353,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.ls:
         debug_tree()
+        return 0
+
+    # DROPBOX_LS: print the Dropbox app-folder tree (root + one level) and exit.
+    if os.getenv("DROPBOX_LS", "").strip().lower() in ("1", "true", "yes"):
+        debug_tree()
+        return 0
+
+    # DROPBOX_ORGANIZE: build the Ready-To-Post + Drop-Content-Here layout.
+    # Any value lists the tree (dry run); "go" actually creates/moves.
+    org = os.getenv("DROPBOX_ORGANIZE", "").strip().lower()
+    if org:
+        organize_dropbox(execute=(org == "go"))
         return 0
 
     # IG_REFERENCE: pull a brand's posted IG media (thumbs+captions) to study its
