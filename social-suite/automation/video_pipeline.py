@@ -888,7 +888,11 @@ def dump_transcript() -> None:
             local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
             if os.path.abspath(local) != os.path.abspath(raw):
                 shutil.copy(raw, local)
-            segs = transcribe(local)
+            try:
+                segs = transcribe(local)
+            except Exception as ex:  # noqa: BLE001 — silent/no-audio clip: skip it
+                print(f"=== SKIP base={base} ({display}/{f.name}): no/unreadable audio ({ex}) ===")
+                continue
             lines = [f"[{getattr(s, 'start_seconds', 0.0) or 0.0:6.1f} - "
                      f"{getattr(s, 'end_seconds', 0.0) or 0.0:6.1f}] "
                      f"{(getattr(s, 'text', '') or '').strip()}" for s in segs]
