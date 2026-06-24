@@ -1216,6 +1216,19 @@ def cut_montage(spec: dict) -> dict | None:
             b = min(d, a + 2.0)
         return (a, b) if b - a >= 0.8 else None
 
+    def _equal_wins(shots):
+        """Per-panel (local_path, a, b) all trimmed to the SAME length (min of the
+        clamped windows) so stacked panels never freeze when one clip is shorter."""
+        ws = []
+        for (v, a, b) in shots:
+            lp = resolve(str(v))[1]
+            w = _win(lp, a, b) or (0.0, 3.0)
+            ws.append([lp, w[0], w[1]])
+        common = max(1.5, min(w[2] - w[1] for w in ws))
+        for w in ws:
+            w[2] = w[1] + common      # equal duration for every panel
+        return ws
+
     for i, seg in enumerate(spec.get("segments", [])):
         shots = seg.get("panels") or ([seg["shot"]] if seg.get("shot") else [])
         if not shots:
@@ -1237,29 +1250,21 @@ def cut_montage(spec: dict) -> dict | None:
                     continue
                 _edit_short(lp, w[0], w[1], out, mute=True)
             elif seg.get("orient") == "cols":
-                # side-by-side vertical columns (each tile W/n x 1920)
+                # side-by-side vertical columns (each tile W/n x 1920), equal length
                 w = 1080 // n
                 tiles = []
-                for k, (v, a, b) in enumerate(shots):
-                    lp = resolve(str(v))[1]
-                    win = _win(lp, a, b)
-                    if not win:
-                        win = (0.0, 3.0)
+                for k, (lp, a, b) in enumerate(_equal_wins(shots)):
                     pp = os.path.join(workdir, f"mseg-{name}-{i}-c{k}.mp4")
-                    _edit_tile(lp, win[0], win[1], pp, w, 1920)
+                    _edit_tile(lp, a, b, pp, w, 1920)
                     tiles.append(pp)
                 _hstackN(tiles, out)
             else:
-                # stacked rows (each tile 1080 x H/n)
+                # stacked rows (each tile 1080 x H/n), equal length
                 h = 1920 // n
                 panels = []
-                for k, (v, a, b) in enumerate(shots):
-                    lp = resolve(str(v))[1]
-                    win = _win(lp, a, b)
-                    if not win:
-                        win = (0.0, 3.0)
+                for k, (lp, a, b) in enumerate(_equal_wins(shots)):
                     pp = os.path.join(workdir, f"mseg-{name}-{i}-p{k}.mp4")
-                    _edit_tile(lp, win[0], win[1], pp, 1080, h)
+                    _edit_tile(lp, a, b, pp, 1080, h)
                     panels.append(pp)
                 _stackN(panels, out)
         except Exception as ex:  # noqa: BLE001 — skip a bad segment, keep the rest
