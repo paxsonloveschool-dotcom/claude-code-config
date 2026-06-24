@@ -1548,6 +1548,13 @@ def main(argv: list[str] | None = None) -> int:
     # builds many montages in ONE run with a single sequential queue write — high
     # throughput and no concurrent-run clobber.
     montage = os.getenv("MONTAGE_SPEC", "").strip()
+    # MONTAGE_SPEC_FILE: read the spec JSON from a committed repo file instead of
+    # the dispatch input — avoids hand-transcription errors for large batches.
+    _mfile = os.getenv("MONTAGE_SPEC_FILE", "").strip()
+    if not montage and _mfile:
+        _mp = _mfile if os.path.isabs(_mfile) else os.path.join(ROOT, _mfile)
+        with open(_mp, encoding="utf-8") as _fh:
+            montage = _fh.read().strip()
     if montage:
         import json as _json
         data = _json.loads(montage)
