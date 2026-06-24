@@ -1060,6 +1060,31 @@ def fetch_previews(which: str = "all") -> int:
     return n
 
 
+def delete_ids(ids: list[str]) -> list[dict]:
+    """Delete ONLY the given queue ids — each clip's Dropbox file AND its queue
+    entry. Targeted (unlike prune_clips which keeps a whitelist). Never posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    drop = {i.strip() for i in ids if i.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    kept, removed = [], 0
+    for e in queue:
+        if e.get("id") not in drop:
+            kept.append(e)
+            continue
+        mp = e.get("media_path")
+        if mp:
+            try:
+                dbx.delete(mp)
+            except Exception as ex:  # noqa: BLE001 — a missing file shouldn't stop the delete
+                print(f"delete failed {mp}: {ex}")
+        print(f"deleted {e.get('id')}")
+        removed += 1
+    _save_json(QUEUE_PATH, kept)
+    print(f"\nDeleted {removed} clip(s); {len(kept)} remain.")
+    return kept
+
+
 def promote_ids(ids: list[str]) -> list[dict]:
     """Move ONLY the given queue ids from ``processed/`` into the brand's
     ``Ready To Post`` folder (approved keepers). Status stays ``review`` so the
@@ -1482,6 +1507,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.ls:
         debug_tree()
         return 0
+
+    # DELETE_IDS: remove specific clips (Dropbox file + queue entry) up front,
+    # then FALL THROUGH so the same run can also render replacements.
+    _del = os.getenv("DELETE_IDS", "").strip()
+    if _del:
+        delete_ids([x.strip() for x in _del.split(",") if x.strip()])
 
     # DROPBOX_LS: print the Dropbox tree + the videos discovered under each
     # brand's Drop Content Here (recursively), then exit.
