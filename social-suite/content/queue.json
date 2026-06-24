@@ -390,5 +390,61 @@
     "schedule": null,
     "status": "review",
     "error": null
+  },
+  {
+    "id": "hp-bob-poolside-luxe",
+    "brand": "hp",
+    "text": "Built to stand out and thrive. 🌱\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/1dactw0klaxs2qb2f11dt/video-sep-16-2025-11-52-40-am-1-bob-poolside-luxe.mp4?rlkey=hiyg5d75wgme82s8pf8ne7o82&raw=1",
+    "media_path": "/HP-Content Auto./processed/video-sep-16-2025-11-52-40-am-1-bob-poolside-luxe.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
+  },
+  {
+    "id": "hp-bob-water-detail",
+    "brand": "hp",
+    "text": "This is what happens when vision meets execution. ✨\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/z6mjn8axrjbj3ojcy3tho/video-sep-16-2025-11-55-41-am-bob-water-detail.mp4?rlkey=0l804qvsoj0w7wbfb5nl4ir5f&raw=1",
+    "media_path": "/HP-Content Auto./processed/video-sep-16-2025-11-55-41-am-bob-water-detail.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
+  },
+  {
+    "id": "hp-bob-oasis",
+    "brand": "hp",
+    "text": "From overgrown to outdoor escape. 🔥🌿\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/v7xz2ap79wxizpawu92v4/video-sep-16-2025-11-52-40-am-1-bob-oasis.mp4?rlkey=qu13xkz145ulfqrbarrp2n78f&raw=1",
+    "media_path": "/HP-Content Auto./processed/video-sep-16-2025-11-52-40-am-1-bob-oasis.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
+  },
+  {
+    "id": "hp-bob-streetside",
+    "brand": "hp",
+    "text": "Backyard goals, upgraded. 💯🌿\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/la1xk16frm1b8x46ldqri/video-sep-16-2025-11-49-36-am-bob-streetside.mp4?rlkey=64hr4ibfrxvaberu077chbei0&raw=1",
+    "media_path": "/HP-Content Auto./processed/video-sep-16-2025-11-49-36-am-bob-streetside.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
   }
 ]
