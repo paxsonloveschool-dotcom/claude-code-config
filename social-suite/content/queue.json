@@ -446,5 +446,33 @@
     "schedule": null,
     "status": "review",
     "error": null
+  },
+  {
+    "id": "hp-bob-talk-walkthrough",
+    "brand": "hp",
+    "text": "Turned this backyard into a place you actually want to be.\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/88y3yzaw0w38d8hp74241/video-sep-17-2025-5-26-15-pm-bob-talk-walkthrough-fin.mp4?rlkey=mrs3vo6u9qgpwk4gh8t8976f1&raw=1",
+    "media_path": "/HP-Content Auto./processed/video-sep-17-2025-5-26-15-pm-bob-talk-walkthrough-fin.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
+  },
+  {
+    "id": "hp-bob-talk-pebble",
+    "brand": "hp",
+    "text": "Luxury landscaping, redefined. ✨🌿\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/2texzsaj9pzf5p6j6aqzr/video-sep-17-2025-5-26-06-pm-bob-talk-pebble-fin.mp4?rlkey=yydsrnumz5jj6r4s20ieg26vw&raw=1",
+    "media_path": "/HP-Content Auto./processed/video-sep-17-2025-5-26-06-pm-bob-talk-pebble-fin.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
   }
 ]
