@@ -1060,6 +1060,42 @@ def fetch_previews(which: str = "all") -> int:
     return n
 
 
+def promote_ids(ids: list[str]) -> list[dict]:
+    """Move ONLY the given queue ids from ``processed/`` into the brand's
+    ``Ready To Post`` folder (approved keepers). Status stays ``review`` so the
+    poster never touches them — this is a 'save it' action, not a publish."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    want = {i.strip() for i in ids if i.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    moved = 0
+    for e in queue:
+        if e.get("id") not in want:
+            continue
+        mp = e.get("media_path") or ""
+        if "/processed/" not in mp:
+            print(f"skip {e.get('id')}: not in processed/ ({mp})")
+            continue
+        prefix, fname = mp.split("/processed/", 1)[0], mp.rsplit("/", 1)[-1]
+        dest = f"{prefix}/{READY_FOLDER}/{fname}"
+        try:
+            client.files_move_v2(mp, dest, autorename=True)
+            e["media_path"] = dest
+            try:
+                e["media_url"] = dbx.shared_link(dest, raw=True)
+            except Exception:  # noqa: BLE001
+                pass
+            moved += 1
+            print(f"promoted {e.get('id')} -> {READY_FOLDER}/{fname}")
+        except Exception as ex:  # noqa: BLE001
+            print(f"promote failed {e.get('id')}: {ex}")
+    if moved:
+        _save_json(QUEUE_PATH, queue)
+    print(f"\nPromoted {moved} clip(s) to {READY_FOLDER}. Nothing posted.")
+    return queue
+
+
 def prune_clips(keep_ids: list[str]) -> list[dict]:
     """Delete every queued clip NOT in ``keep_ids`` — both its Dropbox file and
     its queue entry — leaving only the kept set. Clears stale batches so the
@@ -1508,6 +1544,13 @@ def main(argv: list[str] | None = None) -> int:
     fp = os.getenv("FETCH_PREVIEWS", "").strip()
     if fp:
         fetch_previews(fp)
+        return 0
+
+    # PROMOTE_IDS: move ONLY these clips from processed/ into Ready To Post
+    # (approved keepers). Status stays 'review' — nothing is posted.
+    promote = os.getenv("PROMOTE_IDS", "").strip()
+    if promote:
+        promote_ids([x.strip() for x in promote.split(",") if x.strip()])
         return 0
 
     # KEEP_IDS: delete every clip (Dropbox file + queue entry) not in this

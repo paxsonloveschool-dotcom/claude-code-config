@@ -55,6 +55,10 @@ on:
         description: "'go' to create Ready-To-Post + Drop-Content folders and move keepers"
         required: false
         default: ""
+      promote_ids:
+        description: "Comma ids to MOVE into Ready To Post (approved keepers; no posting)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -110,6 +114,7 @@ jobs:
           PIPELINE_VIDEO: ${{ inputs.video }}
           DROPBOX_LS: ${{ inputs.dropbox_ls }}
           DROPBOX_ORGANIZE: ${{ inputs.dropbox_organize }}
+          PROMOTE_IDS: ${{ inputs.promote_ids }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
