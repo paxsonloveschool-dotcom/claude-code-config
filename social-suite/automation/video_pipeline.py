@@ -872,13 +872,18 @@ def dump_transcript() -> None:
 
     out_dir = os.path.join(ROOT, "content", "transcripts")
     os.makedirs(out_dir, exist_ok=True)
+    match = (os.getenv("PIPELINE_VIDEO") or "").strip().lower()
     count = 0
     for path_lower, display in _top_level_folders(dbx):
         if not classify_brand(display):
             continue
         for f in _brand_videos(dbx, path_lower):
+            fp_path = getattr(f, "path", "") or f.name
+            if match and match not in fp_path.lower():
+                continue
             raw = dbx.download(f)
-            base = _slug(f.name) or "clip"
+            parent = os.path.basename(os.path.dirname(fp_path)) if fp_path else ""
+            base = _slug(f"{parent}-{f.name}") or "clip"
             ext = os.path.splitext(f.name)[1] or ".mp4"
             local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
             if os.path.abspath(local) != os.path.abspath(raw):
