@@ -1151,12 +1151,14 @@ def _score_segment_text(text: str, dur: float) -> float:
              - 0.7 * dangling
              - 0.25 * filler_density
              - 1.2 * repetition)
-    score -= abs(dur - 14.0) / 26.0                 # prefer a tight ~14s clip
+    # Ideal length 12-30s (no penalty), gentle penalty outside (owner spec #6).
+    score -= max(0.0, abs(dur - 21.0) - 9.0) / 30.0
     return score
 
 
 def _pick_highlights(segments, n: int = 4, min_len: float = 7.0,
-                     max_len: float = 20.0) -> list[tuple[float, float, str]]:
+                     max_len: float = 20.0, min_score: float = 0.0
+                     ) -> list[tuple[float, float, str]]:
     """Pick up to ``n`` non-overlapping [start,end] windows snapped to sentence
     (segment) boundaries, ranked by :func:`_score_segment_text`.
 
@@ -1178,7 +1180,7 @@ def _pick_highlights(segments, n: int = 4, min_len: float = 7.0,
     candidates.sort(key=lambda c: c[0], reverse=True)
     picked: list[tuple[float, float]] = []
     for score, a, b in candidates:
-        if score <= 0:
+        if score <= min_score:           # only GREAT clips clear the bar
             continue
         if all(b <= pa or a >= pb for pa, pb in picked):
             picked.append((a, b))
@@ -1252,6 +1254,107 @@ def _burn_ass(src: str, ass_path: str, out_path: str) -> str:
     return out_path
 
 
+# ---- clean cuts, internal-weak removal, caption re-timing (talking clips) ----
+# Words that should never START or END a clip (stutters / filler / dangling).
+_EDGE_FILLER = {"um", "uh", "er", "umm", "uhh", "hmm", "so", "like", "well",
+                "yeah", "okay", "ok", "and", "but", "or", "you", "know", "i",
+                "mean", "just", "basically", "actually"}
+
+
+def _norm_word(w) -> str:
+    return re.sub(r"[^a-z']", "", (getattr(w, "text", "") or "").lower())
+
+
+def _words_in(segments, a: float, b: float):
+    """Flat list of timed words inside [a,b], in order."""
+    out = []
+    for s in segments:
+        for w in (getattr(s, "words", None) or []):
+            ws = getattr(w, "start_seconds", None)
+            we = getattr(w, "end_seconds", None)
+            if ws is None or we is None or we <= a or ws >= b:
+                continue
+            out.append(w)
+    return out
+
+
+def _trim_to_clean(segments, a: float, b: float, pad: float = 0.08) -> tuple[float, float]:
+    """Nudge [a,b] so the clip STARTS and ENDS on a clear, content word — never
+    a stutter, filler word, or mid-pause (owner spec #4)."""
+    words = _words_in(segments, a, b)
+    if not words:
+        return a, b
+    i, j = 0, len(words) - 1
+    while i < j and _norm_word(words[i]) in _EDGE_FILLER:
+        i += 1
+    # drop an immediate stutter repeat at the new start ("we we", "the the")
+    if i + 1 < j and _norm_word(words[i]) and _norm_word(words[i]) == _norm_word(words[i + 1]):
+        i += 1
+    while j > i and _norm_word(words[j]) in _EDGE_FILLER:
+        j -= 1
+    na = max(a, float(getattr(words[i], "start_seconds", a)) - pad)
+    nb = min(b, float(getattr(words[j], "end_seconds", b)) + pad)
+    return (na, nb) if nb > na else (a, b)
+
+
+def _shift_segments(segs, off: float):
+    """Shift sliced (clip-relative) segments by ``off`` seconds (for stitching)."""
+    from services.caption.transcribe import Segment, Word  # lazy
+    out = []
+    for s in segs:
+        out.append(Segment(
+            text=s.text, start_seconds=s.start_seconds + off,
+            end_seconds=s.end_seconds + off,
+            words=[Word(text=w.text, start_seconds=w.start_seconds + off,
+                        end_seconds=w.end_seconds + off) for w in s.words]))
+    return out
+
+
+def _clip_pieces(segments, a: float, b: float, drop_below: float) -> list[tuple[float, float]]:
+    """Inside [a,b], keep only the strong segments and stitch them (jump-cut),
+    dropping weak/filler/dead-air stretches in the middle — so a clip can be
+    "first 5s + 13-20s" with the boring 6-12s cut out (owner spec #5).
+
+    Returns merged (start,end) runs of kept segments. Adjacent kept segments
+    merge into one run; a dropped segment splits the runs."""
+    runs: list[list[float]] = []
+    for s in segments:
+        ss, se = getattr(s, "start_seconds", None), getattr(s, "end_seconds", None)
+        if ss is None or se is None or se <= a or ss >= b:
+            continue
+        ss, se = max(ss, a), min(se, b)
+        if se <= ss:
+            continue
+        if _score_segment_text(getattr(s, "text", "") or "", se - ss) < drop_below:
+            continue                      # weak/filler segment — drop it
+        if runs and ss - runs[-1][1] < 0.35:
+            runs[-1][1] = se              # contiguous -> extend the run
+        else:
+            runs.append([ss, se])
+    return [(round(x, 2), round(y, 2)) for x, y in runs]
+
+
+def _hardcat(parts: list[str], out_path: str) -> str:
+    """Jump-cut concat (no crossfade) — keeps audio and exact durations so the
+    stitched captions stay perfectly in sync."""
+    import subprocess  # lazy
+    if len(parts) == 1:
+        import shutil
+        shutil.copy(parts[0], out_path)
+        return out_path
+    lst = out_path + ".txt"
+    with open(lst, "w") as f:
+        for p in parts:
+            f.write(f"file '{os.path.abspath(p)}'\n")
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    os.remove(lst)
+    return out_path
+
+
 def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> list[dict]:
     """Talking-head -> short clips of the best sayings, with animated subtitles.
 
@@ -1277,28 +1380,46 @@ def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> l
     segs = transcribe(local)
     # As many GOOD sayings as the video yields (the scorer drops weak/filler),
     # each 6-45s. Quality-gated — a short/weak video simply yields fewer.
-    wins = _pick_highlights(segs, n=max(n, 12), min_len=6.0, max_len=45.0)
+    # Only GREAT clips (high quality floor), each 6-45s (owner spec #5/#6).
+    min_score = float(os.getenv("CLIP_MIN_SCORE", "1.0"))
+    wins = _pick_highlights(segs, n=max(n, 12), min_len=6.0, max_len=45.0,
+                            min_score=min_score)
     if not wins:
         print(f"auto_clips: no strong sayings in {base} (silent/weak? use montage).")
         return []
     print(f"auto_clips: {base} -> {[(a, b) for a, b, _ in wins]}")
 
     workdir = os.path.dirname(local)
-    font = os.getenv("CAPTION_FONT", "DejaVu Sans")
-    fsize = int(os.getenv("CAPTION_FONT_SIZE", "60"))
+    # Caption look (owner spec): bold sans, white + thin outline, ~48-60px, shown
+    # a few words at a time. Roboto ships on the runner (fonts-roboto).
+    font = os.getenv("CAPTION_FONT", "Roboto")
+    fsize = int(os.getenv("CAPTION_FONT_SIZE", "54"))
+    max_words = int(os.getenv("CAPTION_MAX_WORDS", "4"))
     queue = _load_json(QUEUE_PATH, [])
     made: list[dict] = []
-    for a, b, nm in wins:
+    lg = _brand_logo(brand_key)
+    for a0, b0, nm in wins:
         cut = os.path.join(workdir, f"{base}-{nm}.mp4")
         try:
-            # vertical, keep audio, HP logo watermark in the corner
-            _edit_short(local, a, b, cut, srt=None, mute=False,
-                        logo=_brand_logo(brand_key))
+            # 1) start/end on clean words (no stutter/pause)
+            a, b = _trim_to_clean(segs, a0, b0)
+            # 2) drop weak/filler stretches in the middle, jump-cut the good parts
+            pieces = _clip_pieces(segs, a, b, drop_below=0.2) or [(a, b)]
+            parts: list[str] = []
+            clip_segs: list = []
+            off = 0.0
+            for k, (pa, pb) in enumerate(pieces):
+                pp = os.path.join(workdir, f"{base}-{nm}-p{k}.mp4")
+                _edit_short(local, pa, pb, pp, srt=None, mute=False, logo=lg)
+                parts.append(pp)
+                clip_segs += _shift_segments(_slice_segments(segs, pa, pb), off)
+                off += max(0.1, pb - pa)
+            _hardcat(parts, cut)          # jump-cut concat (single piece = copy)
             final = cut
             if captions:
-                clip_segs = _slice_segments(segs, a, b)
                 ass = os.path.join(workdir, f"{base}-{nm}.ass")
-                write_ass(clip_segs, ass, font=font, font_size=fsize)
+                write_ass(clip_segs, ass, font=font, font_size=fsize,
+                          max_words=max_words)
                 capped = os.path.join(workdir, f"{base}-{nm}-cap.mp4")
                 _burn_ass(cut, ass, capped)
                 final = capped
@@ -1312,7 +1433,7 @@ def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> l
         except Exception as ex:  # noqa: BLE001 — one bad clip never kills the run
             print(f"auto_clips: clip {nm} failed: {ex}")
             continue
-        saying = _transcript_text(_slice_segments(segs, a, b))[:280]
+        saying = _transcript_text(clip_segs)[:280]
         out_name = f"{base}-{nm}.mp4"
         out_path = f"{display.rstrip('/')}/processed/{out_name}"
         dbx.upload(final, out_path)

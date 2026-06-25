@@ -40,3 +40,20 @@ Empty → falls back to brand root (back-compat).
 - Caption exact size/position to taste; whether to brand-color the karaoke highlight.
 - Auto-trigger (drop a video in HP Talking Content → run on a schedule) if you want it
   fully hands-off — currently manual `auto_clips` dispatch.
+
+## 🔒 LOCKED clip spec (owner-approved 2026-06-25) — every new clip, always
+Baked into `auto_clips` defaults so it's automatic. Tunable via env if ever needed.
+- **Captions:** shown **~4 words at a time** (`CAPTION_MAX_WORDS=4`), word lights up
+  as spoken. **Bold sans (Roboto), ~54px, WHITE, thin black outline (2) + soft shadow
+  (1)**, lower-third (`margin_v=320`). `CAPTION_FONT`, `CAPTION_FONT_SIZE`.
+- **Clean cuts:** every clip **starts and ends on a clear word** — leading/trailing
+  stutters, filler ("um/uh/so/like/you know"), and stutter-repeats are trimmed
+  (`_trim_to_clean`).
+- **Stitching:** a clip can drop a weak/boring middle and **jump-cut** the strong
+  parts together (e.g. first 5s + 13-20s, with 6-12s removed) — chronological, stays
+  in sync (`_clip_pieces` + `_hardcat`, captions re-timed across the cut).
+- **Only great clips:** quality floor `CLIP_MIN_SCORE=1.0` — weak/rambly stretches
+  never become clips.
+- **Length:** ideal **12-30s**, allowed **6-45s** if it's fire (scorer centers ~21s).
+- **Per clip:** logo watermark + brand outro end-card appended. Vertical 1080x1920,
+  audio kept. Nothing posts (status `review`).

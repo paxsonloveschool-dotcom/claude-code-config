@@ -71,6 +71,46 @@ def test_pick_highlights_orders_and_floors():
     assert 13.0 not in starts
 
 
+def test_trim_to_clean_strips_filler_edges():
+    segs = [_seg("um so today we install drainage and", 0.0, 5.0,
+                 [("um", 0.0, 0.3), ("so", 0.3, 0.6), ("today", 0.6, 1.0),
+                  ("we", 1.0, 1.2), ("install", 1.2, 1.8), ("drainage", 1.8, 2.5),
+                  ("and", 2.5, 2.8)])]
+    a, b = V._trim_to_clean(segs, 0.0, 5.0)
+    assert a >= 0.5 and a < 0.7      # starts at "today", not "um/so"
+    assert 2.4 < b < 2.7             # ends at "drainage", not "and"
+
+
+def test_trim_drops_stutter_repeat():
+    segs = [_seg("the the yard looks great", 0.0, 3.0,
+                 [("the", 0.0, 0.3), ("the", 0.3, 0.6), ("yard", 0.6, 1.0),
+                  ("looks", 1.0, 1.4), ("great", 1.4, 2.0)])]
+    a, _b = V._trim_to_clean(segs, 0.0, 3.0)
+    assert a >= 0.2                  # past the first "the" (>=0.3 minus the small pad)
+
+
+def test_clip_pieces_drops_weak_middle():
+    strong1 = _seg("Here is the number one thing that matters get it right.", 0.0, 6.0)
+    weak = _seg("um uh like you know so yeah whatever.", 6.0, 12.0)
+    strong2 = _seg("The biggest secret is consistency wins every single time.", 12.0, 18.0)
+    pieces = V._clip_pieces([strong1, weak, strong2], 0.0, 18.0, drop_below=0.2)
+    assert pieces == [(0.0, 6.0), (12.0, 18.0)]   # boring 6-12s middle cut out
+
+
+def test_clip_pieces_all_good_is_one_run():
+    s1 = _seg("Here is the number one thing that actually matters a lot.", 0.0, 6.0)
+    s2 = _seg("And the biggest secret is consistency wins every time.", 6.0, 12.0)
+    pieces = V._clip_pieces([s1, s2], 0.0, 12.0, drop_below=0.2)
+    assert len(pieces) == 1 and pieces[0][0] == 0.0
+
+
+def test_shift_segments_offsets_words():
+    segs = [_seg("hello world", 0.0, 1.0, [("hello", 0.0, 0.5), ("world", 0.5, 1.0)])]
+    out = V._shift_segments(segs, 3.0)
+    assert abs(out[0].start_seconds - 3.0) < 1e-6
+    assert abs(out[0].words[0].start_seconds - 3.0) < 1e-6
+
+
 def _ffmpeg():
     return shutil.which("ffmpeg") is not None
 
