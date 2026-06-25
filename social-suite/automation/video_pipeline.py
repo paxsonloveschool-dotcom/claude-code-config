@@ -1165,6 +1165,41 @@ def delete_ids(ids: list[str]) -> list[dict]:
     return kept
 
 
+def demote_ids(which: str) -> list[dict]:
+    """Move clips OUT of ``Ready To Post`` back into ``processed/`` (un-save).
+    ``which`` is "all" or a comma id list. Status stays ``review``. Never posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    sel = which.strip().lower()
+    ids = None if sel in ("all", "") else {x.strip() for x in which.split(",") if x.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    moved = 0
+    for e in queue:
+        if ids is not None and e.get("id") not in ids:
+            continue
+        mp = e.get("media_path") or ""
+        if f"/{READY_FOLDER}/" not in mp:
+            continue
+        prefix, fname = mp.split(f"/{READY_FOLDER}/", 1)[0], mp.rsplit("/", 1)[-1]
+        dest = f"{prefix}/processed/{fname}"
+        try:
+            client.files_move_v2(mp, dest, autorename=True)
+            e["media_path"] = dest
+            try:
+                e["media_url"] = dbx.shared_link(dest, raw=True)
+            except Exception:  # noqa: BLE001
+                pass
+            moved += 1
+            print(f"demoted {e.get('id')} -> processed/")
+        except Exception as ex:  # noqa: BLE001
+            print(f"demote failed {e.get('id')}: {ex}")
+    if moved:
+        _save_json(QUEUE_PATH, queue)
+    print(f"\nDemoted {moved} clip(s) out of {READY_FOLDER}. Nothing posted.")
+    return queue
+
+
 def promote_ids(ids: list[str]) -> list[dict]:
     """Move ONLY the given queue ids from ``processed/`` into the brand's
     ``Ready To Post`` folder (approved keepers). Status stays ``review`` so the
@@ -1701,6 +1736,12 @@ def main(argv: list[str] | None = None) -> int:
     promote = os.getenv("PROMOTE_IDS", "").strip()
     if promote:
         promote_ids([x.strip() for x in promote.split(",") if x.strip()])
+        return 0
+
+    # DEMOTE_IDS: move clips back out of Ready To Post into processed/ (un-save).
+    demote = os.getenv("DEMOTE_IDS", "").strip()
+    if demote:
+        demote_ids(demote)
         return 0
 
     # KEEP_IDS: delete every clip (Dropbox file + queue entry) not in this

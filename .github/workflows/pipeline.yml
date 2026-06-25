@@ -67,6 +67,10 @@ on:
         description: "Comma ids to DELETE (Dropbox file + queue entry); runs before montage"
         required: false
         default: ""
+      demote_ids:
+        description: "'all' or comma ids to UN-SAVE (move out of Ready To Post back to processed)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -125,6 +129,7 @@ jobs:
           DROPBOX_ORGANIZE: ${{ inputs.dropbox_organize }}
           PROMOTE_IDS: ${{ inputs.promote_ids }}
           DELETE_IDS: ${{ inputs.delete_ids }}
+          DEMOTE_IDS: ${{ inputs.demote_ids }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
