@@ -1165,6 +1165,41 @@ def delete_ids(ids: list[str]) -> list[dict]:
     return kept
 
 
+def clean_ready_orphans() -> None:
+    """Delete any file in each brand's ``Ready To Post`` that is NOT referenced by
+    a current queue entry — i.e. stale/old versions of clips that were since edited.
+    Keeps Ready To Post showing only the current saved set. Never posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    queue = _load_json(QUEUE_PATH, [])
+    keep = {(e.get("media_path") or "").lower() for e in queue}
+    removed = 0
+    for path_lower, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        ready = f"{display.rstrip('/')}/{READY_FOLDER}"
+        try:
+            res = client.files_list_folder(ready)
+        except Exception:  # noqa: BLE001 — folder may not exist
+            continue
+        for e in res.entries:
+            if e.__class__.__name__ != "FileMetadata":
+                continue
+            fp = getattr(e, "path_display", "") or getattr(e, "path_lower", "")
+            if not fp.lower().endswith(VIDEO_EXTS):
+                continue
+            if fp.lower() in keep:
+                continue
+            try:
+                dbx.delete(fp)
+                removed += 1
+                print(f"removed stale saved: {fp}")
+            except Exception as ex:  # noqa: BLE001
+                print(f"clean failed {fp}: {ex}")
+    print(f"\nRemoved {removed} stale file(s) from {READY_FOLDER}.")
+
+
 def demote_ids(which: str) -> list[dict]:
     """Move clips OUT of ``Ready To Post`` back into ``processed/`` (un-save).
     ``which`` is "all" or a comma id list. Status stays ``review``. Never posts."""
@@ -1742,6 +1777,12 @@ def main(argv: list[str] | None = None) -> int:
     demote = os.getenv("DEMOTE_IDS", "").strip()
     if demote:
         demote_ids(demote)
+        return 0
+
+    # CLEAN_READY: delete stale/old files left in Ready To Post (edited clips'
+    # previous versions) so only the current saved set remains.
+    if os.getenv("CLEAN_READY", "").strip().lower() in ("1", "true", "yes", "go"):
+        clean_ready_orphans()
         return 0
 
     # KEEP_IDS: delete every clip (Dropbox file + queue entry) not in this

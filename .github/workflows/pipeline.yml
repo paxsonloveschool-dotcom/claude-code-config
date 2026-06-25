@@ -71,6 +71,10 @@ on:
         description: "'all' or comma ids to UN-SAVE (move out of Ready To Post back to processed)"
         required: false
         default: ""
+      clean_ready:
+        description: "'go' to delete stale/old files left in Ready To Post (keep only current set)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -130,6 +134,7 @@ jobs:
           PROMOTE_IDS: ${{ inputs.promote_ids }}
           DELETE_IDS: ${{ inputs.delete_ids }}
           DEMOTE_IDS: ${{ inputs.demote_ids }}
+          CLEAN_READY: ${{ inputs.clean_ready }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
