@@ -60,6 +60,17 @@ def base_dark(green_pool=1.0, cx=0.5, cy=0.40):
     c1 = np.array(bg1, np.float32)
     c2 = np.array(bg2, np.float32)
     arr = c1[None, None, :] * (1 - tdiag[..., None]) + c2[None, None, :] * tdiag[..., None]
+    # Soft radial lift behind the logo for depth (premium, not flat).
+    cxp, cyp = W * 0.5, float(MARK_CY)
+    r = np.sqrt((xx - cxp) ** 2 + (yy - cyp) ** 2)
+    halo = np.clip(1 - r / (W * 0.85), 0, 1) ** 2.2
+    arr += halo[..., None] * np.array([22, 26, 30], np.float32)
+    # Gentle vignette to focus the centre.
+    rv = np.sqrt(((xx - W / 2) / (W / 2)) ** 2 + ((yy - H / 2) / (H / 2)) ** 2)
+    arr *= (1 - np.clip(rv - 0.7, 0, 1)[..., None] * 0.28)
+    # Ordered dither before 8-bit quantise -> kills gradient banding on IG.
+    arr += (np.random.default_rng(7).random((H, W, 3)).astype(np.float32) - 0.5) * 1.6
+    arr = np.clip(arr, 0, 255)
     out = np.dstack([arr, np.full((H, W), 255, np.float32)]).astype(np.uint8)
     return Image.fromarray(out, "RGBA")
 
@@ -336,7 +347,7 @@ def _frame_shake(frame, t):
 def f_slam(t, seconds, ctx):
     mark, info = ctx["mark"], ctx["info"]
     frame = base_dark().copy()
-    bs = 1.55
+    bs = float(os.getenv("OUTRO_BS", "1.55"))   # logo display scale (per brand)
 
     # diagonal swipe bars wiping across early
     sw = ease_in_out(seg(t, 0.0, 0.45))
