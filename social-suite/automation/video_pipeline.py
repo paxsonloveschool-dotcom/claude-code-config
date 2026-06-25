@@ -1592,6 +1592,24 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\n== {display}: {len(vids)} video(s) discoverable ==")
             for v in vids:
                 print(f"   {getattr(v, 'path', v.name)}  ({getattr(v,'size_bytes',0)//1_000_000} MB)")
+            # also list IMAGES under Drop Content Here (for finished-project end-slides)
+            _cli = _dbx._client()
+            drop = f"{path_lower.rstrip('/')}/{DROP_FOLDER.lower()}"
+            imgs = []
+            try:
+                r = _cli.files_list_folder(drop, recursive=True)
+                while True:
+                    for e in r.entries:
+                        if e.__class__.__name__ == "FileMetadata" and e.name.lower().endswith(IMAGE_EXTS):
+                            imgs.append(getattr(e, "path_display", "") or e.name)
+                    if not getattr(r, "has_more", False):
+                        break
+                    r = _cli.files_list_folder_continue(r.cursor)
+            except Exception:  # noqa: BLE001
+                pass
+            print(f"== {display}: {len(imgs)} image(s) ==")
+            for ip in imgs:
+                print(f"   IMG {ip}")
         return 0
 
     # DROPBOX_ORGANIZE: build the Ready-To-Post + Drop-Content-Here layout.
