@@ -709,6 +709,39 @@ def _first_video(dbx, match: str | None = None):
     return None
 
 
+def _list_videos(dbx, limit: int = 1, match: str | None = None) -> list:
+    """Up to ``limit`` videos from the first matching brand's (CONTENT_FOLDER-
+    scoped) folder, each downloaded -> (file, local, base, brand, display).
+    Stays within ONE brand folder (per-brand isolation)."""
+    import shutil
+    _sub = (os.getenv("CONTENT_FOLDER") or "").strip()
+    out: list = []
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            continue
+        src = f"{path_lower.rstrip('/')}/{_sub.lower()}" if _sub else path_lower
+        try:
+            vids = [f for f in dbx.list_folder(src)
+                    if f.name.lower().endswith(VIDEO_EXTS)]
+        except Exception:  # noqa: BLE001 — subfolder missing for this brand
+            vids = []
+        if match:
+            vids = [f for f in vids if match.lower() in f.name.lower()]
+        if not vids:
+            continue
+        for f in vids[:limit]:
+            raw = dbx.download(f)
+            base = _slug(f.name) or "clip"
+            ext = os.path.splitext(f.name)[1] or ".mp4"
+            local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
+            if os.path.abspath(local) != os.path.abspath(raw):
+                shutil.copy(raw, local)
+            out.append((f, local, base, brand, display))
+        break          # only the first brand folder that has videos
+    return out
+
+
 def dump_transcript() -> None:
     """Transcribe EVERY video in the brand folders and print/commit a timestamped
     transcript per video, so good clip windows can be chosen by time."""
@@ -1358,28 +1391,43 @@ def _hardcat(parts: list[str], out_path: str) -> str:
 def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> list[dict]:
     """Talking-head -> short clips of the best sayings, with animated subtitles.
 
-    Transcribes one narrated video, accurately picks its strongest self-contained
-    moments (improved scorer — completeness/openers/punch, drops filler & dead air),
-    cuts each as a vertical 1080x1920 clip WITH audio, and burns word-by-word
-    karaoke captions. Uploads each as a ``status:"review"`` entry whose text is the
-    actual saying. NEVER posts. Set captions=False (env CAPTIONS=0) to skip subs."""
-    from services.caption import transcribe  # lazy
-    from services.caption.burn import write_ass  # lazy
-    from services.assemble.style import append_outro  # lazy — brand end-card
+    Processes up to ``AUTO_CLIPS_VIDEOS`` source videos (default 1) from the
+    CONTENT_FOLDER-scoped brand folder. For each: transcribe, accurately pick its
+    strongest self-contained moments, clean-cut + drop weak middles, burn the
+    few-words-at-a-time karaoke captions, add logo + outro, and add a
+    ``status:"review"`` entry. NEVER posts. CAPTIONS=0 skips subs."""
     from services.ingest import dropbox_client as dbx  # lazy
 
     match = match or os.getenv("PIPELINE_VIDEO") or None
     captions = captions and os.getenv("CAPTIONS", "1").strip().lower() not in ("0", "false", "no")
-    ctx = _first_video(dbx, match)
-    if not ctx:
+    n_videos = int(os.getenv("AUTO_CLIPS_VIDEOS") or "1")
+    vids = _list_videos(dbx, n_videos, match)
+    if not vids:
         print("auto_clips: no matching video found.")
         return []
+    print(f"auto_clips: processing {len(vids)} video(s): {[v[2] for v in vids]}")
+    queue = _load_json(QUEUE_PATH, [])
+    made: list[dict] = []
+    for ctx in vids:
+        try:
+            made += _clips_for_video(ctx, n, captions, dbx, queue)
+        except Exception as ex:  # noqa: BLE001 — one bad video never kills the batch
+            print(f"auto_clips: video {ctx[2]} failed: {ex}")
+    _save_json(QUEUE_PATH, queue)
+    print(f"auto_clips: {len(made)} captioned clip(s) from {len(vids)} video(s). "
+          f"Nothing posted (status=review).")
+    return made
+
+
+def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict]:
+    """Make the captioned clips for ONE source video (mutates ``queue``)."""
+    from services.caption import transcribe  # lazy
+    from services.caption.burn import write_ass  # lazy
+    from services.assemble.style import append_outro  # lazy — brand end-card
+
     _f, local, base, brand, display = ctx
     brand_key, dispname, tags = brand
-
     segs = transcribe(local)
-    # As many GOOD sayings as the video yields (the scorer drops weak/filler),
-    # each 6-45s. Quality-gated — a short/weak video simply yields fewer.
     # Only GREAT clips (high quality floor), each 6-45s (owner spec #5/#6).
     min_score = float(os.getenv("CLIP_MIN_SCORE", "1.0"))
     wins = _pick_highlights(segs, n=max(n, 12), min_len=6.0, max_len=45.0,
@@ -1395,7 +1443,6 @@ def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> l
     font = os.getenv("CAPTION_FONT", "Roboto")
     fsize = int(os.getenv("CAPTION_FONT_SIZE", "54"))
     max_words = int(os.getenv("CAPTION_MAX_WORDS", "4"))
-    queue = _load_json(QUEUE_PATH, [])
     made: list[dict] = []
     lg = _brand_logo(brand_key)
     for a0, b0, nm in wins:
@@ -1438,7 +1485,7 @@ def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> l
         out_path = f"{display.rstrip('/')}/processed/{out_name}"
         dbx.upload(final, out_path)
         url = dbx.shared_link(out_path, raw=True)
-        queue = [e for e in queue if e.get("id") != f"{brand_key}-{base}-{nm}"]
+        queue[:] = [e for e in queue if e.get("id") != f"{brand_key}-{base}-{nm}"]
         entry = {
             "id": f"{brand_key}-{base}-{nm}", "brand": brand_key,
             "text": saying, "media_url": url, "media_path": out_path,
@@ -1448,8 +1495,6 @@ def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> l
         queue.append(entry)
         made.append(entry)
         print(f"[{brand_key}] {nm}: {a:.0f}-{b:.0f}s -> {out_path}  \"{saying[:60]}\"")
-    _save_json(QUEUE_PATH, queue)
-    print(f"auto_clips: {len(made)} captioned clip(s) ready for review.")
     return made
 
 

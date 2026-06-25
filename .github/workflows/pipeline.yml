@@ -71,6 +71,10 @@ on:
         description: "Subfolder under each brand to pull source videos from (e.g. 'HP Talking Content')"
         required: false
         default: ""
+      content_videos:
+        description: "How many source videos to process in one run (auto_clips), e.g. 5"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -131,6 +135,7 @@ jobs:
           AUTO_MONTAGE: ${{ inputs.auto_montage }}
           PIPELINE_VIDEO: ${{ inputs.video }}
           CONTENT_FOLDER: ${{ inputs.content_folder }}
+          AUTO_CLIPS_VIDEOS: ${{ inputs.content_videos }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
