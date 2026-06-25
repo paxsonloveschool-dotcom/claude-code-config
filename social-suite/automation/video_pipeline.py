@@ -1262,6 +1262,7 @@ def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> l
     actual saying. NEVER posts. Set captions=False (env CAPTIONS=0) to skip subs."""
     from services.caption import transcribe  # lazy
     from services.caption.burn import write_ass  # lazy
+    from services.assemble.style import append_outro  # lazy — brand end-card
     from services.ingest import dropbox_client as dbx  # lazy
 
     match = match or os.getenv("PIPELINE_VIDEO") or None
@@ -1274,7 +1275,9 @@ def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> l
     brand_key, dispname, tags = brand
 
     segs = transcribe(local)
-    wins = _pick_highlights(segs, n=n, min_len=6.0, max_len=24.0)
+    # As many GOOD sayings as the video yields (the scorer drops weak/filler),
+    # each 6-45s. Quality-gated — a short/weak video simply yields fewer.
+    wins = _pick_highlights(segs, n=max(n, 12), min_len=6.0, max_len=45.0)
     if not wins:
         print(f"auto_clips: no strong sayings in {base} (silent/weak? use montage).")
         return []
@@ -1288,7 +1291,9 @@ def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> l
     for a, b, nm in wins:
         cut = os.path.join(workdir, f"{base}-{nm}.mp4")
         try:
-            _edit_short(local, a, b, cut, srt=None, mute=False)   # vertical, keep audio
+            # vertical, keep audio, HP logo watermark in the corner
+            _edit_short(local, a, b, cut, srt=None, mute=False,
+                        logo=_brand_logo(brand_key))
             final = cut
             if captions:
                 clip_segs = _slice_segments(segs, a, b)
@@ -1297,6 +1302,13 @@ def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> l
                 capped = os.path.join(workdir, f"{base}-{nm}-cap.mp4")
                 _burn_ass(cut, ass, capped)
                 final = capped
+            # brand outro end-card on every clip
+            with_outro = os.path.join(workdir, f"{base}-{nm}-final.mp4")
+            try:
+                append_outro(final, with_outro)
+                final = with_outro
+            except Exception as ex:  # noqa: BLE001 — keep the clip even if outro fails
+                print(f"auto_clips: outro skipped for {nm}: {ex}")
         except Exception as ex:  # noqa: BLE001 — one bad clip never kills the run
             print(f"auto_clips: clip {nm} failed: {ex}")
             continue

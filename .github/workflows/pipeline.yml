@@ -83,7 +83,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-roboto
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -113,7 +113,7 @@ jobs:
           WHISPER_MODEL: base
           WHISPER_DEVICE: cpu
           # A font that exists on the runner (libass/fontconfig name).
-          CAPTION_FONT: DejaVu Sans
+          CAPTION_FONT: Roboto
           # When set, do precise manual recuts instead of normal chunking.
           RECUT_SPECS: ${{ inputs.recut_specs }}
           DUMP_TRANSCRIPT: ${{ inputs.dump_transcript }}
@@ -150,4 +150,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore(pipeline): add review item(s) from Dropbox videos [skip ci]"
-          git push
+          branch=claude/bulk-pipeline
+          for i in 1 2 3 4 5 6; do
+            if git push origin "HEAD:$branch"; then echo "pushed"; break; fi
+            echo "push rejected (attempt $i) — rebasing on origin/$branch"
+            git pull --rebase --autostash origin "$branch" || true
+            sleep $(( (RANDOM % 4) + i ))
+          done

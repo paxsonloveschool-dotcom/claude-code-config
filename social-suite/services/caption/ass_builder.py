@@ -48,10 +48,10 @@ def build_style(
     primary_colour: str = "&H00FFFFFF",   # white (highlighted/sung text)
     secondary_colour: str = "&H00AAAAAA", # grey (not-yet-spoken karaoke fill)
     outline_colour: str = "&H00000000",   # black outline
-    outline: int = 3,
-    shadow: int = 0,
+    outline: int = 4,                      # thick high-contrast black outline
+    shadow: int = 2,                       # + drop shadow for readability on any bg
     alignment: int = 2,                    # 2 = bottom-center
-    margin_v: int = 240,                   # sit above the platform UI / bottom edge
+    margin_v: int = 320,                   # sit in the lower-third (not the very bottom)
 ) -> str:
     """Return the ``[V4+ Styles]`` block with a single style named ``Caption``."""
     fmt = (
