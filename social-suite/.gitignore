@@ -30,3 +30,6 @@ venv/
 *.mp3
 *.ass
 *.srt
+
+# Outro end-card deliverables live on the outro feature branch, not here
+content/brand/outro/
