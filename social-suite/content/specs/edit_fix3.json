@@ -1,0 +1,15 @@
+[
+ {"name":"william-pov","xfade":0.5,"segments":[
+   {"shot":["may 04 2026, 11 48 48",5,9]},
+   {"panels":[["may 06 2026, 4 07 53",6,10],["may 04 2026, 12 32 56",6,10]]},
+   {"shot":["may 06 2026, 4 07 53",7,11]},
+   {"shot":["may 04 2026, 12 32 56",6,10]}
+ ]},
+ {"name":"june-build-2","xfade":0.5,"segments":[
+   {"shot":["june pergola",5,9]},
+   {"panels":[["june pergola",10,14],["june pergola",17,21]]},
+   {"shot":["june pergola",23,27]},
+   {"shot":["june pergola",29,33]},
+   {"shot":["june pergola",32,36]}
+ ]}
+]
