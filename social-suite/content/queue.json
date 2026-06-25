@@ -404,33 +404,5 @@
     "schedule": null,
     "status": "review",
     "error": null
-  },
-  {
-    "id": "hp-talk-auto-1",
-    "brand": "hp",
-    "media_url": null,
-    "media_path": "/HP-Content Auto./processed/video-aug-14-2025-10-57-03-am-auto-1.mp4",
-    "platforms": [
-      "instagram",
-      "facebook"
-    ],
-    "schedule": null,
-    "status": "review",
-    "error": null,
-    "caption": "What's up guys so today we're installing some PVC drainage..."
-  },
-  {
-    "id": "hp-talk-auto-2",
-    "brand": "hp",
-    "media_url": null,
-    "media_path": "/HP-Content Auto./processed/video-aug-14-2025-10-57-03-am-auto-2.mp4",
-    "platforms": [
-      "instagram",
-      "facebook"
-    ],
-    "schedule": null,
-    "status": "review",
-    "error": null,
-    "caption": "The cool thing about it is it's not going to get crushed under..."
   }
 ]
