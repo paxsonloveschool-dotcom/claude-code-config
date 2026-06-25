@@ -51,3 +51,5 @@ content/brand/_logo_black.png
 !content/brand/outro/restore/slam/restore-outro-slam-silent.mp4
 content/brand/outro/restore/**/frames/
 content/brand/outro/restore/**/sting.wav
+# Experimental colour-variant renders (the chosen one is finalized separately)
+content/brand/outro/restore-*/
