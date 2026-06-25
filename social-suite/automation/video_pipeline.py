@@ -996,6 +996,34 @@ def dump_thumbs() -> None:
                  "-frames:v", "1", "-q:v", "4", sheet],
                 check=False, capture_output=True)
             print(f"contact sheet {base}.jpg (dur={dur:.1f}s)")
+        # IMAGES under Drop Content Here -> single thumbnail each (finished-project photos)
+        client = dbx._client()
+        drop = f"{path_lower.rstrip('/')}/{DROP_FOLDER.lower()}"
+        try:
+            ir = client.files_list_folder(drop, recursive=True)
+        except Exception:  # noqa: BLE001
+            ir = None
+        imgs = []
+        while ir is not None:
+            for e in ir.entries:
+                if e.__class__.__name__ == "FileMetadata" and e.name.lower().endswith(IMAGE_EXTS):
+                    fp = getattr(e, "path_display", "") or getattr(e, "path_lower", "")
+                    if not match or match in fp.lower():
+                        imgs.append(dbx.DropboxFile(path=fp, name=e.name,
+                                    size_bytes=int(getattr(e, "size", 0) or 0),
+                                    rev=getattr(e, "rev", "") or ""))
+            if not getattr(ir, "has_more", False):
+                break
+            ir = client.files_list_folder_continue(ir.cursor)
+        for f in imgs:
+            fp = getattr(f, "path", "") or f.name
+            raw = dbx.download(f)
+            parent = os.path.basename(os.path.dirname(fp)) if fp else ""
+            base = _slug(f"img-{parent}-{f.name}") or "img"
+            thumb = os.path.join(out_dir, f"{base}.jpg")
+            subprocess.run(["ffmpeg", "-y", "-i", raw, "-vf", "scale=360:-1",
+                            "-frames:v", "1", "-q:v", "4", thumb], check=False, capture_output=True)
+            print(f"image thumb {base}.jpg  <- {fp}")
 
 
 def fetch_ig_reference(brand_key: str = "hp", limit: int = 24) -> int:
