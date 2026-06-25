@@ -25,21 +25,34 @@ import wave
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-# ---- brand -----------------------------------------------------------------
+# ---- brand (env-overridable so one generator serves every brand) -----------
+def _rgb_env(name, default):
+    v = os.getenv(name, "").strip()
+    if v:
+        try:
+            parts = [int(x) for x in v.replace(" ", "").split(",")[:3]]
+            if len(parts) == 3:
+                return tuple(parts)
+        except ValueError:
+            pass
+    return default
+
+
 W, H = 1080, 1920
-GREEN = (104, 196, 52)        # HP grass green
-GREEN_HI = (158, 230, 96)     # brighter green for glows/sweep
+GREEN = _rgb_env("OUTRO_RGB", (104, 196, 52))        # brand accent (HP grass green)
+GREEN_HI = _rgb_env("OUTRO_RGB_HI", (158, 230, 96))  # brighter for glows/sweep
 BLACK = (8, 10, 9)
 WHITE = (244, 248, 244)
-PHONE = "(979) 777-8851"
-WEB = "HPLANDSCAPINGLLC.COM"
-AREA = "SERVING TEXAS"
+PHONE = os.getenv("OUTRO_LINE1", "(979) 777-8851")
+WEB = os.getenv("OUTRO_LINE2", "HPLANDSCAPINGLLC.COM")
+AREA = os.getenv("OUTRO_LINE3", "SERVING TEXAS")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 OUT_DIR = os.path.join(ROOT, "content", "brand", "outro")
 FRAME_DIR = os.path.join(OUT_DIR, "frames")
-LOGO_OVERRIDE = os.path.join(ROOT, "content", "brand", "hp-logo.transparent.png")
+LOGO_OVERRIDE = os.getenv(
+    "OUTRO_LOGO", os.path.join(ROOT, "content", "brand", "hp-logo.transparent.png"))
 
 FONTS = [
     "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
@@ -190,25 +203,28 @@ def paste_centered(base, layer, cy, scale=1.0, alpha=1.0):
 
 # ---- contact / info block --------------------------------------------------
 def build_info() -> Image.Image:
+    """Contact block: up to three lines (phone/web/area). Blank lines are skipped
+    so a brand with fewer details still lays out cleanly."""
     img = Image.new("RGBA", (W, 420), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     cx = W // 2
+    y = 40
 
-    big = font(74)
-    bb = d.textbbox((0, 0), PHONE, font=big, stroke_width=3)
-    tw = bb[2] - bb[0]
-    # small phone glyph
-    d.text((cx - tw // 2 - bb[0], 40 - bb[1]), PHONE, font=big, fill=WHITE,
-           stroke_width=3, stroke_fill=BLACK)
-
-    sub = font(46)
-    line2 = f"{WEB}"
-    bb = d.textbbox((0, 0), line2, font=sub)
-    d.text((cx - (bb[2] - bb[0]) // 2 - bb[0], 150), line2, font=sub, fill=GREEN_HI)
-
-    tag = font(40)
-    bb = d.textbbox((0, 0), AREA, font=tag)
-    d.text((cx - (bb[2] - bb[0]) // 2 - bb[0], 230), AREA, font=tag, fill=WHITE)
+    if PHONE:
+        big = font(74)
+        bb = d.textbbox((0, 0), PHONE, font=big, stroke_width=3)
+        d.text((cx - (bb[2] - bb[0]) // 2 - bb[0], y - bb[1]), PHONE, font=big,
+               fill=WHITE, stroke_width=3, stroke_fill=BLACK)
+        y += 110
+    if WEB:
+        sub = font(46)
+        bb = d.textbbox((0, 0), WEB, font=sub)
+        d.text((cx - (bb[2] - bb[0]) // 2 - bb[0], y), WEB, font=sub, fill=GREEN_HI)
+        y += 80
+    if AREA:
+        tag = font(40)
+        bb = d.textbbox((0, 0), AREA, font=tag)
+        d.text((cx - (bb[2] - bb[0]) // 2 - bb[0], y), AREA, font=tag, fill=WHITE)
     return img
 
 

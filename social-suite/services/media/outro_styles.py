@@ -28,7 +28,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 from services.media.outro import (
-    W, H, GREEN, GREEN_HI, BLACK, WHITE, font,
+    W, H, GREEN, GREEN_HI, BLACK, WHITE, font, _rgb_env,
     clamp01, ease_out, ease_out_back, seg,
     build_mark, build_info, add_glow, set_alpha, paste_centered,
 )
@@ -298,8 +298,8 @@ def f_chrome(t, seconds, ctx):
 
 
 # --------------------------------------------------------------- style: SLAM
-SLAM_GREEN = (130, 232, 60)     # hotter green for slam effects
-SLAM_HI = (188, 255, 118)
+SLAM_GREEN = _rgb_env("OUTRO_SLAM_RGB", (130, 232, 60))     # hot accent for slam fx
+SLAM_HI = _rgb_env("OUTRO_SLAM_RGB_HI", (188, 255, 118))
 
 
 def _tint(layer, color):
@@ -457,7 +457,11 @@ def _audio(style, seconds, path):
 
 def render_style(style, seconds, fps):
     fn = STYLES[style]
-    sdir = os.path.join(OUT_DIR, style)
+    # Output stem is brand-overridable so one generator serves every brand
+    # without clobbering another brand's files (default keeps HP's names).
+    name = os.getenv("OUTRO_NAME", "hp-outro")
+    sub = os.getenv("OUTRO_SUBDIR", "")
+    sdir = os.path.join(OUT_DIR, sub, style) if sub else os.path.join(OUT_DIR, style)
     fdir = os.path.join(sdir, "frames")
     os.makedirs(fdir, exist_ok=True)
     for f in os.listdir(fdir):
@@ -479,8 +483,8 @@ def render_style(style, seconds, fps):
         frame = fn(i / fps, seconds, ctx)
         frame.convert("RGB").save(os.path.join(fdir, f"f{i:04d}.png"))
 
-    silent = os.path.join(sdir, f"hp-outro-{style}-silent.mp4")
-    withaud = os.path.join(sdir, f"hp-outro-{style}.mp4")
+    silent = os.path.join(sdir, f"{name}-{style}-silent.mp4")
+    withaud = os.path.join(sdir, f"{name}-{style}.mp4")
     wav = os.path.join(sdir, "sting.wav")
     subprocess.run(["ffmpeg", "-y", "-framerate", str(fps), "-i",
                     os.path.join(fdir, "f%04d.png"), "-c:v", "libx264",
@@ -493,7 +497,7 @@ def render_style(style, seconds, fps):
                     "-movflags", "+faststart", withaud],
                    check=True, capture_output=True)
     Image.open(os.path.join(fdir, f"f{n-1:04d}.png")).save(
-        os.path.join(sdir, f"hp-outro-{style}-poster.jpg"), quality=92)
+        os.path.join(sdir, f"{name}-{style}-poster.jpg"), quality=92)
     print(f"[{style}] -> {withaud}")
     return withaud
 
