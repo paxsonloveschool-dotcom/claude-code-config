@@ -29,6 +29,7 @@ QUEUE_PATH = os.path.join(ROOT, "content", "queue.json")
 PROCESSED_PATH = os.path.join(ROOT, "content", "processed.json")
 
 VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv")
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".heic", ".webp")
 
 # Brand classification by keyword in the folder name + that brand's look. Order
 # matters: check "restore" before "hp" so "Restore" never falls through to hp.
@@ -863,6 +864,57 @@ def _first_video(dbx, match: str | None = None):
     return None
 
 
+def _first_image(dbx, match: str | None = None) -> str | None:
+    """Download the first IMAGE (optionally whose name/path contains ``match``)
+    under any brand's Drop Content Here. Returns a local path or None. Used to add
+    a finished-project 'result' end-slide from a photo the owner dropped in."""
+    client = dbx._client()
+    m = (match or "").lower()
+    for path_lower, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        drop = f"{path_lower.rstrip('/')}/{DROP_FOLDER.lower()}"
+        try:
+            res = client.files_list_folder(drop, recursive=True)
+        except Exception:  # noqa: BLE001
+            continue
+        imgs = []
+        while True:
+            for e in res.entries:
+                if e.__class__.__name__ != "FileMetadata":
+                    continue
+                if not e.name.lower().endswith(IMAGE_EXTS):
+                    continue
+                fp = getattr(e, "path_display", "") or getattr(e, "path_lower", "")
+                if m and m not in e.name.lower() and m not in fp.lower():
+                    continue
+                imgs.append(dbx.DropboxFile(path=fp, name=e.name,
+                            size_bytes=int(getattr(e, "size", 0) or 0),
+                            rev=getattr(e, "rev", "") or ""))
+            if not getattr(res, "has_more", False):
+                break
+            res = client.files_list_folder_continue(res.cursor)
+        if imgs:
+            return dbx.download(imgs[0])
+    return None
+
+
+def _still_clip(img_path: str, out_path: str, dur: float = 3.5) -> str:
+    """Make a ``dur``-second 1080x1920@30 clip from a still image with a slow
+    Ken-Burns zoom — used as a finished-project end-slide. Muted."""
+    import subprocess  # lazy
+    frames = max(1, int(dur * 30))
+    vf = (f"scale=1188:2112:force_original_aspect_ratio=increase,crop=1188:2112,"
+          f"zoompan=z='min(zoom+0.0006,1.10)':d={frames}:s=1080x1920:fps=30,"
+          f"setsar=1,format=yuv420p")
+    subprocess.run(
+        ["ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", f"{dur:.2f}",
+         "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+         "-an", "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
 def dump_transcript() -> None:
     """Transcribe EVERY video in the brand folders and print/commit a timestamped
     transcript per video, so good clip windows can be chosen by time."""
@@ -1291,6 +1343,20 @@ def cut_montage(spec: dict) -> dict | None:
         return ws
 
     for i, seg in enumerate(spec.get("segments", [])):
+        # IMAGE end-slide: {"image": "<match>", "dur": 3.5} -> Ken-Burns still of a
+        # finished-project photo the owner dropped into Drop Content Here.
+        if seg.get("image") and base_ctx is not None:
+            img = _first_image(dbx, str(seg["image"]))
+            if not img:
+                print(f"montage seg {i}: image not found {seg['image']!r} — skipping")
+                continue
+            out = os.path.join(workdir, f"mseg-{name}-{i}.mp4")
+            try:
+                _still_clip(img, out, float(seg.get("dur", 3.5)))
+                seg_clips.append(out)
+            except Exception as ex:  # noqa: BLE001
+                print(f"montage seg {i} image failed ({ex}); skipping")
+            continue
         shots = seg.get("panels") or ([seg["shot"]] if seg.get("shot") else [])
         if not shots:
             continue
