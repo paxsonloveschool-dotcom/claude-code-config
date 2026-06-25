@@ -280,7 +280,7 @@ def encode(mode, out_dir, frames, n, fps, seconds=3.0):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=MODES, default="strips")
+    ap.add_argument("--mode", choices=MODES, default="halves")
     ap.add_argument("--all", action="store_true")
     a = ap.parse_args()
     modes = MODES if a.all else [a.mode]
