@@ -1080,24 +1080,71 @@ HOOK_WORDS = (
     "beautiful", "expensive", "crazy", "insane", "look at", "turned out", "dream",
     "results", "result", "best", "perfect", "love",
 )
-FILLER_WORDS = ("um ", "uh ", " like ", "you know", "i mean", "kind of", "sort of")
+# Phrases that open a strong, self-contained "saying" — a clip that starts on one
+# of these tends to be quotable and grabs attention in the first second.
+OPENER_PHRASES = (
+    "here's", "the biggest", "most people", "the secret", "the truth", "if you",
+    "the number one", "the best", "the worst", "the key", "the problem", "the reason",
+    "this is why", "that's why", "the thing about", "a lot of people", "the mistake",
+    "let me tell you", "i'll tell you", "what i", "remember", "listen", "honestly",
+    "my advice", "pro tip", "fun fact", "the trick",
+)
+# Punchy, opinionated, concrete words that make a line land.
+PUNCH_WORDS = (
+    "never", "always", "huge", "guarantee", "guaranteed", "promise", "proven",
+    "secret", "mistake", "biggest", "number one", "literally", "game changer",
+    "worth it", "trust me", "the most", "every time", "matters", "important",
+    "key", "difference", "quality", "value", "honest", "real",
+)
+FILLER_WORDS = ("um ", "uh ", " like ", "you know", "i mean", "kind of", "sort of",
+                " uh,", " um,", "basically", " so yeah", "i guess")
+# A trailing word that means the thought isn't finished — bad place to end a clip.
+DANGLING_TAILS = ("and", "but", "so", "because", "or", "the", "a", "to", "that",
+                  "with", "for", "of", "if", "when", "we", "i", "it's", "like")
 
 
 def _score_segment_text(text: str, dur: float) -> float:
-    """Heuristic 'is this a good moment' score for a stretch of speech (no LLM).
+    """Heuristic 'is this a good, quotable saying' score (no LLM, $0).
 
-    Rewards lively delivery (words/sec) and hook words; penalizes filler and
-    lengths far from the ~15s sweet spot. Stands in for SupoClip's paid LLM.
+    Rewards: lively delivery, a strong opener, punch/hook words, and a COMPLETE
+    thought (ends on sentence punctuation). Penalizes: filler, word repetition,
+    dead air (very low words/sec), a dangling unfinished tail, and lengths far
+    from the short-clip sweet spot (~14s). A genuinely weak stretch scores <= 0
+    so it never becomes a clip — that's the 'accurate' part.
     """
-    t = (text or "").lower()
+    raw = (text or "").strip()
+    t = raw.lower()
     words = re.findall(r"[a-z']+", t)
-    if not words or dur <= 0:
+    if len(words) < 4 or dur <= 0:
         return 0.0
-    density = min((len(words) / dur) / 3.0, 1.0)      # ~3 words/sec reads as lively
-    hooks = sum(1 for h in HOOK_WORDS if h in t)
+
+    wps = len(words) / dur
+    density = min(wps / 2.8, 1.0)                  # lively delivery
+    if wps < 1.1:                                  # long silences / dead air
+        density -= 0.5
+
+    opener = 1.0 if any(t.startswith(p) or f" {p}" in t[:40] for p in OPENER_PHRASES) else 0.0
+    hooks = min(sum(1 for h in HOOK_WORDS if h in t), 3)
+    punch = min(sum(1 for p in PUNCH_WORDS if p in t), 3)
+
+    ends_clean = 1.0 if raw.endswith((".", "!", "?")) else 0.0
+    last = words[-1]
+    dangling = 1.0 if (last in DANGLING_TAILS and not ends_clean) else 0.0
+
     filler = sum(t.count(f) for f in FILLER_WORDS)
-    score = density + 0.6 * hooks - 0.15 * filler
-    score -= abs(dur - 15.0) / 30.0                   # prefer a satisfying ~15s
+    filler_density = filler / max(1, len(words) / 8)   # per ~8 words
+    uniq = len(set(words)) / len(words)                # 1.0 = no repetition
+    repetition = max(0.0, 0.7 - uniq)                  # penalize heavy repeats
+
+    score = (density
+             + 0.9 * opener
+             + 0.4 * hooks
+             + 0.35 * punch
+             + 0.5 * ends_clean
+             - 0.7 * dangling
+             - 0.25 * filler_density
+             - 1.2 * repetition)
+    score -= abs(dur - 14.0) / 26.0                 # prefer a tight ~14s clip
     return score
 
 
@@ -1157,6 +1204,113 @@ def auto_highlights(n: int = 4, match: str | None = None) -> list[dict]:
     print(f"auto_highlights: {base} -> {[(a, b) for a, b, _ in wins]}")
     specs = [{"name": nm, "video": match, "start": a, "end": b} for a, b, nm in wins]
     return cut_windows(specs)
+
+
+def _slice_segments(segments, a: float, b: float):
+    """Return transcript segments inside ``[a,b]``, re-timed to start at 0 — so an
+    animated-caption file lines up with a clip cut from that window."""
+    from services.caption.transcribe import Segment, Word  # lazy
+
+    out = []
+    for s in segments:
+        ss = getattr(s, "start_seconds", None)
+        se = getattr(s, "end_seconds", None)
+        if ss is None or se is None or se <= a or ss >= b:
+            continue
+        ns, ne = max(ss, a) - a, min(se, b) - a
+        if ne <= ns:
+            continue
+        words = []
+        for w in (getattr(s, "words", None) or []):
+            ws = getattr(w, "start_seconds", None)
+            we = getattr(w, "end_seconds", None)
+            if ws is None or we is None or we <= a or ws >= b:
+                continue
+            words.append(Word(text=getattr(w, "text", ""),
+                              start_seconds=max(ws, a) - a, end_seconds=min(we, b) - a))
+        out.append(Segment(text=(getattr(s, "text", "") or "").strip(),
+                           start_seconds=ns, end_seconds=ne, words=words))
+    return out
+
+
+def _burn_ass(src: str, ass_path: str, out_path: str) -> str:
+    """Burn an ASS (word-by-word animated) subtitle file onto a clip, keep audio."""
+    import subprocess  # lazy
+    safe = ass_path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", src, "-vf", f"ass={safe}",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+         "-c:a", "copy", "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
+def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> list[dict]:
+    """Talking-head -> short clips of the best sayings, with animated subtitles.
+
+    Transcribes one narrated video, accurately picks its strongest self-contained
+    moments (improved scorer — completeness/openers/punch, drops filler & dead air),
+    cuts each as a vertical 1080x1920 clip WITH audio, and burns word-by-word
+    karaoke captions. Uploads each as a ``status:"review"`` entry whose text is the
+    actual saying. NEVER posts. Set captions=False (env CAPTIONS=0) to skip subs."""
+    from services.caption import transcribe  # lazy
+    from services.caption.burn import write_ass  # lazy
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    match = match or os.getenv("PIPELINE_VIDEO") or None
+    captions = captions and os.getenv("CAPTIONS", "1").strip().lower() not in ("0", "false", "no")
+    ctx = _first_video(dbx, match)
+    if not ctx:
+        print("auto_clips: no matching video found.")
+        return []
+    _f, local, base, brand, display = ctx
+    brand_key, dispname, tags = brand
+
+    segs = transcribe(local)
+    wins = _pick_highlights(segs, n=n, min_len=6.0, max_len=24.0)
+    if not wins:
+        print(f"auto_clips: no strong sayings in {base} (silent/weak? use montage).")
+        return []
+    print(f"auto_clips: {base} -> {[(a, b) for a, b, _ in wins]}")
+
+    workdir = os.path.dirname(local)
+    font = os.getenv("CAPTION_FONT", "DejaVu Sans")
+    fsize = int(os.getenv("CAPTION_FONT_SIZE", "60"))
+    queue = _load_json(QUEUE_PATH, [])
+    made: list[dict] = []
+    for a, b, nm in wins:
+        cut = os.path.join(workdir, f"{base}-{nm}.mp4")
+        try:
+            _edit_short(local, a, b, cut, srt=None, mute=False)   # vertical, keep audio
+            final = cut
+            if captions:
+                clip_segs = _slice_segments(segs, a, b)
+                ass = os.path.join(workdir, f"{base}-{nm}.ass")
+                write_ass(clip_segs, ass, font=font, font_size=fsize)
+                capped = os.path.join(workdir, f"{base}-{nm}-cap.mp4")
+                _burn_ass(cut, ass, capped)
+                final = capped
+        except Exception as ex:  # noqa: BLE001 — one bad clip never kills the run
+            print(f"auto_clips: clip {nm} failed: {ex}")
+            continue
+        saying = _transcript_text(_slice_segments(segs, a, b))[:280]
+        out_name = f"{base}-{nm}.mp4"
+        out_path = f"{display.rstrip('/')}/processed/{out_name}"
+        dbx.upload(final, out_path)
+        url = dbx.shared_link(out_path, raw=True)
+        queue = [e for e in queue if e.get("id") != f"{brand_key}-{base}-{nm}"]
+        entry = {
+            "id": f"{brand_key}-{base}-{nm}", "brand": brand_key,
+            "text": saying, "media_url": url, "media_path": out_path,
+            "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+            "status": "review", "error": None,
+        }
+        queue.append(entry)
+        made.append(entry)
+        print(f"[{brand_key}] {nm}: {a:.0f}-{b:.0f}s -> {out_path}  \"{saying[:60]}\"")
+    _save_json(QUEUE_PATH, queue)
+    print(f"auto_clips: {len(made)} captioned clip(s) ready for review.")
+    return made
 
 
 _HP_BEATS = (
@@ -1611,6 +1765,18 @@ def main(argv: list[str] | None = None) -> int:
             n = 4
         made = auto_highlights(n=n)
         print(f"\nDone: {len(made)} auto highlight clip(s). Nothing posted (all status=review).")
+        return 0
+
+    # AUTO_CLIPS: talking-head -> best sayings as short clips WITH animated
+    # subtitles (value = how many clips, e.g. "4"). Set CAPTIONS=0 to skip subs.
+    ac = os.getenv("AUTO_CLIPS", "").strip()
+    if ac:
+        try:
+            n = int(ac)
+        except ValueError:
+            n = 4
+        made = auto_clips(n=n)
+        print(f"\nDone: {len(made)} captioned clip(s). Nothing posted (all status=review).")
         return 0
 
     # RECUT_SPECS json: explicit time windows [{"name","start","end"}] (preferred),

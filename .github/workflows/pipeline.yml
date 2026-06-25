@@ -23,6 +23,10 @@ on:
         description: "Number of clips to auto-pick from a narrated video (e.g. 4)"
         required: false
         default: ""
+      auto_clips:
+        description: "Talking-head -> best sayings as short clips WITH animated subtitles (value = #clips, e.g. 4)"
+        required: false
+        default: ""
       keep_ids:
         description: "Comma-separated clip ids to KEEP; all others are deleted"
         required: false
@@ -111,6 +115,7 @@ jobs:
           DUMP_TRANSCRIPT: ${{ inputs.dump_transcript }}
           DUMP_THUMBS: ${{ inputs.dump_thumbs }}
           AUTO_HIGHLIGHTS: ${{ inputs.auto_highlights }}
+          AUTO_CLIPS: ${{ inputs.auto_clips }}
           KEEP_IDS: ${{ inputs.keep_ids }}
           FETCH_PREVIEWS: ${{ inputs.fetch_previews }}
           IG_REFERENCE: ${{ inputs.ig_reference }}

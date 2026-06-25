@@ -51,7 +51,7 @@ def build_style(
     outline: int = 3,
     shadow: int = 0,
     alignment: int = 2,                    # 2 = bottom-center
-    margin_v: int = 120,
+    margin_v: int = 240,                   # sit above the platform UI / bottom edge
 ) -> str:
     """Return the ``[V4+ Styles]`` block with a single style named ``Caption``."""
     fmt = (
@@ -122,7 +122,7 @@ def build_ass(
     header = (
         "[Script Info]\n"
         "ScriptType: v4.00+\n"
-        "WrapStyle: 2\n"
+        "WrapStyle: 0\n"          # smart wrap so long lines don't run off-frame
         "ScaledBorderAndShadow: yes\n"
         f"PlayResX: {video_width}\n"
         f"PlayResY: {video_height}\n\n"
