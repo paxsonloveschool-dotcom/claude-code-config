@@ -47,3 +47,7 @@ content/brand/_logo_on_black.png
 content/brand/outro/_slam_new.png
 content/brand/_logo_white.png
 content/brand/_logo_black.png
+!content/brand/outro/restore/slam/restore-outro-slam.mp4
+!content/brand/outro/restore/slam/restore-outro-slam-silent.mp4
+content/brand/outro/restore/**/frames/
+content/brand/outro/restore/**/sting.wav

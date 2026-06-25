@@ -47,9 +47,21 @@ def ease_in_out(t):
 
 
 def base_dark(green_pool=1.0, cx=0.5, cy=0.40):
-    """Pure-black backdrop. The logo is the hero; styles add their own accents
-    on top. (green_pool/cx/cy kept for call-compat; background stays black.)"""
-    return Image.new("RGBA", (W, H), (0, 0, 0, 255))
+    """Backdrop. Pure black by default (logo is the hero); set OUTRO_BG1 (+ optional
+    OUTRO_BG2) to fill the card with a brand colour / diagonal gradient instead."""
+    bg1 = _rgb_env("OUTRO_BG1", None)
+    bg2 = _rgb_env("OUTRO_BG2", None)
+    if not bg1:
+        return Image.new("RGBA", (W, H), (0, 0, 0, 255))
+    if not bg2:
+        return Image.new("RGBA", (W, H), tuple(bg1) + (255,))
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    tdiag = ((xx / W) + (yy / H)) / 2.0          # 0 at top-left -> 1 at bottom-right
+    c1 = np.array(bg1, np.float32)
+    c2 = np.array(bg2, np.float32)
+    arr = c1[None, None, :] * (1 - tdiag[..., None]) + c2[None, None, :] * tdiag[..., None]
+    out = np.dstack([arr, np.full((H, W), 255, np.float32)]).astype(np.uint8)
+    return Image.fromarray(out, "RGBA")
 
 
 def info_rise(frame, info, t, a=1.25, b=1.85):
