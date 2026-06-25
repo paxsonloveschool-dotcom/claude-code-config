@@ -52,13 +52,13 @@ on:
         required: false
         default: ""
       content_folder:
-        description: "Source folder under each brand to pull from (e.g. 'HP Content' or 'HP Talking Content'). Default 'Drop Content Here'"
+        description: "Source folder under each brand to pull from. Work=HP Content, talking=HP Talking Content"
         required: false
-        default: ""
+        default: "HP Content"
       posts_folder:
-        description: "Destination folder for SAVED clips (promote/demote/clean). e.g. 'HP Posts'. Default 'Ready To Post'"
+        description: "Destination folder for SAVED clips (promote/demote/clean)."
         required: false
-        default: ""
+        default: "HP Posts"
       dropbox_ls:
         description: "Set true to print the Dropbox folder tree and exit"
         required: false
