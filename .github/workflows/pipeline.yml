@@ -51,6 +51,14 @@ on:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
         default: ""
+      content_folder:
+        description: "Source folder under each brand to pull from (e.g. 'HP Content' or 'HP Talking Content'). Default 'Drop Content Here'"
+        required: false
+        default: ""
+      posts_folder:
+        description: "Destination folder for SAVED clips (promote/demote/clean). e.g. 'HP Posts'. Default 'Ready To Post'"
+        required: false
+        default: ""
       dropbox_ls:
         description: "Set true to print the Dropbox folder tree and exit"
         required: false
@@ -129,6 +137,8 @@ jobs:
           MONTAGE_SPEC: ${{ inputs.montage_spec }}
           MONTAGE_SPEC_FILE: ${{ inputs.montage_spec_file }}
           PIPELINE_VIDEO: ${{ inputs.video }}
+          CONTENT_FOLDER: ${{ inputs.content_folder }}
+          POSTS_FOLDER: ${{ inputs.posts_folder }}
           DROPBOX_LS: ${{ inputs.dropbox_ls }}
           DROPBOX_ORGANIZE: ${{ inputs.dropbox_organize }}
           PROMOTE_IDS: ${{ inputs.promote_ids }}

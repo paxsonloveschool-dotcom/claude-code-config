@@ -111,8 +111,13 @@ def _top_level_folders(dbx):
 # Per-brand Dropbox layout the owner asked for:
 #   <Brand>/Drop Content Here/  -> raw videos the owner drops in (the input)
 #   <Brand>/Ready To Post/      -> approved keepers, ready to publish
-DROP_FOLDER = "Drop Content Here"
-READY_FOLDER = "Ready To Post"
+# Input folder the pipeline pulls source videos from, under each brand folder.
+# Override per-run with CONTENT_FOLDER (e.g. "HP Content" for work footage,
+# "HP Talking Content" for talking-head clips). Default kept for back-compat.
+DROP_FOLDER = os.getenv("CONTENT_FOLDER") or "Drop Content Here"
+# Destination folder for approved/saved clips. Override per-run with POSTS_FOLDER
+# (e.g. "HP Posts"). Default kept for back-compat.
+READY_FOLDER = os.getenv("POSTS_FOLDER") or "Ready To Post"
 
 
 def _list_videos_recursive(dbx, folder: str):
