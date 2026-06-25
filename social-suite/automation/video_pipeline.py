@@ -682,11 +682,18 @@ def _first_video(dbx, match: str | None = None):
     """(file, local_path, base, brand, display) for the first video (optionally
     one whose filename contains ``match``), or None."""
     import shutil
+    # CONTENT_FOLDER scopes reads to a subfolder under each brand, e.g.
+    # "HP Talking Content" (SupoClip talking clips) or "HP Content" (work footage).
+    _sub = (os.getenv("CONTENT_FOLDER") or "").strip()
     for path_lower, display in _top_level_folders(dbx):
         brand = classify_brand(display)
         if not brand:
             continue
-        vids = [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+        src = f"{path_lower.rstrip('/')}/{_sub.lower()}" if _sub else path_lower
+        try:
+            vids = [f for f in dbx.list_folder(src) if f.name.lower().endswith(VIDEO_EXTS)]
+        except Exception:  # noqa: BLE001 — subfolder missing for this brand
+            vids = []
         if match:
             vids = [f for f in vids if match.lower() in f.name.lower()]
         if not vids:

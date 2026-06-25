@@ -67,6 +67,10 @@ on:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
         default: ""
+      content_folder:
+        description: "Subfolder under each brand to pull source videos from (e.g. 'HP Talking Content')"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -126,6 +130,7 @@ jobs:
           REVIEW_FEED: ${{ inputs.review_feed }}
           AUTO_MONTAGE: ${{ inputs.auto_montage }}
           PIPELINE_VIDEO: ${{ inputs.video }}
+          CONTENT_FOLDER: ${{ inputs.content_folder }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
