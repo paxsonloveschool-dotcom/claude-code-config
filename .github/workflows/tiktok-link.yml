@@ -58,11 +58,15 @@ jobs:
       - name: Install social-suite (core)
         run: pip install -e social-suite
 
+      - name: Install ffmpeg (for the test clip)
+        if: ${{ inputs.do_test_post }}
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
       - name: Make a tiny private test clip (3s)
         if: ${{ inputs.do_test_post }}
+        continue-on-error: true  # a clip hiccup must never waste the one-time code
         run: |
           ffmpeg -y -f lavfi -i color=c=0x1B5E20:s=720x1280:d=3 \
-            -vf "drawtext=text='HP test — private':fontcolor=white:fontsize=56:x=(w-text_w)/2:y=(h-text_h)/2" \
             -t 3 -r 30 -pix_fmt yuv420p -movflags +faststart /tmp/tiktok_test.mp4
           ls -la /tmp/tiktok_test.mp4
 
@@ -145,7 +149,12 @@ jobs:
                       "below still proves posting works; add a GH_PAT and re-run to "
                       "persist the token for the unattended cron. (Token never printed.)")
 
-          if os.environ.get("DO_TEST_POST", "false").lower() == "true":
+          want_post = os.environ.get("DO_TEST_POST", "false").lower() == "true"
+          if want_post and not os.path.exists("/tmp/tiktok_test.mp4"):
+              summary("### ⚠️ Link OK, but the test clip wasn't created — skipping the "
+                      "test post. (The token swap above still succeeded.)")
+              want_post = False
+          if want_post:
               try:
                   pub_id = tiktok.post_tiktok(
                       access_token=access,
