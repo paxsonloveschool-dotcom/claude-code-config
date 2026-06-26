@@ -1276,6 +1276,60 @@ def promote_ids(ids: list[str]) -> list[dict]:
     return queue
 
 
+def save_styled(dir_rel: str) -> list[dict]:
+    """Upload locally-finished clips (e.g. logo+outro versions) straight into each
+    brand's HP Posts folder and repoint the matching queue entry. Status stays
+    ``review`` — this 'saves' an externally-styled keeper without posting.
+
+    ``dir_rel`` holds files named like the queue id (``hp-bryan-02.mp4``) or the
+    id minus the brand prefix (``bryan-02.mp4``). Replaces the old processed/
+    file with the styled one in HP Posts; the previous file is removed."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    src_dir = dir_rel if os.path.isabs(dir_rel) else os.path.join(ROOT, dir_rel)
+    queue = _load_json(QUEUE_PATH, [])
+    saved = 0
+    for e in queue:
+        cid = e.get("id", "")
+        cands = [f"{cid}.mp4"]
+        if "-" in cid:
+            cands.append(cid.split("-", 1)[1] + ".mp4")
+        local = next((os.path.join(src_dir, c) for c in cands
+                      if os.path.exists(os.path.join(src_dir, c))), None)
+        if not local:
+            continue
+        mp = e.get("media_path") or ""
+        fname = mp.rsplit("/", 1)[-1] if mp else f"{cid}.mp4"
+        if "/processed/" in mp:
+            prefix = mp.split("/processed/", 1)[0]
+        elif f"/{READY_FOLDER}/" in mp:
+            prefix = mp.split(f"/{READY_FOLDER}/", 1)[0]
+        elif "/" in mp:
+            prefix = mp.rsplit("/", 2)[0]
+        else:
+            print(f"save_styled: can't derive folder for {cid} ({mp})")
+            continue
+        dest = f"{prefix}/{READY_FOLDER}/{fname}"
+        dbx.upload(local, dest)
+        if mp and mp != dest:
+            try:
+                dbx.delete(mp)
+            except Exception as ex:  # noqa: BLE001 — missing old file is fine
+                print(f"save_styled: old file delete skipped {mp}: {ex}")
+        try:
+            e["media_url"] = dbx.shared_link(dest, raw=True)
+        except Exception:  # noqa: BLE001
+            pass
+        e["media_path"] = dest
+        e["status"] = "review"
+        saved += 1
+        print(f"saved styled {cid} -> {dest}")
+    if saved:
+        _save_json(QUEUE_PATH, queue)
+    print(f"\nSaved {saved} styled clip(s) to {READY_FOLDER}. Nothing posted.")
+    return queue
+
+
 def prune_clips(keep_ids: list[str]) -> list[dict]:
     """Delete every queued clip NOT in ``keep_ids`` — both its Dropbox file and
     its queue entry — leaving only the kept set. Clears stale batches so the
@@ -1769,6 +1823,13 @@ def main(argv: list[str] | None = None) -> int:
     fp = os.getenv("FETCH_PREVIEWS", "").strip()
     if fp:
         fetch_previews(fp)
+        return 0
+
+    # SAVE_STYLED: upload locally-finished clips (logo+outro) from a committed
+    # repo dir straight into HP Posts and repoint the queue. Status stays review.
+    styled = os.getenv("SAVE_STYLED", "").strip()
+    if styled:
+        save_styled(styled)
         return 0
 
     # PROMOTE_IDS: move ONLY these clips from processed/ into Ready To Post

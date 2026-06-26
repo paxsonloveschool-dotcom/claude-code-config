@@ -83,6 +83,10 @@ on:
         description: "'go' to delete stale/old files left in Ready To Post (keep only current set)"
         required: false
         default: ""
+      save_styled:
+        description: "Repo dir of locally-finished clips (logo+outro) to upload into HP Posts + repoint queue"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -145,6 +149,7 @@ jobs:
           DELETE_IDS: ${{ inputs.delete_ids }}
           DEMOTE_IDS: ${{ inputs.demote_ids }}
           CLEAN_READY: ${{ inputs.clean_ready }}
+          SAVE_STYLED: ${{ inputs.save_styled }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
