@@ -329,6 +329,131 @@ def _concat(parts: list[str], out_path: str, xfade: float = 0.8) -> str:
     return out_path
 
 
+def _edit_tile(src: str, a: float, b: float, out_path: str, w: int, h: int) -> str:
+    """Cut [a,b] as a ``w``x``h`` tile (scaled to fill, cropped). Muted. Used for
+    both row panels (1080xH) and side-by-side column panels (Wx1920)."""
+    import subprocess  # lazy
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    dur = max(0.1, b - a)
+    vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1"
+    subprocess.run(
+        ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{dur:.2f}", "-vf", vf,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an",
+         "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
+def _hstackN(parts: list[str], out_path: str) -> str:
+    """Side-by-side (column) stack of equal-height tiles into one 1080x1920 clip."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if len(parts) == 1:
+        shutil.copy(parts[0], out_path)
+        return out_path
+    cmd = ["ffmpeg", "-y"]
+    for p in parts:
+        cmd += ["-i", p]
+    n = len(parts)
+    fc = "".join(f"[{i}:v]" for i in range(n)) + f"hstack=inputs={n}[v]"
+    cmd += ["-filter_complex", fc, "-map", "[v]", "-shortest",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-movflags", "+faststart", out_path]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return out_path
+
+
+def _edit_panel(src: str, a: float, b: float, out_path: str, height: int) -> str:
+    """Cut [a,b] as a full-width 1080x``height`` PANEL (keeps the horizontal
+    framing) for vertical multi-panel stacks — HP's split-screen look. Muted;
+    the stack carries no audio (trending sound is added at post time)."""
+    import subprocess  # lazy
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    dur = max(0.1, b - a)
+    vf = (f"scale=1080:{height}:force_original_aspect_ratio=increase,"
+          f"crop=1080:{height},setsar=1")
+    subprocess.run(
+        ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{dur:.2f}", "-vf", vf,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an",
+         "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
+def _stackN(parts: list[str], out_path: str) -> str:
+    """Vertically stack equal-width panels into one 1080x1920 clip (HP split-screen).
+
+    Panels are trimmed to the shortest input so the stack stays in sync; the
+    result is silent (add trending audio in-app at post time)."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if len(parts) == 1:
+        shutil.copy(parts[0], out_path)
+        return out_path
+    cmd = ["ffmpeg", "-y"]
+    for p in parts:
+        cmd += ["-i", p]
+    n = len(parts)
+    fc = "".join(f"[{i}:v]" for i in range(n)) + f"vstack=inputs={n}[v]"
+    cmd += ["-filter_complex", fc, "-map", "[v]", "-shortest",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-movflags", "+faststart", out_path]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return out_path
+
+
+def _concat_v(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
+    """Crossfade-concat VIDEO only (silent output) — for mixed silent montage
+    segments where an audio crossfade isn't possible. Normalizes every segment to
+    1080x1920@30 so xfade never chokes on mismatched fps/size. Plain-concat fallback."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if len(parts) == 1:
+        shutil.copy(parts[0], out_path)
+        return out_path
+    durs = []
+    for p in parts:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", p], capture_output=True, text=True)
+        try:
+            durs.append(float(r.stdout.strip()))
+        except ValueError:
+            durs.append(3.0)
+    n = len(parts)
+    cmd = ["ffmpeg", "-y"]
+    for p in parts:
+        cmd += ["-i", p]
+    fc = [f"[{i}:v]fps=30,scale=1080:1920,setsar=1,format=yuv420p[n{i}]" for i in range(n)]
+    vlab, off = "[n0]", durs[0] - xfade
+    for i in range(1, n):
+        nv = f"[v{i}]"
+        fc.append(f"{vlab}[n{i}]xfade=transition=fade:duration={xfade}:offset={off:.3f}{nv}")
+        vlab, off = nv, off + durs[i] - xfade
+    cmd += ["-filter_complex", ";".join(fc), "-map", vlab, "-an",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-movflags", "+faststart", out_path]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        return out_path
+    except subprocess.CalledProcessError:
+        pass
+    lst = out_path + ".txt"
+    with open(lst, "w") as fh:
+        for p in parts:
+            fh.write(f"file '{os.path.abspath(p)}'\n")
+    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-an",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                    "-movflags", "+faststart", out_path], check=True, capture_output=True)
+    os.remove(lst)
+    return out_path
+
+
 def _find_music(dbx) -> str | None:
     """Download the first audio file from a Dropbox folder whose name has 'music'."""
     for path_lower, display in _top_level_folders(dbx):
@@ -695,6 +820,42 @@ def fetch_ig_reference(brand_key: str = "hp", limit: int = 24) -> int:
     return n
 
 
+def ingest_clip(name: str, src_path: str, brand_key: str = "hp") -> dict | None:
+    """Upload a ready-made local clip into a brand's Dropbox processed/ folder and
+    add a ``status:"review"`` queue entry — used to save an externally-edited clip
+    as a keeper. Never posts (review only)."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    if not os.path.exists(src_path):
+        print(f"ingest_clip: file not found {src_path}")
+        return None
+    display = None
+    for path_lower, disp in _top_level_folders(dbx):
+        b = classify_brand(disp)
+        if b and b[0] == brand_key:
+            display = disp
+            break
+    if not display:
+        print(f"ingest_clip: no Dropbox folder for brand {brand_key}")
+        return None
+    nm = _slug(name) or "clip"
+    out_path = f"{display.rstrip('/')}/processed/{nm}.mp4"
+    dbx.upload(src_path, out_path)
+    url = dbx.shared_link(out_path, raw=True)
+    queue = [e for e in _load_json(QUEUE_PATH, []) if e.get("id") != f"{brand_key}-{nm}"]
+    entry = {
+        "id": f"{brand_key}-{nm}", "brand": brand_key,
+        "text": _hp_caption(nm) if brand_key == "hp" else "",
+        "media_url": url, "media_path": out_path,
+        "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+        "status": "review", "error": None,
+    }
+    queue.append(entry)
+    _save_json(QUEUE_PATH, queue)
+    print(f"ingest_clip: saved {brand_key}-{nm} -> {out_path} (status=review)")
+    return entry
+
+
 def fetch_previews(which: str = "all") -> int:
     """Download finished review clips from Dropbox into ``content/preview/`` so
     they can be viewed/sent directly (Dropbox is unreachable from some sandboxes).
@@ -838,6 +999,87 @@ def auto_highlights(n: int = 4, match: str | None = None) -> list[dict]:
     return cut_windows(specs)
 
 
+def cut_montage(spec: dict) -> dict | None:
+    """Assemble a dynamic, layout-shifting montage from raw footage.
+
+    ``spec`` = {name, segments:[...], xfade?}. Each segment is either a single
+    shot ``{"shot": [video, start, end]}`` or an N-up stack
+    ``{"panels": [[video, start, end], ...]}`` (2 or 3 tiles). Segments render to
+    1080x1920 and crossfade together (video-only, silent — add trending audio at
+    post). Mixing 3-up -> single -> 2-up gives the energetic, changing-views feel."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    name = _slug(spec.get("name", "montage")) or "montage"
+    vid_cache: dict = {}
+
+    def resolve(match):
+        k = (match or "").lower()
+        if k not in vid_cache:
+            vid_cache[k] = _first_video(dbx, match or None)
+        return vid_cache[k]
+
+    seg_clips: list[str] = []
+    base_ctx = None
+    workdir = "."
+    for i, seg in enumerate(spec.get("segments", [])):
+        shots = seg.get("panels") or ([seg["shot"]] if seg.get("shot") else [])
+        if not shots:
+            continue
+        ctx0 = resolve(str(shots[0][0]))
+        if not ctx0:
+            raise RuntimeError(f"video not found: {shots[0][0]!r}")
+        if base_ctx is None:
+            base_ctx, workdir = ctx0, os.path.dirname(ctx0[1])
+        out = os.path.join(workdir, f"mseg-{name}-{i}.mp4")
+        n = len(shots)
+        if n == 1:
+            v, a, b = shots[0]
+            _edit_short(resolve(str(v))[1], float(a), float(b), out, mute=True)
+        elif seg.get("orient") == "cols":
+            # side-by-side vertical columns (each tile W/n x 1920)
+            w = 1080 // n
+            tiles = []
+            for k, (v, a, b) in enumerate(shots):
+                pp = os.path.join(workdir, f"mseg-{name}-{i}-c{k}.mp4")
+                _edit_tile(resolve(str(v))[1], float(a), float(b), pp, w, 1920)
+                tiles.append(pp)
+            _hstackN(tiles, out)
+        else:
+            # stacked rows (each tile 1080 x H/n)
+            h = 1920 // n
+            panels = []
+            for k, (v, a, b) in enumerate(shots):
+                pp = os.path.join(workdir, f"mseg-{name}-{i}-p{k}.mp4")
+                _edit_tile(resolve(str(v))[1], float(a), float(b), pp, 1080, h)
+                panels.append(pp)
+            _stackN(panels, out)
+        seg_clips.append(out)
+
+    if not seg_clips or base_ctx is None:
+        print("cut_montage: no segments rendered.")
+        return None
+    _f, local, base, brand, display = base_ctx
+    out_local = os.path.join(workdir, f"{base}-{name}.mp4")
+    _concat_v(seg_clips, out_local, xfade=float(spec.get("xfade", 0.4)))
+    brand_key, dispname, tags = brand
+    out_path = f"{display.rstrip('/')}/processed/{base}-{name}.mp4"
+    dbx.upload(out_local, out_path)
+    url = dbx.shared_link(out_path, raw=True)
+    queue = [e for e in _load_json(QUEUE_PATH, [])
+             if e.get("id") != f"{brand_key}-{name}"]
+    entry = {
+        "id": f"{brand_key}-{name}", "brand": brand_key,
+        "text": _hp_caption(name) if brand_key == "hp" else "",
+        "media_url": url, "media_path": out_path,
+        "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+        "status": "review", "error": None,
+    }
+    queue.append(entry)
+    _save_json(QUEUE_PATH, queue)
+    print(f"cut_montage: {brand_key}-{name} ({len(seg_clips)} segments) -> {out_path}")
+    return entry
+
+
 def cut_windows(specs: list[dict]) -> list[dict]:
     """Cut explicit time windows: each spec is {name, start, end} (seconds).
 
@@ -877,20 +1119,28 @@ def cut_windows(specs: list[dict]) -> list[dict]:
             parts_spec = sp.get("parts")
             if parts_spec:
                 # CROSS-VIDEO: each part is {video, start, end} from possibly different videos.
+                # With "stack": true, the parts are tiled into vertical panels (HP's
+                # split-screen look) instead of crossfaded in sequence.
                 ctxs, tmp = [], []
+                stack = bool(sp.get("stack"))
+                ph = 1920 // len(parts_spec) if stack else 0
                 for j, part in enumerate(parts_spec):
                     ctx = resolve(part.get("video") or default_match)
                     if not ctx:
                         raise RuntimeError(f"video not found: {part.get('video')!r}")
                     ctxs.append(ctx)
                     plocal = ctx[1]
-                    pp = os.path.join(os.path.dirname(plocal), f"xv-{nm}-{j}.mp4")
-                    _edit_short(plocal, float(part["start"]), float(part["end"]), pp,
-                                srt=None, mute=bool(sp.get("mute")), logo=_brand_logo(ctx[3][0]))
+                    if stack:
+                        pp = os.path.join(os.path.dirname(plocal), f"pan-{nm}-{j}.mp4")
+                        _edit_panel(plocal, float(part["start"]), float(part["end"]), pp, ph)
+                    else:
+                        pp = os.path.join(os.path.dirname(plocal), f"xv-{nm}-{j}.mp4")
+                        _edit_short(plocal, float(part["start"]), float(part["end"]), pp,
+                                    srt=None, mute=bool(sp.get("mute")), logo=_brand_logo(ctx[3][0]))
                     tmp.append(pp)
                 _f, local, base, brand, display = ctxs[0]
                 out_local = os.path.join(os.path.dirname(local), f"{base}-{nm}.mp4")
-                _concat(tmp, out_local)
+                _stackN(tmp, out_local) if stack else _concat(tmp, out_local)
             else:
                 ctx = resolve(sp.get("video") or default_match)
                 if not ctx:
@@ -923,8 +1173,10 @@ def cut_windows(specs: list[dict]) -> list[dict]:
         caption = _hp_caption(nm) if brand_key == "hp" else caption_for(local, base, dispname, tags)
         keep = []
         for e in queue:
-            if e.get("brand") == brand_key and e["id"].endswith(f"-{nm}"):
-                if e.get("media_path"):
+            if e.get("brand") == brand_key and e["id"] == f"{brand_key}-{nm}":
+                # Delete the prior file ONLY if it's a different path — a same-name
+                # re-render overwrites out_path, so never delete what we just uploaded.
+                if e.get("media_path") and e["media_path"] != out_path:
                     try:
                         dbx.delete(e["media_path"])
                     except Exception:  # noqa: BLE001
@@ -978,6 +1230,22 @@ def main(argv: list[str] | None = None) -> int:
         bk = igref.split(":")[0] or "hp"
         tail = igref.split(":")[1] if ":" in igref else ""
         fetch_ig_reference(bk, int(tail) if tail.isdigit() else 24)
+        return 0
+
+    # MONTAGE_SPEC json: assemble a layout-shifting hype montage (3-up/2-up/single).
+    montage = os.getenv("MONTAGE_SPEC", "").strip()
+    if montage:
+        import json as _json
+        made = cut_montage(_json.loads(montage))
+        print(f"\nDone: montage {'created' if made else 'failed'}. Nothing posted (review only).")
+        return 0
+
+    # INGEST_CLIP "name:relpath": save a ready-made local clip into Dropbox +
+    # a review queue entry (e.g. an externally-combined keeper).
+    ingest = os.getenv("INGEST_CLIP", "").strip()
+    if ingest and ":" in ingest:
+        nm, rel = ingest.split(":", 1)
+        ingest_clip(nm.strip(), os.path.join(ROOT, rel.strip()))
         return 0
 
     # FETCH_PREVIEWS: pull finished clips from Dropbox into content/preview/.
