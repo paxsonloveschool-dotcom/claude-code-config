@@ -1,0 +1,145 @@
+name: TikTok link (one-time)
+
+# One-time helper to LINK a brand's TikTok account, run from GitHub's servers
+# (which can reach TikTok's API, unlike the dev sandbox). You paste the fresh
+# authorize `code`; this job:
+#   1. exchanges it for tokens (access + the long-lived ~365d refresh token),
+#   2. optionally posts ONE private (SELF_ONLY) test video to confirm posting,
+#   3. prints the refresh_token to the run Summary so you can save it as the
+#      BRAND_<NAME>_TIKTOK_REFRESH_TOKEN secret.
+#
+# Requires these repo secrets to already exist (Settings → Secrets → Actions):
+#   BRAND_HP_TIKTOK_CLIENT_KEY, BRAND_HP_TIKTOK_CLIENT_SECRET
+# (or the RESTORE_ equivalents — chosen by the `brand` input).
+#
+# The authorize `code` expires within minutes, so run this RIGHT AFTER clicking
+# Allow on the authorize link.
+
+on:
+  workflow_dispatch:
+    inputs:
+      brand:
+        description: "Brand to link (matches BRAND_<brand>_TIKTOK_* secrets)"
+        type: choice
+        default: HP
+        options: [HP, RESTORE]
+      code:
+        description: "Paste the FULL callback URL from the address bar (or just the code= value)"
+        required: true
+        type: string
+      redirect_uri:
+        description: "Redirect URI — must match the app EXACTLY"
+        required: true
+        default: "https://hplandscapingllc.com/tiktok/callback"
+        type: string
+      do_test_post:
+        description: "Also post one private SELF_ONLY test video?"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  link:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install social-suite (core)
+        run: pip install -e social-suite
+
+      - name: Make a tiny private test clip (3s)
+        if: ${{ inputs.do_test_post }}
+        run: |
+          ffmpeg -y -f lavfi -i color=c=0x1B5E20:s=720x1280:d=3 \
+            -vf "drawtext=text='HP test — private':fontcolor=white:fontsize=56:x=(w-text_w)/2:y=(h-text_h)/2" \
+            -t 3 -r 30 -pix_fmt yuv420p -movflags +faststart /tmp/tiktok_test.mp4
+          ls -la /tmp/tiktok_test.mp4
+
+      - name: Exchange code (+ optional private test post)
+        env:
+          TIKTOK_CLIENT_KEY: ${{ inputs.brand == 'HP' && secrets.BRAND_HP_TIKTOK_CLIENT_KEY || secrets.BRAND_RESTORE_TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ inputs.brand == 'HP' && secrets.BRAND_HP_TIKTOK_CLIENT_SECRET || secrets.BRAND_RESTORE_TIKTOK_CLIENT_SECRET }}
+          TIKTOK_CODE: ${{ inputs.code }}
+          TIKTOK_REDIRECT_URI: ${{ inputs.redirect_uri }}
+          DO_TEST_POST: ${{ inputs.do_test_post }}
+        run: |
+          cd social-suite
+          python - <<'PY'
+          import os, json, time, sys
+          sys.path.insert(0, "services")
+          from services.publish.direct import tiktok_oauth, tiktok
+
+          import urllib.parse
+          ck = os.environ["TIKTOK_CLIENT_KEY"].strip()
+          cs = os.environ["TIKTOK_CLIENT_SECRET"].strip()
+          raw = os.environ["TIKTOK_CODE"].strip()
+          # Accept either the full callback URL or a bare code; URL-decode either way
+          # (TikTok codes contain %2A '*' / %21 '!' when copied from the address bar).
+          if "code=" in raw:
+              code = urllib.parse.parse_qs(urllib.parse.urlparse(raw).query).get("code", [""])[0]
+          else:
+              code = urllib.parse.unquote(raw)
+          redirect = os.environ["TIKTOK_REDIRECT_URI"].strip()
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout")
+
+          def summary(md):
+              with open(summary_path, "a") as f:
+                  f.write(md + "\n")
+
+          if not ck or not cs:
+              summary("## ❌ Missing CLIENT_KEY/SECRET secret\n"
+                      "Add `BRAND_<brand>_TIKTOK_CLIENT_KEY` and "
+                      "`BRAND_<brand>_TIKTOK_CLIENT_SECRET` repo secrets, then re-run.")
+              raise SystemExit("Missing client key/secret secret.")
+
+          try:
+              payload = tiktok_oauth.exchange_code(ck, cs, code, redirect)
+          except Exception as e:
+              summary(f"## ❌ Code exchange failed\n```\n{e}\n```\n"
+                      "The code likely expired (they last only minutes) or the "
+                      "redirect URI doesn't match. Click the authorize link again "
+                      "for a FRESH code and re-run immediately.")
+              raise
+
+          refresh = payload.get("refresh_token", "")
+          access = payload.get("access_token", "")
+          scope = payload.get("scope", "")
+          summary("## ✅ TikTok linked")
+          summary(f"- scope: `{scope}`")
+          summary(f"- refresh token lifetime: ~{payload.get('refresh_expires_in', 0)//86400} days")
+          summary("\n### Save this as a repo secret\n"
+                  "Settings → Secrets and variables → Actions → New repository secret\n\n"
+                  f"**Name:** `BRAND_HP_TIKTOK_REFRESH_TOKEN`\n\n"
+                  f"**Value:**\n```\n{refresh}\n```\n")
+
+          if os.environ.get("DO_TEST_POST", "false").lower() == "true":
+              try:
+                  pub_id = tiktok.post_tiktok(
+                      access_token=access,
+                      caption="HP suite test — private (SELF_ONLY)",
+                      video="/tmp/tiktok_test.mp4",
+                      privacy_level="SELF_ONLY",
+                  )
+                  summary(f"### 🎬 Private test post sent\n- publish_id: `{pub_id}`")
+                  for _ in range(20):
+                      st = (tiktok.fetch_status(access, pub_id).get("data") or {}).get("status")
+                      summary(f"  - status: `{st}`")
+                      if st in ("PUBLISH_COMPLETE", "FAILED", None):
+                          break
+                      time.sleep(3)
+                  summary("\nOpen the **TikTok app → HP profile** to see the private "
+                          "video, then delete it. Nobody else can see a SELF_ONLY post.")
+              except Exception as e:
+                  summary(f"### ⚠️ Link worked, but the test post failed\n```\n{e}\n```\n"
+                          "The refresh token above is still good — save it. We can "
+                          "retry a test post separately.")
+          print("Done. See the run Summary for the refresh token + test result.")
+          PY
