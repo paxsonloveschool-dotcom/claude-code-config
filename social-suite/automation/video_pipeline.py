@@ -1731,6 +1731,25 @@ def main(argv: list[str] | None = None) -> int:
         debug_tree()
         return 0
 
+    # DROPBOX_WHOAMI: report which Dropbox account the suite is connected to
+    # (email + name), so the owner knows where to sign in. Writes it to a
+    # committed file and prints it. No secrets exposed.
+    if os.getenv("DROPBOX_WHOAMI", "").strip().lower() in ("1", "true", "yes", "go"):
+        from services.ingest import dropbox_client as _dbx  # lazy
+        acct = _dbx._client().users_get_current_account()
+        info = {
+            "email": getattr(acct, "email", None),
+            "name": getattr(getattr(acct, "name", None), "display_name", None),
+            "account_id": getattr(acct, "account_id", None),
+            "account_type": str(getattr(getattr(acct, "account_type", None), "_tag", "")),
+        }
+        ref = os.path.join(ROOT, "content", "reference")
+        os.makedirs(ref, exist_ok=True)
+        with open(os.path.join(ref, "dropbox_account.json"), "w") as fh:
+            json.dump(info, fh, indent=2)
+        print(f"DROPBOX ACCOUNT: {info}")
+        return 0
+
     # DELETE_IDS: remove specific clips (Dropbox file + queue entry) up front,
     # then FALL THROUGH so the same run can also render replacements.
     _del = os.getenv("DELETE_IDS", "").strip()
