@@ -1445,22 +1445,22 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
     wins = _pick_highlights(segs, n=max(n, 12), min_len=6.0, max_len=max_len,
                             min_score=min_score)
     if not wins and spoken:
-        # NEVER punt a talking video. Nothing cleared the "great" bar, but there
-        # IS speech here — drop the floor and take its best clean windows so it
-        # still produces clips (owner: don't ever skip a video that's talking).
-        # _trim_to_clean + _clip_pieces still strip filler edges/dead middles, so
-        # even these start/end on clear words. Only TRULY silent footage (no
-        # `spoken` segments) yields nothing — we never fabricate a silent clip.
+        # Nothing cleared the "great" bar, but there IS speech — drop the floor
+        # and take the best clean windows so a real talking video still yields
+        # clips. BUT keep the 6s spec floor: a window must hold >=6s of actual
+        # talking. A video with only a one-line intro (~10 words / a couple of
+        # seconds) then silent b-roll has NO 6s speech window, so it makes no
+        # tiny junk clip here — it's correctly treated as b-roll for the montage
+        # path. _trim_to_clean/_clip_pieces still keep these starting clean.
         print(f"auto_clips: {base}: no 'great' window — falling back to best "
-              f"clean speech windows so this talking video still gets clips.")
-        wins = (_pick_highlights(segs, n=max(n, 6), min_len=5.0, max_len=max_len,
-                                 min_score=-1e9)
-                or [(spoken[0].start_seconds,
-                     min(spoken[-1].end_seconds,
-                         spoken[0].start_seconds + max_len), "auto-1")])
+              f"clean speech windows (>=6s) so this talking video still gets clips.")
+        wins = _pick_highlights(segs, n=max(n, 6), min_len=6.0, max_len=max_len,
+                                min_score=-1e9)
     if not wins:
-        print(f"auto_clips: {base}: TRULY no speech (0 segments) — silent b-roll, "
-              f"skipped (use the montage path for footage with no talking).")
+        why = ("only a brief intro of talking then silent footage"
+               if spoken else "TRULY no speech (0 segments)")
+        print(f"auto_clips: {base}: no >=6s talking window ({why}) — skipped as "
+              f"b-roll (use the montage path for footage with no real talking).")
         return []
     print(f"auto_clips: {base} -> {[(a, b) for a, b, _ in wins]}")
 
