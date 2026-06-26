@@ -32,22 +32,51 @@ Full technical guide: [`TIKTOK_SETUP.md`](TIKTOK_SETUP.md).
   **Private**. HP was Public; flipping it Private let the SELF_ONLY post go
   through. **Public posting requires passing TikTok's audit.**
 
-## ⏳ REMAINING — to post PUBLIC on a schedule (the business goal)
-1. **Pass TikTok's Content Posting API audit** (developers.tiktok.com → the app
-   → App review / "Submit for review"). Most fields already filled (icon,
-   description, ToS + Privacy URLs = https://hplandscapingllc.com/index.html,
-   category Business, platform Web). Remaining for the submission:
-   - The **scope/product explanation** text box (draft ready in chat).
-   - A **demo video** (screen recording) showing the authorize → post flow.
-   - Remove any unused scopes before submitting.
-2. After approval: set HP's TikTok back to **Public**; set
+## ▶️ MONDAY — START HERE (2026-06-29)
+Goal: finish TikTok's audit so HP can post **public** on a schedule.
+We're on the **Production** app's **App review** form (developers.tiktok.com →
+HP Auto Poster → Production). It's down to **2 blockers**:
+
+1. **Domain verification of `hplandscapingllc.com`** (3 of the 4 form errors).
+   TikTok's ToS / Privacy / Web URLs all show "This URL is not verified."
+   Fix path: App → **URL properties** tab → add property → **Domain (DNS record)**
+   → TikTok gives a `TXT` record → add it in the domain's DNS → Verify. Verifying
+   the Domain clears all 3 URL errors at once.
+   - 🔑 **BLOCKER / first question Monday:** *who manages hplandscapingllc.com?*
+     (self on Wix/GoDaddy/Squarespace/etc., or a person/agency who built it.)
+     Whoever can edit the site/DNS adds the TXT record in ~2 min. Owner didn't
+     know offhand — find this out first.
+   - Alt method: "URL prefix → signature file" (upload TikTok's file to the
+     site) if DNS access is easier than expected. Either clears the URL errors.
+
+2. **Demo video** (the 4th error). A ~30s screen recording: open the authorize
+   link → tap Allow → show redirect → open TikTok app → show a posted video.
+   Upload to the App review "demo video" spot. (TikTok is strict here; the
+   headless-automation shape may need a revision pass.)
+
+### Already filled on the Production form ✅
+icon (green HP), name, category=Business, description, ToS + Privacy URLs
+(https://hplandscapingllc.com/index.html), platform=Web + Web/Desktop URL,
+scope explanation text (the paragraph), products Login Kit + Content Posting API.
+**Still to set on Production:** add scope **`video.publish`** + remove
+**`video.upload`**; add Login Kit **redirect URI**
+`https://hplandscapingllc.com/tiktok/callback`; turn **Direct Post** ON. (These
+were done in the sandbox but NOT yet on Production.)
+
+### After the audit is APPROVED
+3. Set HP's TikTok back to **Public**; set
    `BRAND_HP_TIKTOK_PRIVACY_LEVEL` = `PUBLIC_TO_EVERYONE`.
-3. **Persist the refresh token for the unattended cron.** The link workflow can
-   auto-store `BRAND_HP_TIKTOK_REFRESH_TOKEN` when a `GH_PAT` secret
-   (fine-grained PAT, Secrets:write) exists — add that, then re-run the link
-   workflow once with a fresh code so the cron can post on its own.
-4. Un-pause the cron (`.github/workflows/social-post.yml`) / flip queue items to
+4. **Persist the refresh token for the unattended cron:** add a `GH_PAT`
+   (fine-grained PAT, Secrets:write) repo secret, then re-run the
+   **TikTok link** workflow once with a fresh code — it auto-stores
+   `BRAND_HP_TIKTOK_REFRESH_TOKEN` (never printed).
+5. Un-pause the cron (`.github/workflows/social-post.yml`) / flip queue items to
    `pending` when ready to go live.
+
+### Interim option (optional, works today, no audit)
+Run it posting **private** (SELF_ONLY) on a schedule to watch it work over time;
+flip to public after the audit. (HP account is currently set to Private from the
+test — leave it private for this, or flip back to Public anytime.)
 
 ## Notes
 - Account is currently set to **Private** (flipped for the test) — flip back to
