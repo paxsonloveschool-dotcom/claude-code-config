@@ -1750,6 +1750,64 @@ def main(argv: list[str] | None = None) -> int:
         print(f"DROPBOX ACCOUNT: {info}")
         return 0
 
+    # DROPBOX_USAGE: report total space used + a size breakdown of each folder
+    # under "HP-Content Auto." so the owner knows what to clear before the plan
+    # drops to the free tier. Writes a committed file and prints it.
+    if os.getenv("DROPBOX_USAGE", "").strip().lower() in ("1", "true", "yes", "go"):
+        from services.ingest import dropbox_client as _dbx  # lazy
+        cli = _dbx._client()
+        su = cli.users_get_space_usage()
+        used = getattr(su, "used", 0)
+        alloc = getattr(su, "allocation", None)
+        allocated = None
+        for m in ("get_individual", "get_team"):
+            try:
+                allocated = getattr(getattr(alloc, m)(), "allocated", None)
+                if allocated:
+                    break
+            except Exception:  # noqa: BLE001
+                pass
+
+        def _folder_size(path):
+            total, nfiles = 0, 0
+            try:
+                r = cli.files_list_folder(path, recursive=True)
+            except Exception:  # noqa: BLE001
+                return 0, 0
+            while True:
+                for e in r.entries:
+                    if e.__class__.__name__ == "FileMetadata":
+                        total += getattr(e, "size", 0); nfiles += 1
+                if not getattr(r, "has_more", False):
+                    break
+                r = cli.files_list_folder_continue(r.cursor)
+            return total, nfiles
+
+        gb = 1024 ** 3
+        folders = {}
+        for path_lower, display in _top_level_folders(_dbx):
+            sub = []
+            try:
+                rr = cli.files_list_folder(path_lower)
+                sub = [e for e in rr.entries if e.__class__.__name__ == "FolderMetadata"]
+            except Exception:  # noqa: BLE001
+                pass
+            for e in sub:
+                sz, nf = _folder_size(e.path_lower)
+                folders[e.path_display] = {"gb": round(sz / gb, 3), "files": nf}
+        report = {
+            "used_gb": round(used / gb, 3),
+            "allocated_gb": round(allocated / gb, 2) if allocated else None,
+            "free_tier_gb": 2,
+            "folders": dict(sorted(folders.items(), key=lambda kv: -kv[1]["gb"])),
+        }
+        ref = os.path.join(ROOT, "content", "reference")
+        os.makedirs(ref, exist_ok=True)
+        with open(os.path.join(ref, "dropbox_usage.json"), "w") as fh:
+            json.dump(report, fh, indent=2)
+        print(f"DROPBOX USAGE: {json.dumps(report, indent=2)}")
+        return 0
+
     # DELETE_IDS: remove specific clips (Dropbox file + queue entry) up front,
     # then FALL THROUGH so the same run can also render replacements.
     _del = os.getenv("DELETE_IDS", "").strip()

@@ -67,6 +67,10 @@ on:
         description: "Set true to report which Dropbox account is connected (email/name)"
         required: false
         default: ""
+      dropbox_usage:
+        description: "Set true to report storage used + per-folder size breakdown"
+        required: false
+        default: ""
       dropbox_organize:
         description: "'go' to create Ready-To-Post + Drop-Content folders and move keepers"
         required: false
@@ -149,6 +153,7 @@ jobs:
           POSTS_FOLDER: ${{ inputs.posts_folder }}
           DROPBOX_LS: ${{ inputs.dropbox_ls }}
           DROPBOX_WHOAMI: ${{ inputs.dropbox_whoami }}
+          DROPBOX_USAGE: ${{ inputs.dropbox_usage }}
           DROPBOX_ORGANIZE: ${{ inputs.dropbox_organize }}
           PROMOTE_IDS: ${{ inputs.promote_ids }}
           DELETE_IDS: ${{ inputs.delete_ids }}
