@@ -1428,6 +1428,13 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
     _f, local, base, brand, display = ctx
     brand_key, dispname, tags = brand
     segs = transcribe(local)
+    # Diagnostic: how much speech did Whisper actually find? 0 segments == truly
+    # silent/no-audio footage; >0 == someone is talking and MUST yield clips.
+    spoken = [s for s in segs
+              if (getattr(s, "text", "") or "").strip()
+              and getattr(s, "end_seconds", 0) > getattr(s, "start_seconds", 0)]
+    words = sum(len((getattr(s, "text", "") or "").split()) for s in spoken)
+    print(f"auto_clips: {base}: {len(spoken)} speech segment(s), ~{words} words.")
     # Pull MULTIPLE good sayings per video (owner: "more than 6 clips from 5
     # videos"). Tighter windows (<=28s, near the 12-30s ideal) let a longer
     # video pack 2-4 clips instead of one 45s window eating the whole timeline;
@@ -1437,8 +1444,23 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
     max_len = float(os.getenv("CLIP_MAX_LEN", "28"))
     wins = _pick_highlights(segs, n=max(n, 12), min_len=6.0, max_len=max_len,
                             min_score=min_score)
+    if not wins and spoken:
+        # NEVER punt a talking video. Nothing cleared the "great" bar, but there
+        # IS speech here — drop the floor and take its best clean windows so it
+        # still produces clips (owner: don't ever skip a video that's talking).
+        # _trim_to_clean + _clip_pieces still strip filler edges/dead middles, so
+        # even these start/end on clear words. Only TRULY silent footage (no
+        # `spoken` segments) yields nothing — we never fabricate a silent clip.
+        print(f"auto_clips: {base}: no 'great' window — falling back to best "
+              f"clean speech windows so this talking video still gets clips.")
+        wins = (_pick_highlights(segs, n=max(n, 6), min_len=5.0, max_len=max_len,
+                                 min_score=-1e9)
+                or [(spoken[0].start_seconds,
+                     min(spoken[-1].end_seconds,
+                         spoken[0].start_seconds + max_len), "auto-1")])
     if not wins:
-        print(f"auto_clips: no strong sayings in {base} (silent/weak? use montage).")
+        print(f"auto_clips: {base}: TRULY no speech (0 segments) — silent b-roll, "
+              f"skipped (use the montage path for footage with no talking).")
         return []
     print(f"auto_clips: {base} -> {[(a, b) for a, b, _ in wins]}")
 
@@ -1486,6 +1508,11 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
             print(f"auto_clips: clip {nm} failed: {ex}")
             continue
         saying = _transcript_text(clip_segs)[:280]
+        if not saying.strip():
+            # No spoken words landed in this window — never ship a silent
+            # "talking" clip. Skip it rather than upload dead air.
+            print(f"auto_clips: {nm}: empty transcript after trim — skipped (no talking).")
+            continue
         out_name = f"{base}-{nm}.mp4"
         out_path = f"{display.rstrip('/')}/processed/{out_name}"
         dbx.upload(final, out_path)
