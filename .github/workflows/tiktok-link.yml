@@ -156,22 +156,33 @@ jobs:
               want_post = False
           if want_post:
               try:
+                  # creator_info first, surfaced to logs — its data explains most
+                  # SELF_ONLY / sandbox rejections (privacy options, limits, etc.).
+                  ci = tiktok.query_creator_info(access)
+                  print("CREATOR_INFO:", json.dumps(ci)[:800])
                   pub_id = tiktok.post_tiktok(
                       access_token=access,
                       caption=f"{brand} suite test — private (SELF_ONLY)",
                       video="/tmp/tiktok_test.mp4",
                       privacy_level="SELF_ONLY",
                   )
+                  print("PUBLISH_ID:", pub_id)
                   summary(f"### 🎬 Private test post sent\n- publish_id: `{pub_id}`")
+                  last = None
                   for _ in range(20):
-                      st = (tiktok.fetch_status(access, pub_id).get("data") or {}).get("status")
+                      resp = tiktok.fetch_status(access, pub_id)
+                      st = (resp.get("data") or {}).get("status")
+                      print("STATUS:", st, "| raw:", json.dumps(resp)[:400])
                       summary(f"  - status: `{st}`")
+                      last = st
                       if st in ("PUBLISH_COMPLETE", "FAILED", None):
                           break
                       time.sleep(3)
+                  print("FINAL_STATUS:", last)
                   summary("\nOpen the **TikTok app → profile** to see the private video, "
                           "then delete it. Nobody else can see a SELF_ONLY post.")
               except Exception as e:
+                  print("POST_ERROR:", repr(e))
                   summary(f"### ⚠️ Link worked, but the test post failed\n```\n{e}\n```")
           print("Done. See the run Summary.")
           PY
