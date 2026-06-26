@@ -71,6 +71,10 @@ on:
         description: "Set true to report storage used + per-folder size breakdown"
         required: false
         default: ""
+      dropbox_inventory:
+        description: "Set true to dump a full file manifest (path/size) to a committed CSV"
+        required: false
+        default: ""
       dropbox_organize:
         description: "'go' to create Ready-To-Post + Drop-Content folders and move keepers"
         required: false
@@ -154,6 +158,7 @@ jobs:
           DROPBOX_LS: ${{ inputs.dropbox_ls }}
           DROPBOX_WHOAMI: ${{ inputs.dropbox_whoami }}
           DROPBOX_USAGE: ${{ inputs.dropbox_usage }}
+          DROPBOX_INVENTORY: ${{ inputs.dropbox_inventory }}
           DROPBOX_ORGANIZE: ${{ inputs.dropbox_organize }}
           PROMOTE_IDS: ${{ inputs.promote_ids }}
           DELETE_IDS: ${{ inputs.delete_ids }}

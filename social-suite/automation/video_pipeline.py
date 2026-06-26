@@ -1750,6 +1750,35 @@ def main(argv: list[str] | None = None) -> int:
         print(f"DROPBOX ACCOUNT: {info}")
         return 0
 
+    # DROPBOX_INVENTORY: write a complete manifest of every file in the account
+    # (path, size, modified) to a committed CSV so the owner has a permanent
+    # master list to verify nothing goes missing.
+    if os.getenv("DROPBOX_INVENTORY", "").strip().lower() in ("1", "true", "yes", "go"):
+        from services.ingest import dropbox_client as _dbx  # lazy
+        import csv
+        cli = _dbx._client()
+        rows, total = [], 0
+        r = cli.files_list_folder("", recursive=True)
+        while True:
+            for e in r.entries:
+                if e.__class__.__name__ == "FileMetadata":
+                    sz = getattr(e, "size", 0)
+                    total += sz
+                    rows.append((getattr(e, "path_display", ""), sz,
+                                 str(getattr(e, "client_modified", ""))))
+            if not getattr(r, "has_more", False):
+                break
+            r = cli.files_list_folder_continue(r.cursor)
+        rows.sort(key=lambda x: -x[1])
+        ref = os.path.join(ROOT, "content", "reference")
+        os.makedirs(ref, exist_ok=True)
+        with open(os.path.join(ref, "dropbox_inventory.csv"), "w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["path", "size_bytes", "modified"])
+            w.writerows(rows)
+        print(f"DROPBOX INVENTORY: {len(rows)} files, {round(total/1024**3,2)} GB total")
+        return 0
+
     # DROPBOX_USAGE: report total space used + a size breakdown of each folder
     # under "HP-Content Auto." so the owner knows what to clear before the plan
     # drops to the free tier. Writes a committed file and prints it.
