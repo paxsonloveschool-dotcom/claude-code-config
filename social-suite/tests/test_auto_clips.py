@@ -71,6 +71,23 @@ def test_pick_highlights_orders_and_floors():
     assert 13.0 not in starts
 
 
+def test_pick_highlights_packs_multiple_from_long_video():
+    # A long talking video with three strong, separated sayings. With a tighter
+    # window cap (owner: "more than 6 clips from 5 videos") the picker must return
+    # MULTIPLE non-overlapping clips, not one big window that eats the timeline.
+    segs = [
+        _seg("Here's the number one mistake people make every single time they start.", 0.0, 14.0),
+        _seg("um so yeah like you know whatever i guess it doesn't really matter.", 14.0, 26.0),
+        _seg("The biggest secret nobody tells you is that consistency wins every time.", 26.0, 40.0),
+        _seg("um uh and then so basically you just kind of keep going i think.", 40.0, 52.0),
+        _seg("Do it right the first time and you never have to do it twice, period.", 52.0, 66.0),
+    ]
+    wins = V._pick_highlights(segs, n=12, min_len=6.0, max_len=28.0, min_score=0.4)
+    assert len(wins) >= 3, f"expected >=3 packed clips, got {wins}"
+    for _a, b, _ in wins:
+        assert b - _a <= 28.0 + 1e-6      # honors the tighter window cap
+
+
 def test_trim_to_clean_strips_filler_edges():
     segs = [_seg("um so today we install drainage and", 0.0, 5.0,
                  [("um", 0.0, 0.3), ("so", 0.3, 0.6), ("today", 0.6, 1.0),

@@ -1428,9 +1428,14 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
     _f, local, base, brand, display = ctx
     brand_key, dispname, tags = brand
     segs = transcribe(local)
-    # Only GREAT clips (high quality floor), each 6-45s (owner spec #5/#6).
-    min_score = float(os.getenv("CLIP_MIN_SCORE", "1.0"))
-    wins = _pick_highlights(segs, n=max(n, 12), min_len=6.0, max_len=45.0,
+    # Pull MULTIPLE good sayings per video (owner: "more than 6 clips from 5
+    # videos"). Tighter windows (<=28s, near the 12-30s ideal) let a longer
+    # video pack 2-4 clips instead of one 45s window eating the whole timeline;
+    # a 0.4 floor still drops filler/dead-air (those score <=0) but lets solid
+    # sayings through so weak videos still yield something. Both env-tunable.
+    min_score = float(os.getenv("CLIP_MIN_SCORE", "0.4"))
+    max_len = float(os.getenv("CLIP_MAX_LEN", "28"))
+    wins = _pick_highlights(segs, n=max(n, 12), min_len=6.0, max_len=max_len,
                             min_score=min_score)
     if not wins:
         print(f"auto_clips: no strong sayings in {base} (silent/weak? use montage).")
