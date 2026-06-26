@@ -121,6 +121,29 @@ def test_clip_pieces_all_good_is_one_run():
     assert len(pieces) == 1 and pieces[0][0] == 0.0
 
 
+def test_extend_to_sentence_end_completes_thought():
+    # Window ends mid-thought (no terminal punctuation); the next segment finishes
+    # the sentence with a small gap -> b should extend to include it.
+    segs = [
+        _seg("here is the number one thing that matters", 0.0, 6.0),
+        _seg("you have to do it right.", 6.2, 9.0),
+        _seg("and later we talk about something else.", 14.0, 18.0),
+    ]
+    nb = V._extend_to_sentence_end(segs, 0.0, 6.0, hard_max=30.0)
+    assert abs(nb - 9.0) < 1e-6                 # pulled in the finishing segment
+    # A real pause (>0.8s) is a natural stop — don't jump it.
+    nb2 = V._extend_to_sentence_end(segs, 0.0, 9.0, hard_max=30.0)
+    assert abs(nb2 - 9.0) < 1e-6                # 9.0 already ends with "."
+
+
+def test_clip_pieces_keeps_last_weak_segment():
+    # A weak trailing beat must NOT be dropped (that caused clips to end early).
+    strong = _seg("Here is the number one thing that actually matters a lot.", 0.0, 6.0)
+    weak_tail = _seg("you know.", 6.1, 7.2)
+    pieces = V._clip_pieces([strong, weak_tail], 0.0, 7.2, drop_below=0.2)
+    assert pieces and abs(pieces[-1][1] - 7.2) < 1e-6   # clip still ends at the end
+
+
 def test_shift_segments_offsets_words():
     segs = [_seg("hello world", 0.0, 1.0, [("hello", 0.0, 0.5), ("world", 0.5, 1.0)])]
     out = V._shift_segments(segs, 3.0)

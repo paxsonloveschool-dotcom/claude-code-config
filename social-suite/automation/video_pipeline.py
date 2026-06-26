@@ -1344,13 +1344,15 @@ def _shift_segments(segs, off: float):
 
 
 def _clip_pieces(segments, a: float, b: float, drop_below: float) -> list[tuple[float, float]]:
-    """Inside [a,b], keep only the strong segments and stitch them (jump-cut),
-    dropping weak/filler/dead-air stretches in the middle — so a clip can be
-    "first 5s + 13-20s" with the boring 6-12s cut out (owner spec #5).
+    """Inside [a,b], keep the talking and only cut out a LONG dead/filler stretch
+    in the MIDDLE (jump-cut) — never the first or last bit, and never a short
+    connective beat. This keeps clips continuous and complete instead of
+    "cutting out" or ending early; only a genuinely boring >=1.8s middle run is
+    removed (owner spec #5: e.g. "first 5s + 13-20s", boring 6-12s cut).
 
-    Returns merged (start,end) runs of kept segments. Adjacent kept segments
-    merge into one run; a dropped segment splits the runs."""
-    runs: list[list[float]] = []
+    Returns merged (start,end) runs. A dropped middle stretch splits the runs;
+    everything else stays one continuous piece."""
+    segs: list[list[float]] = []
     for s in segments:
         ss, se = getattr(s, "start_seconds", None), getattr(s, "end_seconds", None)
         if ss is None or se is None or se <= a or ss >= b:
@@ -1358,13 +1360,54 @@ def _clip_pieces(segments, a: float, b: float, drop_below: float) -> list[tuple[
         ss, se = max(ss, a), min(se, b)
         if se <= ss:
             continue
-        if _score_segment_text(getattr(s, "text", "") or "", se - ss) < drop_below:
-            continue                      # weak/filler segment — drop it
-        if runs and ss - runs[-1][1] < 0.35:
-            runs[-1][1] = se              # contiguous -> extend the run
+        score = _score_segment_text(getattr(s, "text", "") or "", se - ss)
+        segs.append([ss, se, score])
+    if not segs:
+        return []
+    n = len(segs)
+    runs: list[list[float]] = []
+    for idx, (ss, se, score) in enumerate(segs):
+        interior = 0 < idx < n - 1
+        # Only drop an INTERIOR, weak, and long-enough (>=1.8s) stretch. Keeping
+        # the first/last segment and all short beats is what stops clips from
+        # ending early or jump-cutting on every little pause.
+        if interior and score < drop_below and (se - ss) >= 1.8:
+            continue
+        if runs and ss - runs[-1][1] < 0.6:
+            runs[-1][1] = se              # bridge small pauses -> one smooth run
         else:
             runs.append([ss, se])
     return [(round(x, 2), round(y, 2)) for x, y in runs]
+
+
+_SENT_END = re.compile(r"[.!?][\"')\]]*\s*$")
+
+
+def _extend_to_sentence_end(segments, a: float, b: float, hard_max: float) -> float:
+    """Push ``b`` forward so the clip ends on a FINISHED sentence, not mid-thought.
+
+    If the last in-window segment doesn't end with . ! or ?, pull in the
+    following segments that continue the thought (no real pause between them)
+    until one ends a sentence — capped so the clip never exceeds ``hard_max``
+    seconds or jumps a >0.8s pause (a natural place to stop anyway)."""
+    segs = [s for s in segments
+            if getattr(s, "end_seconds", 0) > getattr(s, "start_seconds", -1)
+            and (getattr(s, "text", "") or "").strip()]
+    inwin = [s for s in segs if s.start_seconds < b - 0.05 and s.end_seconds > a]
+    if not inwin or _SENT_END.search(inwin[-1].text.strip()):
+        return b                          # already a clean sentence end
+    nb, last_end = b, inwin[-1].end_seconds
+    for s in segs:
+        if s.start_seconds < last_end - 0.05:
+            continue                      # already covered
+        if s.start_seconds - last_end > 0.8:
+            break                         # real pause -> natural stop
+        if s.end_seconds - a > hard_max:
+            break                         # would blow the length cap
+        nb, last_end = s.end_seconds, s.end_seconds
+        if _SENT_END.search(s.text.strip()):
+            break                         # sentence completed
+    return max(nb, b)
 
 
 def _hardcat(parts: list[str], out_path: str) -> str:
@@ -1400,7 +1443,8 @@ def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> l
 
     match = match or os.getenv("PIPELINE_VIDEO") or None
     captions = captions and os.getenv("CAPTIONS", "1").strip().lower() not in ("0", "false", "no")
-    n_videos = int(os.getenv("AUTO_CLIPS_VIDEOS") or "1")
+    nv_raw = (os.getenv("AUTO_CLIPS_VIDEOS") or "1").strip().lower()
+    n_videos = 100000 if nv_raw in ("all", "0", "max", "*", "") else int(nv_raw)
     vids = _list_videos(dbx, n_videos, match)
     if not vids:
         print("auto_clips: no matching video found.")
@@ -1475,9 +1519,11 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
     for a0, b0, nm in wins:
         cut = os.path.join(workdir, f"{base}-{nm}.mp4")
         try:
-            # 1) start/end on clean words (no stutter/pause)
+            # 1) finish the sentence (don't end mid-thought), THEN trim edges to
+            #    clean words so it starts/ends on a clear word (no stutter/pause).
+            b0 = _extend_to_sentence_end(segs, a0, b0, hard_max=(b0 - a0) + 14.0)
             a, b = _trim_to_clean(segs, a0, b0)
-            # 2) drop weak/filler stretches in the middle, jump-cut the good parts
+            # 2) keep it continuous; only cut a long boring middle (never the end)
             pieces = _clip_pieces(segs, a, b, drop_below=0.2) or [(a, b)]
             parts: list[str] = []
             clip_segs: list = []
