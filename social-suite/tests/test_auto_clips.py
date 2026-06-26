@@ -88,6 +88,17 @@ def test_pick_highlights_packs_multiple_from_long_video():
         assert b - _a <= 28.0 + 1e-6      # honors the tighter window cap
 
 
+def test_short_clip_allowed_only_when_complete():
+    # A short, COMPLETE punchy saying should be pickable...
+    complete = [_seg("This is the number one mistake people make.", 0.0, 4.0)]
+    wins = V._pick_highlights(complete, n=3, min_len=3.0, max_len=28.0, min_score=0.0)
+    assert wins and (wins[0][1] - wins[0][0]) < 6.0      # a good short clip
+    # ...but a short FRAGMENT (no sentence end) must be rejected as cut-off.
+    fragment = [_seg("this is the number one mistake people", 0.0, 4.0)]
+    assert V._pick_highlights(fragment, n=3, min_len=3.0, max_len=28.0,
+                              min_score=0.0) == []
+
+
 def test_trim_to_clean_strips_filler_edges():
     segs = [_seg("um so today we install drainage and", 0.0, 5.0,
                  [("um", 0.0, 0.3), ("so", 0.3, 0.6), ("today", 0.6, 1.0),

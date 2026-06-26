@@ -1189,6 +1189,12 @@ def _score_segment_text(text: str, dur: float) -> float:
     return score
 
 
+# Windows shorter than this must be a complete sentence to qualify (so short
+# clips are punchy one-liners, never cut-off fragments).
+SHORT_CLIP_MAX = 6.0
+_SENT_END = re.compile(r"[.!?][\"')\]]*\s*$")
+
+
 def _pick_highlights(segments, n: int = 4, min_len: float = 7.0,
                      max_len: float = 20.0, min_score: float = 0.0
                      ) -> list[tuple[float, float, str]]:
@@ -1208,6 +1214,13 @@ def _pick_highlights(segments, n: int = 4, min_len: float = 7.0,
             a, b = segs[i].start_seconds, segs[j].end_seconds
             if (b - a) >= min_len:
                 text = " ".join(s.text for s in segs[i:j + 1])
+                # Short clips are welcome, but only as a COMPLETE thought — a
+                # window under SHORT_CLIP_MAX must end on . ! or ? so we never
+                # ship a cut-off fragment. Longer windows are trimmed/extended
+                # later, so they aren't gated here.
+                if (b - a) < SHORT_CLIP_MAX and not _SENT_END.search(text.strip()):
+                    j += 1
+                    continue
                 candidates.append((_score_segment_text(text, b - a), a, b))
             j += 1
     candidates.sort(key=lambda c: c[0], reverse=True)
@@ -1380,9 +1393,6 @@ def _clip_pieces(segments, a: float, b: float, drop_below: float) -> list[tuple[
     return [(round(x, 2), round(y, 2)) for x, y in runs]
 
 
-_SENT_END = re.compile(r"[.!?][\"')\]]*\s*$")
-
-
 def _extend_to_sentence_end(segments, a: float, b: float, hard_max: float) -> float:
     """Push ``b`` forward so the clip ends on a FINISHED sentence, not mid-thought.
 
@@ -1486,25 +1496,25 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
     # sayings through so weak videos still yield something. Both env-tunable.
     min_score = float(os.getenv("CLIP_MIN_SCORE", "0.4"))
     max_len = float(os.getenv("CLIP_MAX_LEN", "28"))
-    wins = _pick_highlights(segs, n=max(n, 12), min_len=6.0, max_len=max_len,
+    # min_len 3.5 lets SHORT punchy one-liners through — but _pick_highlights
+    # only accepts a sub-6s window if it's a COMPLETE sentence, so shorts are
+    # crisp, not fragments (owner: "make short clips too, just accurate + good").
+    wins = _pick_highlights(segs, n=max(n, 12), min_len=3.5, max_len=max_len,
                             min_score=min_score)
     if not wins and spoken:
         # Nothing cleared the "great" bar, but there IS speech — drop the floor
-        # and take the best clean windows so a real talking video still yields
-        # clips. BUT keep the 6s spec floor: a window must hold >=6s of actual
-        # talking. A video with only a one-line intro (~10 words / a couple of
-        # seconds) then silent b-roll has NO 6s speech window, so it makes no
-        # tiny junk clip here — it's correctly treated as b-roll for the montage
-        # path. _trim_to_clean/_clip_pieces still keep these starting clean.
+        # to 0.0 (filler/garbled still score <=0 and stay out) and take the best
+        # clean COMPLETE windows so a real talking video still yields clips,
+        # short ones included. Truly empty/garbled videos still make nothing.
         print(f"auto_clips: {base}: no 'great' window — falling back to best "
-              f"clean speech windows (>=6s) so this talking video still gets clips.")
-        wins = _pick_highlights(segs, n=max(n, 6), min_len=6.0, max_len=max_len,
-                                min_score=-1e9)
+              f"clean complete sayings (any length) so it still gets clips.")
+        wins = _pick_highlights(segs, n=max(n, 6), min_len=3.5, max_len=max_len,
+                                min_score=0.0)
     if not wins:
-        why = ("only a brief intro of talking then silent footage"
+        why = ("only filler/garbled speech, no complete saying"
                if spoken else "TRULY no speech (0 segments)")
-        print(f"auto_clips: {base}: no >=6s talking window ({why}) — skipped as "
-              f"b-roll (use the montage path for footage with no real talking).")
+        print(f"auto_clips: {base}: no usable saying ({why}) — skipped as b-roll "
+              f"(use the montage path for footage with no real talking).")
         return []
     print(f"auto_clips: {base} -> {[(a, b) for a, b, _ in wins]}")
 
