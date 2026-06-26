@@ -5,14 +5,17 @@ name: TikTok link (one-time)
 # authorize `code`; this job:
 #   1. exchanges it for tokens (access + the long-lived ~365d refresh token),
 #   2. optionally posts ONE private (SELF_ONLY) test video to confirm posting,
-#   3. prints the refresh_token to the run Summary so you can save it as the
-#      BRAND_<NAME>_TIKTOK_REFRESH_TOKEN secret.
+#   3. if a GH_PAT secret with "Secrets: write" exists, stores the refresh token
+#      straight into BRAND_<brand>_TIKTOK_REFRESH_TOKEN — the token is masked and
+#      NEVER printed (this repo is public, so logs must never contain a token).
 #
-# Requires these repo secrets to already exist (Settings → Secrets → Actions):
-#   BRAND_HP_TIKTOK_CLIENT_KEY, BRAND_HP_TIKTOK_CLIENT_SECRET
-# (or the RESTORE_ equivalents — chosen by the `brand` input).
+# Requires repo secrets (Settings → Secrets and variables → Actions):
+#   BRAND_HP_TIKTOK_CLIENT_KEY, BRAND_HP_TIKTOK_CLIENT_SECRET   (or RESTORE_*)
+#   GH_PAT  (optional) — a fine-grained PAT with Secrets:write, to auto-store the
+#           refresh token. Without it, the link + test still run; production
+#           persistence is handled separately.
 #
-# The authorize `code` expires within minutes, so run this RIGHT AFTER clicking
+# The authorize `code` expires within minutes — run this RIGHT AFTER clicking
 # Allow on the authorize link.
 
 on:
@@ -63,41 +66,46 @@ jobs:
             -t 3 -r 30 -pix_fmt yuv420p -movflags +faststart /tmp/tiktok_test.mp4
           ls -la /tmp/tiktok_test.mp4
 
-      - name: Exchange code (+ optional private test post)
+      - name: Exchange code (+ optional private test post + safe secret store)
         env:
+          BRAND: ${{ inputs.brand }}
           TIKTOK_CLIENT_KEY: ${{ inputs.brand == 'HP' && secrets.BRAND_HP_TIKTOK_CLIENT_KEY || secrets.BRAND_RESTORE_TIKTOK_CLIENT_KEY }}
           TIKTOK_CLIENT_SECRET: ${{ inputs.brand == 'HP' && secrets.BRAND_HP_TIKTOK_CLIENT_SECRET || secrets.BRAND_RESTORE_TIKTOK_CLIENT_SECRET }}
           TIKTOK_CODE: ${{ inputs.code }}
           TIKTOK_REDIRECT_URI: ${{ inputs.redirect_uri }}
           DO_TEST_POST: ${{ inputs.do_test_post }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GH_REPO: ${{ github.repository }}
         run: |
           cd social-suite
           python - <<'PY'
-          import os, json, time, sys
+          import os, json, time, sys, subprocess, urllib.parse
           sys.path.insert(0, "services")
           from services.publish.direct import tiktok_oauth, tiktok
 
-          import urllib.parse
           ck = os.environ["TIKTOK_CLIENT_KEY"].strip()
           cs = os.environ["TIKTOK_CLIENT_SECRET"].strip()
           raw = os.environ["TIKTOK_CODE"].strip()
-          # Accept either the full callback URL or a bare code; URL-decode either way
-          # (TikTok codes contain %2A '*' / %21 '!' when copied from the address bar).
-          if "code=" in raw:
+          if "code=" in raw:  # accept full callback URL or bare code; URL-decode either
               code = urllib.parse.parse_qs(urllib.parse.urlparse(raw).query).get("code", [""])[0]
           else:
               code = urllib.parse.unquote(raw)
           redirect = os.environ["TIKTOK_REDIRECT_URI"].strip()
+          brand = os.environ.get("BRAND", "HP").strip().upper()
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout")
 
           def summary(md):
               with open(summary_path, "a") as f:
                   f.write(md + "\n")
 
+          def mask(v):  # tell the runner to redact this value everywhere in logs
+              if v:
+                  print(f"::add-mask::{v}")
+
           if not ck or not cs:
               summary("## ❌ Missing CLIENT_KEY/SECRET secret\n"
-                      "Add `BRAND_<brand>_TIKTOK_CLIENT_KEY` and "
-                      "`BRAND_<brand>_TIKTOK_CLIENT_SECRET` repo secrets, then re-run.")
+                      f"Add `BRAND_{brand}_TIKTOK_CLIENT_KEY` and "
+                      f"`BRAND_{brand}_TIKTOK_CLIENT_SECRET` repo secrets, then re-run.")
               raise SystemExit("Missing client key/secret secret.")
 
           try:
@@ -111,20 +119,37 @@ jobs:
 
           refresh = payload.get("refresh_token", "")
           access = payload.get("access_token", "")
-          scope = payload.get("scope", "")
+          mask(refresh); mask(access)  # never let a token appear in public logs
           summary("## ✅ TikTok linked")
-          summary(f"- scope: `{scope}`")
+          summary(f"- scope: `{payload.get('scope','')}`")
           summary(f"- refresh token lifetime: ~{payload.get('refresh_expires_in', 0)//86400} days")
-          summary("\n### Save this as a repo secret\n"
-                  "Settings → Secrets and variables → Actions → New repository secret\n\n"
-                  f"**Name:** `BRAND_HP_TIKTOK_REFRESH_TOKEN`\n\n"
-                  f"**Value:**\n```\n{refresh}\n```\n")
+
+          # Store the refresh token straight into a secret (masked, never printed).
+          pat = os.environ.get("GH_PAT", "").strip()
+          repo = os.environ.get("GH_REPO", "")
+          if pat and refresh:
+              env = dict(os.environ, GH_TOKEN=pat)
+              r = subprocess.run(
+                  ["gh", "secret", "set", f"BRAND_{brand}_TIKTOK_REFRESH_TOKEN",
+                   "--repo", repo, "--body", refresh],
+                  env=env, capture_output=True, text=True,
+              )
+              if r.returncode == 0:
+                  summary(f"- 🔐 Stored `BRAND_{brand}_TIKTOK_REFRESH_TOKEN` secret automatically.")
+              else:
+                  summary("- ⚠️ Could not auto-store the refresh token "
+                          f"(`{r.stderr.strip()[:120]}`). It is NOT printed for safety; "
+                          "re-run with a valid GH_PAT (Secrets:write) to persist it.")
+          else:
+              summary("- ℹ️ Refresh token NOT stored (no `GH_PAT` secret). The test "
+                      "below still proves posting works; add a GH_PAT and re-run to "
+                      "persist the token for the unattended cron. (Token never printed.)")
 
           if os.environ.get("DO_TEST_POST", "false").lower() == "true":
               try:
                   pub_id = tiktok.post_tiktok(
                       access_token=access,
-                      caption="HP suite test — private (SELF_ONLY)",
+                      caption=f"{brand} suite test — private (SELF_ONLY)",
                       video="/tmp/tiktok_test.mp4",
                       privacy_level="SELF_ONLY",
                   )
@@ -135,11 +160,9 @@ jobs:
                       if st in ("PUBLISH_COMPLETE", "FAILED", None):
                           break
                       time.sleep(3)
-                  summary("\nOpen the **TikTok app → HP profile** to see the private "
-                          "video, then delete it. Nobody else can see a SELF_ONLY post.")
+                  summary("\nOpen the **TikTok app → profile** to see the private video, "
+                          "then delete it. Nobody else can see a SELF_ONLY post.")
               except Exception as e:
-                  summary(f"### ⚠️ Link worked, but the test post failed\n```\n{e}\n```\n"
-                          "The refresh token above is still good — save it. We can "
-                          "retry a test post separately.")
-          print("Done. See the run Summary for the refresh token + test result.")
+                  summary(f"### ⚠️ Link worked, but the test post failed\n```\n{e}\n```")
+          print("Done. See the run Summary.")
           PY
