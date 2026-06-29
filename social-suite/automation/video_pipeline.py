@@ -1343,6 +1343,78 @@ def _trim_to_clean(segments, a: float, b: float, pad: float = 0.08) -> tuple[flo
     return (na, nb) if nb > na else (a, b)
 
 
+# Whisper "base" mis-hears HP's spoken brand lines. Fix them in the captions
+# (owner choice: fast brand-word correction, not a slower model). Each rule is
+# (mis-heard word sequence -> correct words); matching is case/punctuation
+# -insensitive and timing is redistributed across the replacement words so the
+# karaoke stays in sync. Keep rules specific so normal speech is never touched.
+_BRAND_FIXES = [
+    (["higher", "privileged", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["higher", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hide", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hyde", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["high", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hyperbist", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hyperbness", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hb", "nation"], ["HP", "Nation"]),
+    (["hp", "nation"], ["HP", "Nation"]),
+    (["hpe", "nation"], ["HP", "Nation"]),
+]
+
+
+def _norm_alnum(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def _fix_brand_words(segments):
+    """Correct known brand mis-hears in the transcript before captions are burned.
+
+    Operates on the word list so the burned karaoke text is right; timing for a
+    replacement is spread evenly across the new words and trailing punctuation is
+    preserved. Unmatched words pass through untouched."""
+    from services.caption.transcribe import Segment, Word  # lazy
+
+    out = []
+    for s in segments:
+        words = list(getattr(s, "words", None) or [])
+        if not words:
+            out.append(s)
+            continue
+        fixed: list = []
+        i = 0
+        while i < len(words):
+            hit = None
+            for src, dst in _BRAND_FIXES:
+                k = len(src)
+                if i + k <= len(words) and all(
+                        _norm_alnum(getattr(words[i + t], "text", "")) == src[t]
+                        for t in range(k)):
+                    hit = (k, dst)
+                    break
+            if hit:
+                k, dst = hit
+                a = float(getattr(words[i], "start_seconds", 0.0))
+                b = float(getattr(words[i + k - 1], "end_seconds", a))
+                last_txt = (getattr(words[i + k - 1], "text", "") or "").strip()
+                mt = re.search(r"[^A-Za-z0-9]+$", last_txt)
+                trail = mt.group(0) if mt else ""
+                m = len(dst)
+                span = (b - a) / m if m else 0.0
+                for t, wt in enumerate(dst):
+                    ws = a + t * span
+                    we = b if t == m - 1 else a + (t + 1) * span
+                    fixed.append(Word(text=wt + (trail if t == m - 1 else ""),
+                                      start_seconds=ws, end_seconds=we))
+                i += k
+            else:
+                fixed.append(words[i])
+                i += 1
+        new_text = " ".join((getattr(w, "text", "") or "") for w in fixed).strip()
+        out.append(Segment(text=new_text or s.text, start_seconds=s.start_seconds,
+                           end_seconds=s.end_seconds, words=fixed))
+    return out
+
+
 def _shift_segments(segs, off: float):
     """Shift sliced (clip-relative) segments by ``off`` seconds (for stitching)."""
     from services.caption.transcribe import Segment, Word  # lazy
@@ -1481,7 +1553,7 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
 
     _f, local, base, brand, display = ctx
     brand_key, dispname, tags = brand
-    segs = transcribe(local)
+    segs = _fix_brand_words(transcribe(local))   # correct brand mis-hears first
     # Diagnostic: how much speech did Whisper actually find? 0 segments == truly
     # silent/no-audio footage; >0 == someone is talking and MUST yield clips.
     spoken = [s for s in segs

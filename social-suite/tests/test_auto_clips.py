@@ -88,6 +88,27 @@ def test_pick_highlights_packs_multiple_from_long_video():
         assert b - _a <= 28.0 + 1e-6      # honors the tighter window cap
 
 
+def test_fix_brand_words_corrects_mishears():
+    seg = _seg("what's up higher privileged nation today", 0.0, 3.0,
+               [("what's", 0.0, 0.3), ("up", 0.3, 0.5), ("higher", 0.5, 0.9),
+                ("privileged", 0.9, 1.4), ("nation", 1.4, 1.8), ("today", 1.8, 2.2)])
+    out = V._fix_brand_words([seg])
+    txt = out[0].text
+    assert "Higher Purpose Nation" in txt
+    assert "privileged" not in txt
+    # word timings stay monotonic and within the original span
+    ws = out[0].words
+    assert all(ws[i].start_seconds <= ws[i + 1].start_seconds for i in range(len(ws) - 1))
+
+
+def test_fix_brand_words_keeps_normal_speech():
+    seg = _seg("we added a putting green today.", 0.0, 3.0,
+               [("we", 0.0, 0.3), ("added", 0.3, 0.6), ("a", 0.6, 0.7),
+                ("putting", 0.7, 1.1), ("green", 1.1, 1.5), ("today.", 1.5, 1.9)])
+    out = V._fix_brand_words([seg])
+    assert out[0].text == "we added a putting green today."
+
+
 def test_short_clip_allowed_only_when_complete():
     # A short, COMPLETE punchy saying should be pickable...
     complete = [_seg("This is the number one mistake people make.", 0.0, 4.0)]
