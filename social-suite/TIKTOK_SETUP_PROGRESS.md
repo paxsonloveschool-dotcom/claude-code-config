@@ -32,7 +32,33 @@ Full technical guide: [`TIKTOK_SETUP.md`](TIKTOK_SETUP.md).
   **Private**. HP was Public; flipping it Private let the SELF_ONLY post go
   through. **Public posting requires passing TikTok's audit.**
 
-## ▶️ MONDAY — START HERE (2026-06-29)
+## ✅ AUDIT SUBMITTED — 2026-06-29 (awaiting TikTok review)
+Production app **HP Auto Poster** submitted for review. All form items done:
+icon, category=Business, description, ToS/Privacy/Web URLs (verified via the
+Cloudflare DNS TXT — domain now verified ✅), redirect URI, scopes
+(user.info.basic + video.publish; video.upload left in — minor, not a blocker),
+scope explanation, and a ~30s demo video (showed the app config + the OAuth
+`code` redirect; did NOT show the consent screen or a live post, since the
+private test clip had been deleted).
+
+**NEXT — when TikTok responds (email to higherpurposelandscaping@gmail.com):**
+- **If they request changes** (likely ask to *see an actual post* and/or the
+  Allow/consent screen): post one fresh private SELF_ONLY test clip (run the
+  `tiktok-link.yml` workflow with a fresh code), screen-record the
+  consent→post→profile flow, and resubmit ("Submit for review" → revision).
+- **If APPROVED:** (1) set HP TikTok back to **Public** + set
+  `BRAND_HP_TIKTOK_PRIVACY_LEVEL=PUBLIC_TO_EVERYONE`; (2) add a `GH_PAT`
+  (Secrets:write) secret and re-run `tiktok-link.yml` once with a fresh code so
+  it auto-stores `BRAND_HP_TIKTOK_REFRESH_TOKEN`; (3) un-pause the cron /
+  flip queue items to `pending`. Then TikTok posts on the schedule like IG/FB.
+
+Also pending (separate): connect Restore's (and any other) TikTok — same flow,
+reuse the same app (one audit covers all accounts), add each as a Target User +
+its BRAND_<NAME>_TIKTOK_* secrets.
+
+---
+
+## ▶️ Earlier notes (2026-06-29)
 Goal: finish TikTok's audit so HP can post **public** on a schedule.
 We're on the **Production** app's **App review** form (developers.tiktok.com →
 HP Auto Poster → Production). It's down to **2 blockers**:
