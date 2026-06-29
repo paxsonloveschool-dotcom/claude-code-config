@@ -109,6 +109,20 @@ def test_fix_brand_words_keeps_normal_speech():
     assert out[0].text == "we added a putting green today."
 
 
+def test_snap_bounds_lands_in_gaps_not_midword():
+    # words: "hello"(1.0-1.4) gap "world"(2.0-2.6) ... "done"(5.0-5.6)
+    segs = [_seg("hello world this is done", 1.0, 5.6,
+                 [("hello", 1.0, 1.4), ("world", 2.0, 2.6), ("this", 3.0, 3.3),
+                  ("is", 3.4, 3.6), ("done", 5.0, 5.6)])]
+    a, b = V._snap_bounds(segs, 1.2, 5.2)   # both start/end land mid-word
+    # start must not be inside "hello" (>=1.4 gap) and not past "world" start
+    assert a <= 1.0 or (1.4 <= a <= 2.0)
+    # end must be at/after the last word "done" ends, never before it
+    assert b >= 5.6
+    # never slices into a neighbouring word
+    assert a < 1.0 + 1e-9 or a >= 1.4 - 1e-9
+
+
 def test_short_clip_allowed_only_when_complete():
     # A short, COMPLETE punchy saying should be pickable...
     complete = [_seg("This is the number one mistake people make.", 0.0, 4.0)]

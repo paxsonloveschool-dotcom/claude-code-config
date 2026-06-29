@@ -1453,6 +1453,49 @@ def _fix_brand_words(segments):
     return out
 
 
+def _all_words(segments):
+    """Every timed word across the segments, in time order."""
+    ws = []
+    for s in segments:
+        for w in (getattr(s, "words", None) or []):
+            if getattr(w, "start_seconds", None) is not None and \
+               getattr(w, "end_seconds", None) is not None:
+                ws.append(w)
+    ws.sort(key=lambda w: w.start_seconds)
+    return ws
+
+
+def _snap_bounds(segments, a: float, b: float, lead: float = 0.18,
+                 trail: float = 0.32):
+    """Move the cut points into the SILENCE around the speech so a clip never
+    starts or ends mid-word (owner: "stop cutting over my words").
+
+    ``a`` is pulled back into the gap just before the first word inside [a,b]
+    (without crossing into the previous word); ``b`` is pushed into the gap just
+    after the last word (without crossing into the next word). Generous lead/trail
+    give the clip breathing room when there's a real pause."""
+    words = _all_words(segments)
+    if not words:
+        return a, b
+    inside = [w for w in words if w.end_seconds > a and w.start_seconds < b]
+    if not inside:
+        return a, b
+    first, last = inside[0], inside[-1]
+    # previous / next word (may sit outside [a,b]) so we don't slice into them
+    prev_end = max([w.end_seconds for w in words if w.end_seconds <= first.start_seconds + 1e-3]
+                   or [first.start_seconds - lead - 0.001])
+    next_start = min([w.start_seconds for w in words if w.start_seconds >= last.end_seconds - 1e-3]
+                     or [last.end_seconds + trail + 0.001])
+    na = first.start_seconds - lead
+    if na < prev_end:                       # would clip the previous word
+        na = (prev_end + first.start_seconds) / 2.0   # sit in the gap instead
+    nb = last.end_seconds + trail
+    if nb > next_start:                     # would clip the next word
+        nb = (last.end_seconds + next_start) / 2.0
+    na = max(0.0, na)
+    return (na, nb) if nb > na else (a, b)
+
+
 def _shift_segments(segs, off: float):
     """Shift sliced (clip-relative) segments by ``off`` seconds (for stitching)."""
     from services.caption.transcribe import Segment, Word  # lazy
@@ -1639,12 +1682,15 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
     for a0, b0, nm in wins:
         cut = os.path.join(workdir, f"{base}-{nm}.mp4")
         try:
-            # 1) finish the sentence (don't end mid-thought), THEN trim edges to
-            #    clean words so it starts/ends on a clear word (no stutter/pause).
+            # 1) finish the sentence (don't end mid-thought), trim filler edges,
+            #    then snap the cut points INTO the silence around the speech so we
+            #    never start/end mid-word.
             b0 = _extend_to_sentence_end(segs, a0, b0, hard_max=(b0 - a0) + 14.0)
             a, b = _trim_to_clean(segs, a0, b0)
-            # 2) keep it continuous; only cut a long boring middle (never the end)
-            pieces = _clip_pieces(segs, a, b, drop_below=0.2) or [(a, b)]
+            a, b = _snap_bounds(segs, a, b)
+            # 2) ONE continuous slice — never jump-cut, so no words get dropped
+            #    out of the middle of someone talking.
+            pieces = [(a, b)]
             parts: list[str] = []
             clip_segs: list = []
             off = 0.0
