@@ -1837,6 +1837,62 @@ def main(argv: list[str] | None = None) -> int:
         print(f"DROPBOX USAGE: {json.dumps(report, indent=2)}")
         return 0
 
+    # PURGE_EDITED: delete every pipeline-generated clip sitting in a staging
+    # folder whose name contains "processed" (e.g. "processed", "HP Processed"),
+    # across all brands — these are edited videos + orphans from old renders.
+    # Leaves ORIGINAL content (HP Content / HP Talking Content) and HP Posts
+    # (the ones getting posted) completely untouched. Frees space.
+    # Value "list" = dry run (report only); "go"/"true" = actually delete.
+    _purge = os.getenv("PURGE_EDITED", "").strip().lower()
+    if _purge in ("list", "go", "1", "true", "yes"):
+        from services.ingest import dropbox_client as dbx  # lazy
+        cli = dbx._client()
+        dry = _purge == "list"
+        hit, freed, deleted = [], 0, 0
+        for path_lower, display in _top_level_folders(dbx):
+            try:
+                kids = cli.files_list_folder(path_lower)
+            except Exception:  # noqa: BLE001
+                continue
+            subs = []
+            while True:
+                for e in kids.entries:
+                    if e.__class__.__name__ == "FolderMetadata" and "processed" in e.name.lower():
+                        subs.append(getattr(e, "path_lower", ""))
+                if not getattr(kids, "has_more", False):
+                    break
+                kids = cli.files_list_folder_continue(kids.cursor)
+            for sp in subs:
+                try:
+                    r = cli.files_list_folder(sp, recursive=True)
+                except Exception:  # noqa: BLE001
+                    continue
+                while True:
+                    for e in r.entries:
+                        if e.__class__.__name__ == "FileMetadata":
+                            fp = getattr(e, "path_display", "") or getattr(e, "path_lower", "")
+                            hit.append(fp); freed += getattr(e, "size", 0)
+                            if not dry:
+                                try:
+                                    dbx.delete(fp); deleted += 1
+                                except Exception as ex:  # noqa: BLE001
+                                    print(f"del fail {fp}: {ex}")
+                    if not getattr(r, "has_more", False):
+                        break
+                    r = cli.files_list_folder_continue(r.cursor)
+        tag = "DRY RUN — would delete" if dry else "DELETED"
+        print(f"PURGE_EDITED {tag}: {len(hit)} file(s), {round(freed/1024**3,3)} GB")
+        for fp in hit[:300]:
+            print("  ", fp)
+        if not dry:
+            queue = _load_json(QUEUE_PATH, [])
+            kept = [q for q in queue
+                    if "processed" not in (q.get("media_path") or "").rsplit("/", 1)[0].lower()]
+            if len(kept) != len(queue):
+                _save_json(QUEUE_PATH, kept)
+            print(f"queue: kept {len(kept)} entries (HP Posts + originals)")
+        return 0
+
     # DELETE_IDS: remove specific clips (Dropbox file + queue entry) up front,
     # then FALL THROUGH so the same run can also render replacements.
     _del = os.getenv("DELETE_IDS", "").strip()

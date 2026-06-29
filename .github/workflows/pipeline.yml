@@ -75,6 +75,10 @@ on:
         description: "Set true to dump a full file manifest (path/size) to a committed CSV"
         required: false
         default: ""
+      purge_edited:
+        description: "'list' to dry-run, 'go' to DELETE all edited clips in processed-type folders (keeps originals + HP Posts)"
+        required: false
+        default: ""
       dropbox_organize:
         description: "'go' to create Ready-To-Post + Drop-Content folders and move keepers"
         required: false
@@ -159,6 +163,7 @@ jobs:
           DROPBOX_WHOAMI: ${{ inputs.dropbox_whoami }}
           DROPBOX_USAGE: ${{ inputs.dropbox_usage }}
           DROPBOX_INVENTORY: ${{ inputs.dropbox_inventory }}
+          PURGE_EDITED: ${{ inputs.purge_edited }}
           DROPBOX_ORGANIZE: ${{ inputs.dropbox_organize }}
           PROMOTE_IDS: ${{ inputs.promote_ids }}
           DELETE_IDS: ${{ inputs.delete_ids }}
