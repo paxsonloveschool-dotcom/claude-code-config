@@ -1115,6 +1115,32 @@ def prune_clips(keep_ids: list[str]) -> list[dict]:
     return kept
 
 
+def delete_clips(delete_ids: list[str]) -> list[dict]:
+    """Delete the listed clips (Dropbox file + queue entry); keep everything else.
+    The inverse of :func:`prune_clips` — safer when removing a few bad clips out
+    of many (list the few to drop, not the many to keep). Never posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    drop = {k.strip() for k in delete_ids if k.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    kept, removed = [], 0
+    for e in queue:
+        if e.get("id") not in drop:
+            kept.append(e)
+            continue
+        mp = e.get("media_path")
+        if mp:
+            try:
+                dbx.delete(mp)
+            except Exception as ex:  # noqa: BLE001 — missing file is fine, still drop the entry
+                print(f"delete failed {mp}: {ex}")
+        print(f"deleted {e.get('id')}")
+        removed += 1
+    _save_json(QUEUE_PATH, kept)
+    print(f"\nDeleted {removed} clip(s); kept {len(kept)}.")
+    return kept
+
+
 # ---- SupoClip-style auto highlight selection (free, local Whisper, no LLM) ----
 # Words that signal a strong hook/payoff in landscaping/reno talking-head clips.
 HOOK_WORDS = (
@@ -2062,6 +2088,13 @@ def main(argv: list[str] | None = None) -> int:
     keep_ids = os.getenv("KEEP_IDS", "").strip()
     if keep_ids:
         prune_clips(keep_ids.split(","))
+        return 0
+
+    # DELETE_IDS: delete just these clips (Dropbox file + queue entry); keep the
+    # rest — for clearing out a handful of bad/garbled/orphan clips.
+    del_ids = os.getenv("DELETE_IDS", "").strip()
+    if del_ids:
+        delete_clips(del_ids.split(","))
         return 0
 
     # Dump a timestamped transcript so clip windows can be chosen by time.
