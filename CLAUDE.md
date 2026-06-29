@@ -121,7 +121,19 @@ RTK v0.36.0 binary at `~/.local/bin/rtk.exe`. On native Windows, the transparent
 - Scripts and docs committed at `tools/voxcpm/` in this repo
 - For real-time: use HF Spaces demo at https://huggingface.co/spaces/OpenBMB/VoxCPM-Demo
 
+## HP Landscaping Email Agent (Gmail) — Standing Rules
+- **NEVER create or apply Gmail labels.** Labels are the user's to manage manually only. Do not tag threads (no "Email In Draft", no per-person labels like "Chuck"/"Nelson").
+- **Draft only — never auto-send.** Replies go to the Drafts folder for the user to review and send.
+- **Pricing / quote / payment / potential new work → draft + flag in chat for review.** General client & business questions → just draft a reply.
+- **Write in HP's voice** (study real sent emails first): warm, Texan, upbeat, accountable. Open with "Hi/Howdy/Good morning [First]!". Use phrases like "Thanks for reaching out!", "get you taken care of", "Totally understandable!", "Sounds good!", "this is definitely something we can take care of". Exclamation points are normal. Close with:
+  > Thanks,
+  > The HP Landscaping Team
+  > General Communications, HP Landscaping
+  > 979-701-2229 Mobile
+  > higherpurposelandscaping@gmail.com
+  > Homepage | Our Story · LinkedIn: Higher Purpose Landscaping
+
 ## Applied Learning
 Add a one-line bullet (under 15 words) whenever something fails repeatedly, I have to re-explain, or a workaround is found. No explanations.
 
-- (none yet)
+- Email agent: never make Gmail labels; draft only in HP's voice; user sends.
