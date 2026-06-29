@@ -39,15 +39,21 @@ HP Auto Poster → Production). It's down to **2 blockers**:
 
 1. **Domain verification of `hplandscapingllc.com`** (3 of the 4 form errors).
    TikTok's ToS / Privacy / Web URLs all show "This URL is not verified."
-   Fix path: App → **URL properties** tab → add property → **Domain (DNS record)**
-   → TikTok gives a `TXT` record → add it in the domain's DNS → Verify. Verifying
-   the Domain clears all 3 URL errors at once.
-   - 🔑 **BLOCKER / first question Monday:** *who manages hplandscapingllc.com?*
-     (self on Wix/GoDaddy/Squarespace/etc., or a person/agency who built it.)
-     Whoever can edit the site/DNS adds the TXT record in ~2 min. Owner didn't
-     know offhand — find this out first.
-   - Alt method: "URL prefix → signature file" (upload TikTok's file to the
-     site) if DNS access is easier than expected. Either clears the URL errors.
+   - **HOST FOUND (from Gmail):** domain registrar/DNS = **IONOS**
+     (ionos.com, Customer ID **962885484**, owner Paxson Berkey, login email
+     higherpurposelandscaping@gmail.com). Website builder = **Webflow**, built by
+     **Kate Catalena** (catalenakate@gmail.com) — fallback if IONOS DNS is an issue.
+   - **DONE 2026-06-29:** in TikTok → URL properties → **Domain (DNS record)** for
+     `hplandscapingllc.com`, TikTok issued TXT value:
+     `tiktok-developers-site-verification=RrF5QV9vnnt3ap6lJ0Mmz4KCaj0Bt70Z`
+     Added as a **TXT record** on the root domain in IONOS DNS (host blank/@,
+     TTL 1h). Preview: `hplandscapingllc.com 3600 IN TXT "tiktok-developers-..."`.
+   - **WAITING:** TikTok "Verify" first attempt = "couldn't find verification
+     signature" (DNS not propagated yet). **Re-click Verify after ~30–60 min** —
+     no IONOS changes needed; the record is in. If still failing after a couple
+     hours, confirm the domain's nameservers actually point to IONOS (Webflow
+     setups sometimes delegate DNS elsewhere); if so, add the TXT where the NS
+     live, or have Kate add it.
 
 2. **Demo video** (the 4th error). A ~30s screen recording: open the authorize
    link → tap Allow → show redirect → open TikTok app → show a posted video.
