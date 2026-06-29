@@ -727,7 +727,10 @@ def _list_videos(dbx, limit: int = 1, match: str | None = None) -> list:
         except Exception:  # noqa: BLE001 — subfolder missing for this brand
             vids = []
         if match:
-            vids = [f for f in vids if match.lower() in f.name.lower()]
+            # Match against the SLUG (same form as clip ids), so a user-friendly
+            # "sep-17-2025" matches a raw filename like "Video Sep 17 2025 ...".
+            m = _slug(match)
+            vids = [f for f in vids if m in _slug(f.name) or match.lower() in f.name.lower()]
         if not vids:
             continue
         for f in vids[:limit]:
@@ -1348,17 +1351,26 @@ def _trim_to_clean(segments, a: float, b: float, pad: float = 0.08) -> tuple[flo
 # (mis-heard word sequence -> correct words); matching is case/punctuation
 # -insensitive and timing is redistributed across the replacement words so the
 # karaoke stays in sync. Keep rules specific so normal speech is never touched.
+# Source tokens are MATCHED after _norm_alnum (lowercase, punctuation+hyphens
+# stripped) — so Whisper's hyphenated single tokens like "higher-privileged"
+# normalize to "higherprivileged" and must be listed in that joined form, NOT as
+# two words. Both the 2-token (hyphenated) and 3-word spellings are covered.
 _BRAND_FIXES = [
+    (["higherprivileged", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["higherpurpose", "nation"], ["Higher", "Purpose", "Nation"]),
     (["higher", "privileged", "nation"], ["Higher", "Purpose", "Nation"]),
     (["higher", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
     (["hide", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
     (["hyde", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
     (["high", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hydepurpose", "nation"], ["Higher", "Purpose", "Nation"]),
     (["hyperbist", "nation"], ["Higher", "Purpose", "Nation"]),
     (["hyperbness", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hyperb", "nation"], ["Higher", "Purpose", "Nation"]),
     (["hb", "nation"], ["HP", "Nation"]),
     (["hp", "nation"], ["HP", "Nation"]),
     (["hpe", "nation"], ["HP", "Nation"]),
+    (["hbnation"], ["HP", "Nation"]),
 ]
 
 
