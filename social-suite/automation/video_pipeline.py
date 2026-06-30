@@ -993,14 +993,22 @@ def dump_thumbs() -> None:
                 dur = max(1.0, float(r.stdout.strip()))
             except ValueError:
                 dur = 10.0
-            fps = max(0.05, 6.0 / dur)
+            # THUMB_FRAMES lets us make a DENSE contact sheet (default 6) to spot a
+            # brief segment (e.g. a sky-drone shot) buried in a long walkthrough clip.
+            try:
+                nfr = max(6, int(os.getenv("THUMB_FRAMES", "6")))
+            except ValueError:
+                nfr = 6
+            cols = 6 if nfr > 6 else 3
+            rows = -(-nfr // cols)  # ceil
+            fps = max(0.02, nfr / dur)
             sheet = os.path.join(out_dir, f"{base}.jpg")
             subprocess.run(
                 ["ffmpeg", "-y", "-i", raw, "-vf",
-                 f"fps={fps:.4f},scale=320:-1,tile=3x2:padding=6:margin=6",
+                 f"fps={fps:.4f},scale=240:-1,tile={cols}x{rows}:padding=4:margin=4",
                  "-frames:v", "1", "-q:v", "4", sheet],
                 check=False, capture_output=True)
-            print(f"contact sheet {base}.jpg (dur={dur:.1f}s)")
+            print(f"contact sheet {base}.jpg (dur={dur:.1f}s, {nfr} frames)")
         # IMAGES under Drop Content Here -> single thumbnail each (finished-project photos)
         client = dbx._client()
         drop = f"{path_lower.rstrip('/')}/{DROP_FOLDER.lower()}"

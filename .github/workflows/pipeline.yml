@@ -19,6 +19,10 @@ on:
         description: "Set true to commit a contact-sheet image per video (to 'see' it)"
         required: false
         default: ""
+      thumb_frames:
+        description: "Frames per contact sheet (default 6; use 30+ for a dense scan)"
+        required: false
+        default: ""
       auto_highlights:
         description: "Number of clips to auto-pick from a narrated video (e.g. 4)"
         required: false
@@ -149,6 +153,7 @@ jobs:
           RECUT_SPECS: ${{ inputs.recut_specs }}
           DUMP_TRANSCRIPT: ${{ inputs.dump_transcript }}
           DUMP_THUMBS: ${{ inputs.dump_thumbs }}
+          THUMB_FRAMES: ${{ inputs.thumb_frames }}
           AUTO_HIGHLIGHTS: ${{ inputs.auto_highlights }}
           KEEP_IDS: ${{ inputs.keep_ids }}
           FETCH_PREVIEWS: ${{ inputs.fetch_previews }}
