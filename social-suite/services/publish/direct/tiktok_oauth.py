@@ -32,8 +32,12 @@ import json
 AUTHORIZE_URL = "https://www.tiktok.com/v2/auth/authorize/"
 TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 
-# Scopes needed to direct-post a video on the creator's behalf.
-DEFAULT_SCOPES = ("user.info.basic", "video.publish")
+# Scopes we request when linking an account:
+#   video.upload  — "Upload to TikTok": send a video to the creator's inbox/drafts
+#                   so THEY add the trending sound + post by hand (no audit needed).
+#   video.publish — direct-post a finished video unattended (needs TikTok audit to
+#                   go public). Kept so the same link also powers the cron poster.
+DEFAULT_SCOPES = ("user.info.basic", "video.upload", "video.publish")
 
 
 def _post_form(url: str, form: dict, timeout: float = 30.0) -> dict:

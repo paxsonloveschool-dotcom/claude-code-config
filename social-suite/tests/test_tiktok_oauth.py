@@ -17,7 +17,7 @@ def test_build_authorize_url_has_required_params():
     assert url.startswith("https://www.tiktok.com/v2/auth/authorize/?")
     assert "client_key=CKEY" in url
     assert "response_type=code" in url
-    assert "scope=user.info.basic%2Cvideo.publish" in url
+    assert "scope=user.info.basic%2Cvideo.upload%2Cvideo.publish" in url
     assert "redirect_uri=https%3A%2F%2Fsite%2Fcb" in url
     assert "state=xyz" in url
 

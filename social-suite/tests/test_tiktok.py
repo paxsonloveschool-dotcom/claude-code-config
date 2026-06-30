@@ -76,6 +76,50 @@ def test_post_tiktok_inits_file_upload_and_uploads_bytes():
     assert put["size"] == 1234
 
 
+def test_upload_to_inbox_inits_and_uploads_without_post_info():
+    import os
+
+    calls: list = []
+    orig = _patch(calls)
+    path = _tmp_video(b"y" * 999)
+    try:
+        pub_id = tiktok.upload_to_inbox("TOKEN", path)
+    finally:
+        _restore(orig)
+        os.remove(path)
+
+    assert pub_id == "pub_77"
+    # Inbox flow hits inbox/video/init/ directly (no creator_info), no post_info.
+    init = calls[0]
+    assert init["url"].endswith("/inbox/video/init/")
+    assert "post_info" not in init["body"]
+    src = init["body"]["source_info"]
+    assert src["source"] == "FILE_UPLOAD"
+    assert src["video_size"] == 999
+    assert src["total_chunk_count"] == 1
+    # Bytes PUT to the returned upload_url.
+    put = calls[1]
+    assert put["put"] == "https://upload.tiktok/abc"
+    assert put["size"] == 999
+
+
+def test_upload_to_inbox_raises_when_no_publish_id():
+    import os
+
+    calls: list = []
+    orig = _patch(calls, init_returns={"data": {}})
+    path = _tmp_video()
+    try:
+        tiktok.upload_to_inbox("T", path)
+    except RuntimeError as e:
+        assert "publish_id" in str(e)
+    else:
+        raise AssertionError("expected RuntimeError when no publish_id/upload_url")
+    finally:
+        _restore(orig)
+        os.remove(path)
+
+
 def test_post_tiktok_default_privacy_is_self_only():
     import os
 

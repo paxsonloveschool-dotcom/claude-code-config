@@ -32,6 +32,11 @@ import json
 API_BASE = "https://open.tiktokapis.com/v2"
 CREATOR_INFO_URL = f"{API_BASE}/post/publish/creator_info/query/"
 VIDEO_INIT_URL = f"{API_BASE}/post/publish/video/init/"
+# "Upload to TikTok" (inbox draft): lands the video in the creator's TikTok app
+# as a notification/draft for them to finish (add a sound, caption) and post by
+# hand. Needs the ``video.upload`` scope — NOT ``video.publish`` — and requires
+# NO audit and NO public/private restriction (nothing is posted by the API).
+INBOX_VIDEO_INIT_URL = f"{API_BASE}/post/publish/inbox/video/init/"
 STATUS_FETCH_URL = f"{API_BASE}/post/publish/status/fetch/"
 
 # Valid privacy levels (subset returned per-creator by creator_info/query).
@@ -162,6 +167,69 @@ def fetch_status(access_token: str, publish_id: str) -> dict:
     after ``post_tiktok`` returns the ``publish_id``.
     """
     return _post_json(STATUS_FETCH_URL, access_token, {"publish_id": publish_id})
+
+
+def upload_to_inbox(access_token: str, video: str) -> str:
+    """Send a video to the creator's TikTok inbox/drafts; return the ``publish_id``.
+
+    This is the "Upload to TikTok" flow (``video.upload`` scope). Unlike
+    ``post_tiktok`` it does NOT post anything — the video shows up in the creator's
+    TikTok app as a notification/draft, and THEY finish it (add a trending sound,
+    tweak the caption) and hit Post by hand. So it needs no audit, no public/
+    private constraint, and lets the owner add a real TikTok song the API can't.
+
+    Uploads via FILE_UPLOAD (streams the bytes — no public host / verified domain),
+    accepting a local path or an ``http(s)`` URL (downloaded first), mirroring
+    ``post_tiktok``.
+
+    Args:
+        access_token: OAuth token carrying the ``video.upload`` scope.
+        video: A LOCAL video file path, or an ``http(s)`` URL (downloaded first).
+
+    Returns:
+        The ``publish_id`` string — poll ``fetch_status`` with it; the status walks
+        to ``SEND_TO_USER_INBOX`` once it's waiting in the creator's TikTok app.
+    """
+    import os
+
+    path, is_temp = _ensure_local(video)
+    try:
+        size = os.path.getsize(path)
+        if size <= 0:
+            raise RuntimeError(f"TikTok: video {video!r} is empty.")
+        if size > MAX_SINGLE_CHUNK_BYTES:
+            raise RuntimeError(
+                f"TikTok: video is {size} bytes (> 64 MB single-chunk limit); "
+                "chunked upload is not implemented."
+            )
+
+        # Inbox init takes ONLY source_info — no post_info (the creator sets the
+        # caption/privacy/sound themselves in the app).
+        init_body = {
+            "source_info": {
+                "source": "FILE_UPLOAD",
+                "video_size": size,
+                "chunk_size": size,
+                "total_chunk_count": 1,
+            },
+        }
+        resp = _post_json(INBOX_VIDEO_INIT_URL, access_token, init_body)
+        data = resp.get("data") or {}
+        publish_id = data.get("publish_id")
+        upload_url = data.get("upload_url")
+        if not publish_id or not upload_url:
+            raise RuntimeError(
+                f"TikTok inbox/video/init returned no publish_id/upload_url: {resp!r}"
+            )
+
+        _put_file(upload_url, path, size)
+        return publish_id
+    finally:
+        if is_temp:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 def post_tiktok(
