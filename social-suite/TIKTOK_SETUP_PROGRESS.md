@@ -52,9 +52,13 @@ private test clip had been deleted).
   it auto-stores `BRAND_HP_TIKTOK_REFRESH_TOKEN`; (3) un-pause the cron /
   flip queue items to `pending`. Then TikTok posts on the schedule like IG/FB.
 
-Also pending (separate): connect Restore's (and any other) TikTok — same flow,
-reuse the same app (one audit covers all accounts), add each as a Target User +
-its BRAND_<NAME>_TIKTOK_* secrets.
+### Restore TikTok — CONNECTED 2026-06-30 ✅
+Restore's TikTok linked through the SAME app (HP Auto Poster), so the pending
+audit covers it too. Done: added as sandbox Target User; `BRAND_RESTORE_TIKTOK_
+CLIENT_KEY`/`_CLIENT_SECRET` secrets set (same app creds as HP); OAuth exchange
+verified via `tiktok-link.yml` (do_test_post=false — Restore's account is public,
+so no pre-audit test post). Refresh token NOT yet persisted (no GH_PAT) — same as
+HP, handled at go-live. Owner has access to Restore's TikTok login.
 
 ---
 
