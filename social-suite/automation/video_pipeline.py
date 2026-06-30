@@ -457,7 +457,7 @@ def _concat_v(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
 def _find_music(dbx) -> str | None:
     """Download the first audio file from a Dropbox folder whose name has 'music'."""
     for path_lower, display in _top_level_folders(dbx):
-        if "music" in display.lower():
+        if "music" in display.lower() or "sound" in display.lower():
             auds = [f for f in dbx.list_folder(path_lower)
                     if f.name.lower().endswith((".mp3", ".wav", ".m4a", ".aac"))]
             if auds:
@@ -481,7 +481,7 @@ def _load_music_tracks(dbx) -> list[str]:
         return _MUSIC_CACHE
     tracks: list[str] = []
     for path_lower, display in _top_level_folders(dbx):
-        if "music" in display.lower():
+        if "music" in display.lower() or "sound" in display.lower():
             auds = [f for f in dbx.list_folder(path_lower)
                     if f.name.lower().endswith((".mp3", ".wav", ".m4a", ".aac"))]
             for a in sorted(auds, key=lambda f: f.name.lower()):
