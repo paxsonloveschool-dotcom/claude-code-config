@@ -510,6 +510,31 @@ def _edit_tile(src: str, a: float, b: float, out_path: str, w: int, h: int) -> s
     return out_path
 
 
+def _edit_short_4k(src: str, a: float, b: float, out_path: str) -> str:
+    """Premium single-shot cut: true 4K vertical (2160x3840), lanczos scaling, a
+    subtle slow push (Ken Burns) for cinematic motion, high-quality encode. Muted.
+    Used by montage segments so the footage stays ultra-sharp."""
+    import subprocess  # lazy
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    dur = max(0.1, b - a)
+    fr = max(2, int(round(dur * 30)))
+    # gentle continuous zoom (1.00 -> ~1.06) over the cut = premium, never static
+    vf = (
+        "scale=2400:4267:force_original_aspect_ratio=increase:flags=lanczos,"
+        "crop=2400:4267,"
+        f"zoompan=z='min(zoom+0.00045,1.06)':d=1:x='iw/2-(iw/zoom/2)':"
+        f"y='ih/2-(ih/zoom/2)':s=2160x3840:fps=30,"
+        "setsar=1,format=yuv420p"
+    )
+    subprocess.run(
+        ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{dur:.2f}", "-vf", vf,
+         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-an",
+         "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
 def _hstackN(parts: list[str], out_path: str) -> str:
     """Side-by-side (column) stack of equal-height tiles into one 1080x1920 clip."""
     import shutil  # lazy
@@ -594,14 +619,15 @@ def _concat_v(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
     cmd = ["ffmpeg", "-y"]
     for p in parts:
         cmd += ["-i", p]
-    fc = [f"[{i}:v]fps=30,scale=1080:1920,setsar=1,format=yuv420p[n{i}]" for i in range(n)]
+    fc = [f"[{i}:v]fps=30,scale=2160:3840:flags=lanczos,setsar=1,format=yuv420p[n{i}]"
+          for i in range(n)]
     vlab, off = "[n0]", durs[0] - xfade
     for i in range(1, n):
         nv = f"[v{i}]"
         fc.append(f"{vlab}[n{i}]xfade=transition=fade:duration={xfade}:offset={off:.3f}{nv}")
         vlab, off = nv, off + durs[i] - xfade
     cmd += ["-filter_complex", ";".join(fc), "-map", vlab, "-an",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
             "-movflags", "+faststart", out_path]
     try:
         subprocess.run(cmd, check=True, capture_output=True)
@@ -1540,7 +1566,7 @@ def cut_montage(spec: dict) -> dict | None:
                 w = _win(lp, a, b)
                 if not w:
                     continue
-                _edit_short(lp, w[0], w[1], out, mute=True)
+                _edit_short_4k(lp, w[0], w[1], out)
             elif seg.get("orient") == "cols":
                 # side-by-side vertical columns (each tile W/n x 1920), equal length
                 w = 1080 // n
