@@ -731,6 +731,9 @@ def _list_videos(dbx, limit: int = 1, match: str | None = None) -> list:
             # "sep-17-2025" matches a raw filename like "Video Sep 17 2025 ...".
             m = _slug(match)
             vids = [f for f in vids if m in _slug(f.name) or match.lower() in f.name.lower()]
+        skip = _slug(os.getenv("CLIP_SKIP", "").strip())
+        if skip:
+            vids = [f for f in vids if skip not in _slug(f.name)]   # e.g. skip the interview
         if not vids:
             continue
         for f in vids[:limit]:

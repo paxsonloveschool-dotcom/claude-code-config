@@ -95,6 +95,10 @@ on:
         description: "Whisper model for captions: base (fast) | small (default, accurate) | medium (slow, best)"
         required: false
         default: ""
+      clip_skip:
+        description: "Skip source videos whose name contains this (e.g. '1-55-58-pm' to skip the interview)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -163,6 +167,7 @@ jobs:
           PIPELINE_VIDEO: ${{ inputs.video }}
           CONTENT_FOLDER: ${{ inputs.content_folder }}
           AUTO_CLIPS_VIDEOS: ${{ inputs.content_videos }}
+          CLIP_SKIP: ${{ inputs.clip_skip }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
