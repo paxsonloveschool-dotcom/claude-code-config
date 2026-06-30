@@ -931,16 +931,17 @@ def _first_image(dbx, match: str | None = None) -> str | None:
 
 
 def _still_clip(img_path: str, out_path: str, dur: float = 3.5) -> str:
-    """Make a ``dur``-second 1080x1920@30 clip from a still image with a slow
-    Ken-Burns zoom — used as a finished-project end-slide. Muted."""
+    """Make a ``dur``-second 2160x3840@30 clip from a still image with a slow
+    Ken-Burns zoom — used as a 4K finished-project end-slide. Muted."""
     import subprocess  # lazy
     frames = max(1, int(dur * 30))
-    vf = (f"scale=1188:2112:force_original_aspect_ratio=increase,crop=1188:2112,"
-          f"zoompan=z='min(zoom+0.0006,1.10)':d={frames}:s=1080x1920:fps=30,"
+    vf = (f"scale=2376:4224:force_original_aspect_ratio=increase:flags=lanczos,"
+          f"crop=2376:4224,"
+          f"zoompan=z='min(zoom+0.0006,1.10)':d={frames}:s=2160x3840:fps=30,"
           f"setsar=1,format=yuv420p")
     subprocess.run(
         ["ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", f"{dur:.2f}",
-         "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+         "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "18",
          "-an", "-movflags", "+faststart", out_path],
         check=True, capture_output=True)
     return out_path
