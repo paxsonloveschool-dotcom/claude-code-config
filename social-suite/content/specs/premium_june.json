@@ -1,0 +1,12 @@
+[
+  {
+    "name": "premium-june-01",
+    "xfade": 0.8,
+    "segments": [
+      { "shot": ["june pergola", 2.0, 6.0] },
+      { "shot": ["june pergola", 6.0, 10.0] },
+      { "shot": ["june pergola", 10.0, 14.0] },
+      { "shot": ["june pergola", 15.0, 19.5] }
+    ]
+  }
+]
