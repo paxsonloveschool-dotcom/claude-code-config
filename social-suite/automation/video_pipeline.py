@@ -465,6 +465,50 @@ def _find_music(dbx) -> str | None:
     return None
 
 
+# Cache the downloaded music tracks so we only pull them from Dropbox once per run.
+_MUSIC_CACHE: list[str] | None = None
+
+
+def _load_music_tracks(dbx) -> list[str]:
+    """Download EVERY audio file from the top-level 'Music' folder (cached per run).
+
+    Returns local paths for all .mp3/.wav/.m4a/.aac files so the per-clip step can
+    cycle through them (one song per clip). Empty list if there's no Music folder
+    or it holds no audio — clips then keep their original audio.
+    """
+    global _MUSIC_CACHE
+    if _MUSIC_CACHE is not None:
+        return _MUSIC_CACHE
+    tracks: list[str] = []
+    for path_lower, display in _top_level_folders(dbx):
+        if "music" in display.lower():
+            auds = [f for f in dbx.list_folder(path_lower)
+                    if f.name.lower().endswith((".mp3", ".wav", ".m4a", ".aac"))]
+            for a in sorted(auds, key=lambda f: f.name.lower()):
+                try:
+                    tracks.append(dbx.download(a))
+                except Exception as ex:  # noqa: BLE001 — skip a bad track, keep the rest
+                    print(f"music: couldn't download {a.name}: {ex}")
+            break
+    _MUSIC_CACHE = tracks
+    return tracks
+
+
+def _music_rotation(tracks: list[str], seed: str) -> list[str]:
+    """Return ``tracks`` in a per-video shuffled order (deterministic for ``seed``).
+
+    Each source video gets its own shuffle (seeded by its name) so songs vary
+    video-to-video while staying reproducible. Pure function — testable with no
+    Dropbox or ffmpeg.
+    """
+    import random  # lazy, stdlib
+    if not tracks:
+        return []
+    out = list(tracks)
+    random.Random(str(seed)).shuffle(out)
+    return out
+
+
 def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> list[dict]:
     """Download -> transcribe -> make ~10 vertical cuts -> upload -> review entries."""
     import shutil  # lazy, stdlib
@@ -493,13 +537,21 @@ def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> li
     entries: list[dict] = []
     stamp = _dt.datetime.utcnow().strftime("%Y%m%d%H%M%S")
 
+    # Background music: cycle through every song in the Dropbox 'Music' folder,
+    # one per clip (a per-video shuffle so songs vary). No Music folder/songs ->
+    # rotation is empty and clips keep their original audio.
+    music_rotation = _music_rotation(_load_music_tracks(dbx), base)
+    if music_rotation:
+        print(f"[{brand_key}] music: cycling {len(music_rotation)} track(s), one per clip.")
+
     # Vertical chunks, NO burned subtitles (owner's call). The strong post
     # caption goes in the text field instead, used when the post is published.
     for i, (a, b, label) in enumerate(_windows(s0, e0)):
         out_name = f"{base}-{label}.mp4"
         out_local = os.path.join(os.path.dirname(local), out_name)
+        track = music_rotation[i % len(music_rotation)] if music_rotation else None
         try:
-            _edit_short(local, a, b, out_local, srt=None)
+            _edit_short(local, a, b, out_local, srt=None, music=track)
         except Exception as ex:  # noqa: BLE001 — skip a bad cut, keep the rest
             print(f"[{brand_key}] cut {label} failed: {ex}")
             continue
