@@ -1,0 +1,70 @@
+name: TikTok authorize URL (step 1 of re-link)
+
+# Prints the one consent link the account owner taps to grant the "Upload to
+# TikTok" (drafts) permission — `video.upload` — alongside the existing
+# `video.publish`. After tapping Allow, the browser lands on the redirect URI
+# with `?code=...`; copy that WHOLE URL and feed it to the "TikTok link" workflow.
+#
+# Why `client_key` is an INPUT, not a secret: GitHub auto-masks secret values in
+# logs, which would turn the printed URL's client_key into "***" and break the
+# link. The client key is the PUBLIC half of the OAuth pair (it rides in the
+# browser during every login), so pasting it here is safe. Find it at
+# developers.tiktok.com -> Manage apps -> your app -> "Client key".
+
+on:
+  workflow_dispatch:
+    inputs:
+      client_key:
+        description: "Your app's Client key (developers.tiktok.com -> your app). NOT the secret."
+        required: true
+        type: string
+      redirect_uri:
+        description: "Redirect URI — must match the app EXACTLY (same as last time)"
+        required: true
+        default: "https://hplandscapingllc.com/tiktok/callback"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install social-suite (core)
+        run: pip install -e social-suite
+
+      - name: Build + print the consent URL
+        env:
+          CLIENT_KEY: ${{ inputs.client_key }}
+          REDIRECT_URI: ${{ inputs.redirect_uri }}
+        run: |
+          cd social-suite
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0, "services")
+          from services.publish.direct.tiktok_oauth import build_authorize_url, DEFAULT_SCOPES
+
+          url = build_authorize_url(
+              os.environ["CLIENT_KEY"].strip(),
+              os.environ["REDIRECT_URI"].strip(),
+              scopes=DEFAULT_SCOPES,
+          )
+          summary = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout")
+          with open(summary, "a") as f:
+              f.write("## Tap this link on the phone signed into the HP TikTok\n\n")
+              f.write(f"[Grant TikTok access]({url})\n\n")
+              f.write(f"Scopes requested: `{', '.join(DEFAULT_SCOPES)}`\n\n")
+              f.write("After you tap **Allow**, your browser lands on a page with "
+                      "`?code=...` in the address bar. **Copy that whole URL** and "
+                      "run the **TikTok link** workflow with it.\n")
+          print("Consent URL:\n", url)
+          PY
