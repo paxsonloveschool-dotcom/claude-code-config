@@ -1115,6 +1115,33 @@ def prune_clips(keep_ids: list[str]) -> list[dict]:
     return kept
 
 
+def copy_clips(ids: list[str], dest_sub: str = "HP Posts") -> int:
+    """Copy the listed clips' Dropbox files into the brand's ``dest_sub`` folder
+    (e.g. 'HP Posts'). Does NOT post — just places the owner-approved clips where
+    they want them. Leaves the originals + queue entries untouched."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    sel = {i.strip() for i in ids if i.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    n = 0
+    for e in queue:
+        if e.get("id") not in sel:
+            continue
+        mp = e.get("media_path")
+        if not mp:
+            continue
+        brand_root = os.path.dirname(os.path.dirname(mp))   # ".../<brand>"
+        dest = f"{brand_root}/{dest_sub}/{os.path.basename(mp)}"
+        try:
+            dbx.copy(mp, dest)
+            print(f"copied {e.get('id')} -> {dest}")
+            n += 1
+        except Exception as ex:  # noqa: BLE001 — one bad copy shouldn't stop the rest
+            print(f"copy failed {e.get('id')}: {ex}")
+    print(f"\nCopied {n} clip(s) to '{dest_sub}'. Nothing posted.")
+    return n
+
+
 def delete_clips(delete_ids: list[str]) -> list[dict]:
     """Delete the listed clips (Dropbox file + queue entry); keep everything else.
     The inverse of :func:`prune_clips` — safer when removing a few bad clips out
@@ -2174,6 +2201,12 @@ def main(argv: list[str] | None = None) -> int:
     del_ids = os.getenv("DELETE_IDS", "").strip()
     if del_ids:
         delete_clips(del_ids.split(","))
+        return 0
+
+    # COPY_IDS: copy approved clips into a brand subfolder (e.g. 'HP Posts').
+    copy_ids = os.getenv("COPY_IDS", "").strip()
+    if copy_ids:
+        copy_clips(copy_ids.split(","), os.getenv("COPY_DEST", "HP Posts").strip() or "HP Posts")
         return 0
 
     # Dump a timestamped transcript so clip windows can be chosen by time.

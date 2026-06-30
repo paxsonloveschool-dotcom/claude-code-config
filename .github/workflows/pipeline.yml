@@ -35,6 +35,14 @@ on:
         description: "Comma-separated clip ids to DELETE (file + queue); keep the rest"
         required: false
         default: ""
+      copy_ids:
+        description: "Comma-separated clip ids to COPY into the copy_dest folder (e.g. approved clips)"
+        required: false
+        default: ""
+      copy_dest:
+        description: "Brand subfolder to copy clips into (default 'HP Posts')"
+        required: false
+        default: ""
       fetch_previews:
         description: "'all' or comma ids: pull finished clips into content/preview/"
         required: false
@@ -137,6 +145,8 @@ jobs:
           AUTO_CLIPS: ${{ inputs.auto_clips }}
           KEEP_IDS: ${{ inputs.keep_ids }}
           DELETE_IDS: ${{ inputs.delete_ids }}
+          COPY_IDS: ${{ inputs.copy_ids }}
+          COPY_DEST: ${{ inputs.copy_dest }}
           FETCH_PREVIEWS: ${{ inputs.fetch_previews }}
           IG_REFERENCE: ${{ inputs.ig_reference }}
           INGEST_CLIP: ${{ inputs.ingest_clip }}

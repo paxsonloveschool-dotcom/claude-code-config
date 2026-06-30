@@ -226,6 +226,18 @@ def delete(dropbox_path: str) -> bool:
     return True
 
 
+def copy(src_path: str, dest_path: str) -> str:
+    """Copy a file within Dropbox from ``src_path`` to ``dest_path`` (overwrites
+    any existing destination). Parent folders are created implicitly."""
+    dbx = _client()
+    try:
+        _call_with_retry(dbx.files_delete_v2, dest_path)   # clear so copy won't conflict
+    except Exception:  # noqa: BLE001 — fine if it wasn't there
+        pass
+    _call_with_retry(dbx.files_copy_v2, src_path, dest_path)
+    return dest_path
+
+
 def shared_link(dropbox_path: str, *, raw: bool = True) -> str:
     """Return a public shareable URL for ``dropbox_path``.
 
