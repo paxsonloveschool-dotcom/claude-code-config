@@ -19,6 +19,10 @@ on:
         description: "Set true to commit a contact-sheet image per video (to 'see' it)"
         required: false
         default: ""
+      thumb_frames:
+        description: "Frames per contact sheet (default 6; use 30+ for a dense scan)"
+        required: false
+        default: ""
       auto_highlights:
         description: "Number of clips to auto-pick from a narrated video (e.g. 4)"
         required: false
@@ -43,8 +47,64 @@ on:
         description: "JSON: layout-shifting hype montage (3-up/2-up/single segments)"
         required: false
         default: ""
+      montage_spec_file:
+        description: "Repo path to a committed montage spec JSON (avoids transcription errors)"
+        required: false
+        default: ""
       video:
         description: "Filename substring to target one specific video (for cuts)"
+        required: false
+        default: ""
+      content_folder:
+        description: "Source folder under each brand to pull from. Work=HP Content, talking=HP Talking Content"
+        required: false
+        default: "HP Content"
+      posts_folder:
+        description: "Destination folder for SAVED clips (promote/demote/clean)."
+        required: false
+        default: "HP Posts"
+      dropbox_ls:
+        description: "Set true to print the Dropbox folder tree and exit"
+        required: false
+        default: ""
+      dropbox_whoami:
+        description: "Set true to report which Dropbox account is connected (email/name)"
+        required: false
+        default: ""
+      dropbox_usage:
+        description: "Set true to report storage used + per-folder size breakdown"
+        required: false
+        default: ""
+      dropbox_inventory:
+        description: "Set true to dump a full file manifest (path/size) to a committed CSV"
+        required: false
+        default: ""
+      purge_edited:
+        description: "'list' to dry-run, 'go' to DELETE all edited clips in processed-type folders (keeps originals + HP Posts)"
+        required: false
+        default: ""
+      dropbox_organize:
+        description: "'go' to create Ready-To-Post + Drop-Content folders and move keepers"
+        required: false
+        default: ""
+      promote_ids:
+        description: "Comma ids to MOVE into Ready To Post (approved keepers; no posting)"
+        required: false
+        default: ""
+      delete_ids:
+        description: "Comma ids to DELETE (Dropbox file + queue entry); runs before montage"
+        required: false
+        default: ""
+      demote_ids:
+        description: "'all' or comma ids to UN-SAVE (move out of Ready To Post back to processed)"
+        required: false
+        default: ""
+      clean_ready:
+        description: "'go' to delete stale/old files left in Ready To Post (keep only current set)"
+        required: false
+        default: ""
+      save_styled:
+        description: "Repo dir of locally-finished clips (logo+outro) to upload into HP Posts + repoint queue"
         required: false
         default: ""
 
@@ -93,13 +153,28 @@ jobs:
           RECUT_SPECS: ${{ inputs.recut_specs }}
           DUMP_TRANSCRIPT: ${{ inputs.dump_transcript }}
           DUMP_THUMBS: ${{ inputs.dump_thumbs }}
+          THUMB_FRAMES: ${{ inputs.thumb_frames }}
           AUTO_HIGHLIGHTS: ${{ inputs.auto_highlights }}
           KEEP_IDS: ${{ inputs.keep_ids }}
           FETCH_PREVIEWS: ${{ inputs.fetch_previews }}
           IG_REFERENCE: ${{ inputs.ig_reference }}
           INGEST_CLIP: ${{ inputs.ingest_clip }}
           MONTAGE_SPEC: ${{ inputs.montage_spec }}
+          MONTAGE_SPEC_FILE: ${{ inputs.montage_spec_file }}
           PIPELINE_VIDEO: ${{ inputs.video }}
+          CONTENT_FOLDER: ${{ inputs.content_folder }}
+          POSTS_FOLDER: ${{ inputs.posts_folder }}
+          DROPBOX_LS: ${{ inputs.dropbox_ls }}
+          DROPBOX_WHOAMI: ${{ inputs.dropbox_whoami }}
+          DROPBOX_USAGE: ${{ inputs.dropbox_usage }}
+          DROPBOX_INVENTORY: ${{ inputs.dropbox_inventory }}
+          PURGE_EDITED: ${{ inputs.purge_edited }}
+          DROPBOX_ORGANIZE: ${{ inputs.dropbox_organize }}
+          PROMOTE_IDS: ${{ inputs.promote_ids }}
+          DELETE_IDS: ${{ inputs.delete_ids }}
+          DEMOTE_IDS: ${{ inputs.demote_ids }}
+          CLEAN_READY: ${{ inputs.clean_ready }}
+          SAVE_STYLED: ${{ inputs.save_styled }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
@@ -117,4 +192,11 @@ jobs:
           git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/reference 2>/dev/null || true
           git add -f social-suite/content/preview 2>/dev/null || true
           git commit -m "chore(pipeline): add review item(s) from Dropbox videos [skip ci]"
-          git push
+          # Rebase-and-retry so concurrent runs don't clobber each other's pushes.
+          branch=claude/happy-faraday-poh621
+          for i in 1 2 3 4 5 6; do
+            if git push origin "HEAD:$branch"; then echo "pushed"; break; fi
+            echo "push rejected (attempt $i) — rebasing on origin/$branch"
+            git pull --rebase --autostash origin "$branch" || true
+            sleep $(( (RANDOM % 4) + i ))
+          done

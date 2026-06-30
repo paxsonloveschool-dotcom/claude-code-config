@@ -1,0 +1,7 @@
+[
+ {"name":"june-build-2","xfade":0.5,"segments":[
+   {"shot":["june pergola",2,6]},
+   {"panels":[["june pergola",6,10],["june pergola",10,14]]},
+   {"shot":["june pergola",14,18]}
+ ]}
+]

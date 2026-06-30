@@ -1,0 +1,14 @@
+[
+ {"name":"june-pergola-build","xfade":0.5,"segments":[
+   {"shot":["june pergola",2,6]},
+   {"panels":[["june pergola",6,10],["june pergola",10,14]]},
+   {"shot":["june pergola",15,19]},
+   {"image":"aug 19 2025, 1 59","dur":3.8}
+ ]},
+ {"name":"june-build-2","xfade":0.5,"segments":[
+   {"shot":["june pergola",3,7]},
+   {"panels":[["june pergola",8,12],["june pergola",13,17]]},
+   {"shot":["june pergola",14,18]},
+   {"image":"aug 19 2025, 1 59","dur":3.8}
+ ]}
+]

@@ -2,3 +2,6 @@ memory/
 
 # Ephemeral git worktrees created by background agents
 .claude/worktrees/
+
+# Local scratch/temp work (not for the repo)
+scratchpad/

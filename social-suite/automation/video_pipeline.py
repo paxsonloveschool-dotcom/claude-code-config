@@ -29,6 +29,7 @@ QUEUE_PATH = os.path.join(ROOT, "content", "queue.json")
 PROCESSED_PATH = os.path.join(ROOT, "content", "processed.json")
 
 VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv")
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".heic", ".webp")
 
 # Brand classification by keyword in the folder name + that brand's look. Order
 # matters: check "restore" before "hp" so "Restore" never falls through to hp.
@@ -107,14 +108,133 @@ def _top_level_folders(dbx):
     return out
 
 
+# Per-brand Dropbox layout the owner asked for:
+#   <Brand>/Drop Content Here/  -> raw videos the owner drops in (the input)
+#   <Brand>/Ready To Post/      -> approved keepers, ready to publish
+# Input folder the pipeline pulls source videos from, under each brand folder.
+# Override per-run with CONTENT_FOLDER (e.g. "HP Content" for work footage,
+# "HP Talking Content" for talking-head clips). Default kept for back-compat.
+DROP_FOLDER = os.getenv("CONTENT_FOLDER") or "Drop Content Here"
+# Destination folder for approved/saved clips. Override per-run with POSTS_FOLDER
+# (e.g. "HP Posts"). Default kept for back-compat.
+READY_FOLDER = os.getenv("POSTS_FOLDER") or "Ready To Post"
+
+
+def _list_videos_recursive(dbx, folder: str):
+    """Every video file under ``folder`` at ANY depth (the owner drops whole
+    subfolders of downloaded content). Returns dropbox_client.DropboxFile objects;
+    empty list if the folder is missing."""
+    client = dbx._client()
+    out = []
+    try:
+        res = client.files_list_folder(folder, recursive=True)
+    except Exception as ex:  # noqa: BLE001 — missing folder shouldn't crash
+        if "not_found" in str(ex).lower():
+            return []
+        raise
+    while True:
+        for e in res.entries:
+            if e.__class__.__name__ != "FileMetadata":
+                continue
+            if not e.name.lower().endswith(VIDEO_EXTS):
+                continue
+            out.append(dbx.DropboxFile(
+                path=getattr(e, "path_display", "") or getattr(e, "path_lower", ""),
+                name=getattr(e, "name", ""),
+                size_bytes=int(getattr(e, "size", 0) or 0),
+                rev=getattr(e, "rev", "") or "",
+            ))
+        if not getattr(res, "has_more", False):
+            break
+        res = client.files_list_folder_continue(res.cursor)
+    return out
+
+
+def _brand_videos(dbx, path_lower: str):
+    """Videos to process for a brand: every video under '<Brand>/Drop Content
+    Here' (recursively, since the owner drops whole subfolders), else the brand
+    root (back-compat). Never returns clips in Ready To Post / processed."""
+    drop = f"{path_lower.rstrip('/')}/{DROP_FOLDER.lower()}"
+    vids = _list_videos_recursive(dbx, drop)
+    if vids:
+        return vids
+    return [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+
+
+def organize_dropbox(execute: bool = False) -> None:
+    """Create the owner's clean per-brand layout and tidy existing files.
+
+    Always prints the current tree. With ``execute`` True, for each brand folder:
+      * create ``Ready To Post`` and ``Drop Content Here`` (idempotent),
+      * move loose root-level raw videos into ``Drop Content Here``,
+      * move saved keepers (queue items, from ``processed/``) into ``Ready To
+        Post`` and refresh their queue ``media_path``/``media_url``.
+    """
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    print("== Dropbox BEFORE ==")
+    debug_tree()
+    if not execute:
+        print("\n(dry run — set DROPBOX_ORGANIZE=go to create folders + move files)")
+        return
+
+    queue = _load_json(QUEUE_PATH, [])
+    changed = False
+    for path_lower, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        base = display.rstrip("/")
+        ready, drop = f"{base}/{READY_FOLDER}", f"{base}/{DROP_FOLDER}"
+        for folder in (ready, drop):
+            try:
+                client.files_create_folder_v2(folder)
+                print(f"created  {folder}")
+            except Exception as ex:  # noqa: BLE001 — already exists is fine
+                print(("exists   " if "conflict" in str(ex).lower() else "FAILED   ") + folder)
+        # Move loose root-level raw videos into Drop Content Here.
+        for f in dbx.list_folder(path_lower):
+            if not f.name.lower().endswith(VIDEO_EXTS):
+                continue
+            try:
+                client.files_move_v2(f.path, f"{drop}/{f.name}", autorename=True)
+                print(f"moved IN  {f.name} -> {DROP_FOLDER}")
+            except Exception as ex:  # noqa: BLE001
+                print(f"move-in failed {f.name}: {ex}")
+
+    # Move saved keepers out of processed/ into their brand's Ready To Post.
+    for e in queue:
+        mp = e.get("media_path") or ""
+        if "/processed/" not in mp:
+            continue
+        prefix, fname = mp.split("/processed/", 1)[0], mp.rsplit("/", 1)[-1]
+        dest = f"{prefix}/{READY_FOLDER}/{fname}"
+        try:
+            client.files_move_v2(mp, dest, autorename=True)
+            e["media_path"] = dest
+            try:
+                e["media_url"] = dbx.shared_link(dest, raw=True)
+            except Exception:  # noqa: BLE001
+                pass
+            changed = True
+            print(f"moved OUT {fname} -> {READY_FOLDER}")
+        except Exception as ex:  # noqa: BLE001
+            print(f"move-out failed {fname}: {ex}")
+
+    if changed:
+        _save_json(QUEUE_PATH, queue)
+    print("\n== Dropbox AFTER ==")
+    debug_tree()
+
+
 def process_folder(folder_path: str, folder_display: str, brand, dbx, *, dry_run: bool = False) -> list[dict]:
     """Process the videos directly inside one matched brand folder."""
     brand_key, display, default_tags = brand
     processed = set(_load_json(PROCESSED_PATH, []))
     created: list[dict] = []
 
-    for f in dbx.list_folder(folder_path):
-        if not f.name.lower().endswith(VIDEO_EXTS) or f.rev in processed:
+    for f in _brand_videos(dbx, folder_path):
+        if f.rev in processed:
             continue
         print(f"[{brand_key}] processing {f.name} from {folder_display}")
         if dry_run:
@@ -329,6 +449,51 @@ def _concat(parts: list[str], out_path: str, xfade: float = 0.8) -> str:
     return out_path
 
 
+def _append_outro(main_path: str, outro_path: str, out_path: str, xfade: float = 0.6) -> str:
+    """Crossfade the brand outro end-card onto the tail of a talking clip (keeps
+    audio). Normalizes both to 1080x1920@30 so xfade/acrossfade never stutter on
+    mismatched fps/size. Falls back to video-only xfade if the outro has no audio."""
+    import shutil  # lazy
+    import subprocess  # lazy
+
+    if not os.path.exists(outro_path):
+        shutil.copy(main_path, out_path)
+        return out_path
+
+    def _dur(p: str) -> float:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", p], capture_output=True, text=True)
+        try:
+            return float(r.stdout.strip())
+        except ValueError:
+            return 3.0
+
+    off = max(0.0, _dur(main_path) - xfade)
+    norm = ("fps=30,scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920,setsar=1,format=yuv420p")
+    vfc = (f"[0:v]{norm}[v0];[1:v]{norm}[v1];"
+           f"[v0][v1]xfade=transition=fade:duration={xfade}:offset={off:.3f}[v]")
+    afc = ("[0:a]aformat=sample_rates=48000:channel_layouts=stereo[a0];"
+           "[1:a]aformat=sample_rates=48000:channel_layouts=stereo[a1];"
+           f"[a0][a1]acrossfade=d={xfade}[a]")
+    base = ["ffmpeg", "-y", "-i", main_path, "-i", outro_path]
+    full = base + ["-filter_complex", f"{vfc};{afc}", "-map", "[v]", "-map", "[a]",
+                   "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                   "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out_path]
+    try:
+        subprocess.run(full, check=True, capture_output=True)
+        return out_path
+    except subprocess.CalledProcessError:
+        pass
+    # Fallback: outro has no audio track — fade video, carry the main clip's audio.
+    vonly = base + ["-filter_complex", vfc, "-map", "[v]", "-map", "0:a:0?",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out_path]
+    subprocess.run(vonly, check=True, capture_output=True)
+    return out_path
+
+
 def _edit_tile(src: str, a: float, b: float, out_path: str, w: int, h: int) -> str:
     """Cut [a,b] as a ``w``x``h`` tile (scaled to fill, cropped). Muted. Used for
     both row panels (1080xH) and side-by-side column panels (Wx1920)."""
@@ -340,6 +505,31 @@ def _edit_tile(src: str, a: float, b: float, out_path: str, w: int, h: int) -> s
     subprocess.run(
         ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{dur:.2f}", "-vf", vf,
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an",
+         "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
+def _edit_short_4k(src: str, a: float, b: float, out_path: str) -> str:
+    """Premium single-shot cut: true 4K vertical (2160x3840), lanczos scaling, a
+    subtle slow push (Ken Burns) for cinematic motion, high-quality encode. Muted.
+    Used by montage segments so the footage stays ultra-sharp."""
+    import subprocess  # lazy
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    dur = max(0.1, b - a)
+    fr = max(2, int(round(dur * 30)))
+    # gentle continuous zoom (1.00 -> ~1.06) over the cut = premium, never static
+    vf = (
+        "scale=2400:4267:force_original_aspect_ratio=increase:flags=lanczos,"
+        "crop=2400:4267,"
+        f"zoompan=z='min(zoom+0.00045,1.06)':d=1:x='iw/2-(iw/zoom/2)':"
+        f"y='ih/2-(ih/zoom/2)':s=2160x3840:fps=30,"
+        "setsar=1,format=yuv420p"
+    )
+    subprocess.run(
+        ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{dur:.2f}", "-vf", vf,
+         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-an",
          "-movflags", "+faststart", out_path],
         check=True, capture_output=True)
     return out_path
@@ -429,14 +619,15 @@ def _concat_v(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
     cmd = ["ffmpeg", "-y"]
     for p in parts:
         cmd += ["-i", p]
-    fc = [f"[{i}:v]fps=30,scale=1080:1920,setsar=1,format=yuv420p[n{i}]" for i in range(n)]
+    fc = [f"[{i}:v]fps=30,scale=2160:3840:flags=lanczos,setsar=1,format=yuv420p[n{i}]"
+          for i in range(n)]
     vlab, off = "[n0]", durs[0] - xfade
     for i in range(1, n):
         nv = f"[v{i}]"
         fc.append(f"{vlab}[n{i}]xfade=transition=fade:duration={xfade}:offset={off:.3f}{nv}")
         vlab, off = nv, off + durs[i] - xfade
     cmd += ["-filter_complex", ";".join(fc), "-map", vlab, "-an",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
             "-movflags", "+faststart", out_path]
     try:
         subprocess.run(cmd, check=True, capture_output=True)
@@ -660,7 +851,7 @@ def recut(end_phrase: str, clip_index: int = 2, end_buffer: float = 1.0,
         brand = classify_brand(display)
         if not brand:
             continue
-        vids = [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+        vids = _brand_videos(dbx, path_lower)
         if not vids:
             continue
         brand_key, dispname, _tags = brand
@@ -738,9 +929,11 @@ def _first_video(dbx, match: str | None = None):
         brand = classify_brand(display)
         if not brand:
             continue
-        vids = [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+        vids = _brand_videos(dbx, path_lower)
         if match:
-            vids = [f for f in vids if match.lower() in f.name.lower()]
+            m = match.lower()
+            vids = [f for f in vids
+                    if m in f.name.lower() or m in (getattr(f, "path", "") or "").lower()]
         if not vids:
             continue
         f = vids[0]
@@ -754,6 +947,58 @@ def _first_video(dbx, match: str | None = None):
     return None
 
 
+def _first_image(dbx, match: str | None = None) -> str | None:
+    """Download the first IMAGE (optionally whose name/path contains ``match``)
+    under any brand's Drop Content Here. Returns a local path or None. Used to add
+    a finished-project 'result' end-slide from a photo the owner dropped in."""
+    client = dbx._client()
+    m = (match or "").lower()
+    for path_lower, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        drop = f"{path_lower.rstrip('/')}/{DROP_FOLDER.lower()}"
+        try:
+            res = client.files_list_folder(drop, recursive=True)
+        except Exception:  # noqa: BLE001
+            continue
+        imgs = []
+        while True:
+            for e in res.entries:
+                if e.__class__.__name__ != "FileMetadata":
+                    continue
+                if not e.name.lower().endswith(IMAGE_EXTS):
+                    continue
+                fp = getattr(e, "path_display", "") or getattr(e, "path_lower", "")
+                if m and m not in e.name.lower() and m not in fp.lower():
+                    continue
+                imgs.append(dbx.DropboxFile(path=fp, name=e.name,
+                            size_bytes=int(getattr(e, "size", 0) or 0),
+                            rev=getattr(e, "rev", "") or ""))
+            if not getattr(res, "has_more", False):
+                break
+            res = client.files_list_folder_continue(res.cursor)
+        if imgs:
+            return dbx.download(imgs[0])
+    return None
+
+
+def _still_clip(img_path: str, out_path: str, dur: float = 3.5) -> str:
+    """Make a ``dur``-second 2160x3840@30 clip from a still image with a slow
+    Ken-Burns zoom — used as a 4K finished-project end-slide. Muted."""
+    import subprocess  # lazy
+    frames = max(1, int(dur * 30))
+    vf = (f"scale=2376:4224:force_original_aspect_ratio=increase:flags=lanczos,"
+          f"crop=2376:4224,"
+          f"zoompan=z='min(zoom+0.0006,1.10)':d={frames}:s=2160x3840:fps=30,"
+          f"setsar=1,format=yuv420p")
+    subprocess.run(
+        ["ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", f"{dur:.2f}",
+         "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+         "-an", "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
 def dump_transcript() -> None:
     """Transcribe EVERY video in the brand folders and print/commit a timestamped
     transcript per video, so good clip windows can be chosen by time."""
@@ -763,20 +1008,27 @@ def dump_transcript() -> None:
 
     out_dir = os.path.join(ROOT, "content", "transcripts")
     os.makedirs(out_dir, exist_ok=True)
+    match = (os.getenv("PIPELINE_VIDEO") or "").strip().lower()
     count = 0
     for path_lower, display in _top_level_folders(dbx):
         if not classify_brand(display):
             continue
-        for f in dbx.list_folder(path_lower):
-            if not f.name.lower().endswith(VIDEO_EXTS):
+        for f in _brand_videos(dbx, path_lower):
+            fp_path = getattr(f, "path", "") or f.name
+            if match and match not in fp_path.lower():
                 continue
             raw = dbx.download(f)
-            base = _slug(f.name) or "clip"
+            parent = os.path.basename(os.path.dirname(fp_path)) if fp_path else ""
+            base = _slug(f"{parent}-{f.name}") or "clip"
             ext = os.path.splitext(f.name)[1] or ".mp4"
             local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
             if os.path.abspath(local) != os.path.abspath(raw):
                 shutil.copy(raw, local)
-            segs = transcribe(local)
+            try:
+                segs = transcribe(local)
+            except Exception as ex:  # noqa: BLE001 — silent/no-audio clip: skip it
+                print(f"=== SKIP base={base} ({display}/{f.name}): no/unreadable audio ({ex}) ===")
+                continue
             lines = [f"[{getattr(s, 'start_seconds', 0.0) or 0.0:6.1f} - "
                      f"{getattr(s, 'end_seconds', 0.0) or 0.0:6.1f}] "
                      f"{(getattr(s, 'text', '') or '').strip()}" for s in segs]
@@ -798,14 +1050,20 @@ def dump_thumbs() -> None:
 
     out_dir = os.path.join(ROOT, "content", "thumbs")
     os.makedirs(out_dir, exist_ok=True)
+    # PIPELINE_VIDEO filters to one project/folder (matched against the FULL path,
+    # e.g. "Alice Carport") so we don't thumbnail every video in the drop folder.
+    match = (os.getenv("PIPELINE_VIDEO") or "").strip().lower()
     for path_lower, display in _top_level_folders(dbx):
         if not classify_brand(display):
             continue
-        for f in dbx.list_folder(path_lower):
-            if not f.name.lower().endswith(VIDEO_EXTS):
+        for f in _brand_videos(dbx, path_lower):
+            fp = getattr(f, "path", "") or f.name
+            if match and match not in fp.lower():
                 continue
             raw = dbx.download(f)
-            base = _slug(f.name) or "clip"
+            # Base from parent folder + name so same-named clips don't collide.
+            parent = os.path.basename(os.path.dirname(fp)) if fp else ""
+            base = _slug(f"{parent}-{f.name}") or "clip"
             r = subprocess.run(
                 ["ffprobe", "-v", "error", "-show_entries", "format=duration",
                  "-of", "default=nw=1:nk=1", raw],
@@ -814,14 +1072,50 @@ def dump_thumbs() -> None:
                 dur = max(1.0, float(r.stdout.strip()))
             except ValueError:
                 dur = 10.0
-            fps = max(0.05, 6.0 / dur)
+            # THUMB_FRAMES lets us make a DENSE contact sheet (default 6) to spot a
+            # brief segment (e.g. a sky-drone shot) buried in a long walkthrough clip.
+            try:
+                nfr = max(6, int(os.getenv("THUMB_FRAMES", "6")))
+            except ValueError:
+                nfr = 6
+            cols = 6 if nfr > 6 else 3
+            rows = -(-nfr // cols)  # ceil
+            fps = max(0.02, nfr / dur)
             sheet = os.path.join(out_dir, f"{base}.jpg")
             subprocess.run(
                 ["ffmpeg", "-y", "-i", raw, "-vf",
-                 f"fps={fps:.4f},scale=320:-1,tile=3x2:padding=6:margin=6",
+                 f"fps={fps:.4f},scale=240:-1,tile={cols}x{rows}:padding=4:margin=4",
                  "-frames:v", "1", "-q:v", "4", sheet],
                 check=False, capture_output=True)
-            print(f"contact sheet {base}.jpg (dur={dur:.1f}s)")
+            print(f"contact sheet {base}.jpg (dur={dur:.1f}s, {nfr} frames)")
+        # IMAGES under Drop Content Here -> single thumbnail each (finished-project photos)
+        client = dbx._client()
+        drop = f"{path_lower.rstrip('/')}/{DROP_FOLDER.lower()}"
+        try:
+            ir = client.files_list_folder(drop, recursive=True)
+        except Exception:  # noqa: BLE001
+            ir = None
+        imgs = []
+        while ir is not None:
+            for e in ir.entries:
+                if e.__class__.__name__ == "FileMetadata" and e.name.lower().endswith(IMAGE_EXTS):
+                    fp = getattr(e, "path_display", "") or getattr(e, "path_lower", "")
+                    if not match or match in fp.lower():
+                        imgs.append(dbx.DropboxFile(path=fp, name=e.name,
+                                    size_bytes=int(getattr(e, "size", 0) or 0),
+                                    rev=getattr(e, "rev", "") or ""))
+            if not getattr(ir, "has_more", False):
+                break
+            ir = client.files_list_folder_continue(ir.cursor)
+        for f in imgs:
+            fp = getattr(f, "path", "") or f.name
+            raw = dbx.download(f)
+            parent = os.path.basename(os.path.dirname(fp)) if fp else ""
+            base = _slug(f"img-{parent}-{f.name}") or "img"
+            thumb = os.path.join(out_dir, f"{base}.jpg")
+            subprocess.run(["ffmpeg", "-y", "-i", raw, "-vf", "scale=360:-1",
+                            "-frames:v", "1", "-q:v", "4", thumb], check=False, capture_output=True)
+            print(f"image thumb {base}.jpg  <- {fp}")
 
 
 def fetch_ig_reference(brand_key: str = "hp", limit: int = 24) -> int:
@@ -930,12 +1224,225 @@ def fetch_previews(which: str = "all") -> int:
         dest = os.path.join(out_dir, f"{e['id']}.mp4")
         try:
             client.files_download_to_file(dest, mp)
-            print(f"fetched {e['id']}")
+            # GitHub blocks files >100MB. 4K previews can exceed that, so if the
+            # download is too big to commit, transcode in place to a 4K proxy
+            # (same 2160x3840, higher CRF) that fits under the limit. Quality
+            # stays high; it's only the git bridge that needs it small.
+            import subprocess  # lazy, stdlib
+            CAP = 95 * 1024 * 1024
+            if os.path.getsize(dest) > CAP:
+                for crf in (20, 22, 24, 26):
+                    tmp = dest + ".proxy.mp4"
+                    subprocess.run(
+                        ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", dest,
+                         "-c:v", "libx264", "-preset", "medium", "-crf", str(crf),
+                         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k",
+                         "-movflags", "+faststart", tmp],
+                        check=True)
+                    if os.path.getsize(tmp) <= CAP:
+                        os.replace(tmp, dest)
+                        print(f"fetched {e['id']} (proxied crf{crf}, "
+                              f"{os.path.getsize(dest)//(1024*1024)}MB)")
+                        break
+                    os.remove(tmp)
+                else:
+                    print(f"fetched {e['id']} (WARN: still >95MB after crf26)")
+            else:
+                print(f"fetched {e['id']}")
             n += 1
         except Exception as ex:  # noqa: BLE001
+            # Never leave an oversized/partial file behind — it would be force-added
+            # and rejected by GitHub's 100MB push limit, blocking the whole commit.
+            if os.path.exists(dest) and os.path.getsize(dest) > 95 * 1024 * 1024:
+                os.remove(dest)
             print(f"fetch failed {e['id']}: {ex}")
     print(f"\n{n} preview(s) in content/preview/")
     return n
+
+
+def delete_ids(ids: list[str]) -> list[dict]:
+    """Delete ONLY the given queue ids — each clip's Dropbox file AND its queue
+    entry. Targeted (unlike prune_clips which keeps a whitelist). Never posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    drop = {i.strip() for i in ids if i.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    kept, removed = [], 0
+    for e in queue:
+        if e.get("id") not in drop:
+            kept.append(e)
+            continue
+        mp = e.get("media_path")
+        if mp:
+            try:
+                dbx.delete(mp)
+            except Exception as ex:  # noqa: BLE001 — a missing file shouldn't stop the delete
+                print(f"delete failed {mp}: {ex}")
+        print(f"deleted {e.get('id')}")
+        removed += 1
+    _save_json(QUEUE_PATH, kept)
+    print(f"\nDeleted {removed} clip(s); {len(kept)} remain.")
+    return kept
+
+
+def clean_ready_orphans() -> None:
+    """Delete any file in each brand's ``Ready To Post`` that is NOT referenced by
+    a current queue entry — i.e. stale/old versions of clips that were since edited.
+    Keeps Ready To Post showing only the current saved set. Never posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    queue = _load_json(QUEUE_PATH, [])
+    keep = {(e.get("media_path") or "").lower() for e in queue}
+    removed = 0
+    for path_lower, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        ready = f"{display.rstrip('/')}/{READY_FOLDER}"
+        try:
+            res = client.files_list_folder(ready)
+        except Exception:  # noqa: BLE001 — folder may not exist
+            continue
+        for e in res.entries:
+            if e.__class__.__name__ != "FileMetadata":
+                continue
+            fp = getattr(e, "path_display", "") or getattr(e, "path_lower", "")
+            if not fp.lower().endswith(VIDEO_EXTS):
+                continue
+            if fp.lower() in keep:
+                continue
+            try:
+                dbx.delete(fp)
+                removed += 1
+                print(f"removed stale saved: {fp}")
+            except Exception as ex:  # noqa: BLE001
+                print(f"clean failed {fp}: {ex}")
+    print(f"\nRemoved {removed} stale file(s) from {READY_FOLDER}.")
+
+
+def demote_ids(which: str) -> list[dict]:
+    """Move clips OUT of ``Ready To Post`` back into ``processed/`` (un-save).
+    ``which`` is "all" or a comma id list. Status stays ``review``. Never posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    sel = which.strip().lower()
+    ids = None if sel in ("all", "") else {x.strip() for x in which.split(",") if x.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    moved = 0
+    for e in queue:
+        if ids is not None and e.get("id") not in ids:
+            continue
+        mp = e.get("media_path") or ""
+        if f"/{READY_FOLDER}/" not in mp:
+            continue
+        prefix, fname = mp.split(f"/{READY_FOLDER}/", 1)[0], mp.rsplit("/", 1)[-1]
+        dest = f"{prefix}/processed/{fname}"
+        try:
+            client.files_move_v2(mp, dest, autorename=True)
+            e["media_path"] = dest
+            try:
+                e["media_url"] = dbx.shared_link(dest, raw=True)
+            except Exception:  # noqa: BLE001
+                pass
+            moved += 1
+            print(f"demoted {e.get('id')} -> processed/")
+        except Exception as ex:  # noqa: BLE001
+            print(f"demote failed {e.get('id')}: {ex}")
+    if moved:
+        _save_json(QUEUE_PATH, queue)
+    print(f"\nDemoted {moved} clip(s) out of {READY_FOLDER}. Nothing posted.")
+    return queue
+
+
+def promote_ids(ids: list[str]) -> list[dict]:
+    """Move ONLY the given queue ids from ``processed/`` into the brand's
+    ``Ready To Post`` folder (approved keepers). Status stays ``review`` so the
+    poster never touches them — this is a 'save it' action, not a publish."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    want = {i.strip() for i in ids if i.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    moved = 0
+    for e in queue:
+        if e.get("id") not in want:
+            continue
+        mp = e.get("media_path") or ""
+        if "/processed/" not in mp:
+            print(f"skip {e.get('id')}: not in processed/ ({mp})")
+            continue
+        prefix, fname = mp.split("/processed/", 1)[0], mp.rsplit("/", 1)[-1]
+        dest = f"{prefix}/{READY_FOLDER}/{fname}"
+        try:
+            client.files_move_v2(mp, dest, autorename=True)
+            e["media_path"] = dest
+            try:
+                e["media_url"] = dbx.shared_link(dest, raw=True)
+            except Exception:  # noqa: BLE001
+                pass
+            moved += 1
+            print(f"promoted {e.get('id')} -> {READY_FOLDER}/{fname}")
+        except Exception as ex:  # noqa: BLE001
+            print(f"promote failed {e.get('id')}: {ex}")
+    if moved:
+        _save_json(QUEUE_PATH, queue)
+    print(f"\nPromoted {moved} clip(s) to {READY_FOLDER}. Nothing posted.")
+    return queue
+
+
+def save_styled(dir_rel: str) -> list[dict]:
+    """Upload locally-finished clips (e.g. logo+outro versions) straight into each
+    brand's HP Posts folder and repoint the matching queue entry. Status stays
+    ``review`` — this 'saves' an externally-styled keeper without posting.
+
+    ``dir_rel`` holds files named like the queue id (``hp-bryan-02.mp4``) or the
+    id minus the brand prefix (``bryan-02.mp4``). Replaces the old processed/
+    file with the styled one in HP Posts; the previous file is removed."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    src_dir = dir_rel if os.path.isabs(dir_rel) else os.path.join(ROOT, dir_rel)
+    queue = _load_json(QUEUE_PATH, [])
+    saved = 0
+    for e in queue:
+        cid = e.get("id", "")
+        cands = [f"{cid}.mp4"]
+        if "-" in cid:
+            cands.append(cid.split("-", 1)[1] + ".mp4")
+        local = next((os.path.join(src_dir, c) for c in cands
+                      if os.path.exists(os.path.join(src_dir, c))), None)
+        if not local:
+            continue
+        mp = e.get("media_path") or ""
+        fname = mp.rsplit("/", 1)[-1] if mp else f"{cid}.mp4"
+        if "/processed/" in mp:
+            prefix = mp.split("/processed/", 1)[0]
+        elif f"/{READY_FOLDER}/" in mp:
+            prefix = mp.split(f"/{READY_FOLDER}/", 1)[0]
+        elif "/" in mp:
+            prefix = mp.rsplit("/", 2)[0]
+        else:
+            print(f"save_styled: can't derive folder for {cid} ({mp})")
+            continue
+        dest = f"{prefix}/{READY_FOLDER}/{fname}"
+        dbx.upload(local, dest)
+        if mp and mp != dest:
+            try:
+                dbx.delete(mp)
+            except Exception as ex:  # noqa: BLE001 — missing old file is fine
+                print(f"save_styled: old file delete skipped {mp}: {ex}")
+        try:
+            e["media_url"] = dbx.shared_link(dest, raw=True)
+        except Exception:  # noqa: BLE001
+            pass
+        e["media_path"] = dest
+        e["status"] = "review"
+        saved += 1
+        print(f"saved styled {cid} -> {dest}")
+    if saved:
+        _save_json(QUEUE_PATH, queue)
+    print(f"\nSaved {saved} styled clip(s) to {READY_FOLDER}. Nothing posted.")
+    return queue
 
 
 def prune_clips(keep_ids: list[str]) -> list[dict]:
@@ -1073,38 +1580,95 @@ def cut_montage(spec: dict) -> dict | None:
     seg_clips: list[str] = []
     base_ctx = None
     workdir = "."
+    import subprocess as _sp  # lazy
+
+    def _clip_dur(path: str) -> float:
+        r = _sp.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=nw=1:nk=1", path], capture_output=True, text=True)
+        try:
+            return float(r.stdout.strip())
+        except ValueError:
+            return 0.0
+
+    def _win(local_path, a, b):
+        """Clamp [a,b] to the clip; guarantee >=1.5s. Returns (a,b) or None if unusable."""
+        d = _clip_dur(local_path)
+        if d <= 0:
+            return float(a), float(b)
+        a = max(0.0, min(float(a), max(0.0, d - 1.5)))
+        b = min(float(b), d)
+        if b - a < 1.0:
+            b = min(d, a + 2.0)
+        return (a, b) if b - a >= 0.8 else None
+
+    def _equal_wins(shots):
+        """Per-panel (local_path, a, b) all trimmed to the SAME length (min of the
+        clamped windows) so stacked panels never freeze when one clip is shorter."""
+        ws = []
+        for (v, a, b) in shots:
+            lp = resolve(str(v))[1]
+            w = _win(lp, a, b) or (0.0, 3.0)
+            ws.append([lp, w[0], w[1]])
+        common = max(1.5, min(w[2] - w[1] for w in ws))
+        for w in ws:
+            w[2] = w[1] + common      # equal duration for every panel
+        return ws
+
     for i, seg in enumerate(spec.get("segments", [])):
+        # IMAGE end-slide: {"image": "<match>", "dur": 3.5} -> Ken-Burns still of a
+        # finished-project photo the owner dropped into Drop Content Here.
+        if seg.get("image") and base_ctx is not None:
+            img = _first_image(dbx, str(seg["image"]))
+            if not img:
+                print(f"montage seg {i}: image not found {seg['image']!r} — skipping")
+                continue
+            out = os.path.join(workdir, f"mseg-{name}-{i}.mp4")
+            try:
+                _still_clip(img, out, float(seg.get("dur", 3.5)))
+                seg_clips.append(out)
+            except Exception as ex:  # noqa: BLE001
+                print(f"montage seg {i} image failed ({ex}); skipping")
+            continue
         shots = seg.get("panels") or ([seg["shot"]] if seg.get("shot") else [])
         if not shots:
             continue
         ctx0 = resolve(str(shots[0][0]))
         if not ctx0:
-            raise RuntimeError(f"video not found: {shots[0][0]!r}")
+            print(f"montage seg {i}: video not found {shots[0][0]!r} — skipping")
+            continue
         if base_ctx is None:
             base_ctx, workdir = ctx0, os.path.dirname(ctx0[1])
         out = os.path.join(workdir, f"mseg-{name}-{i}.mp4")
         n = len(shots)
-        if n == 1:
-            v, a, b = shots[0]
-            _edit_short(resolve(str(v))[1], float(a), float(b), out, mute=True)
-        elif seg.get("orient") == "cols":
-            # side-by-side vertical columns (each tile W/n x 1920)
-            w = 1080 // n
-            tiles = []
-            for k, (v, a, b) in enumerate(shots):
-                pp = os.path.join(workdir, f"mseg-{name}-{i}-c{k}.mp4")
-                _edit_tile(resolve(str(v))[1], float(a), float(b), pp, w, 1920)
-                tiles.append(pp)
-            _hstackN(tiles, out)
-        else:
-            # stacked rows (each tile 1080 x H/n)
-            h = 1920 // n
-            panels = []
-            for k, (v, a, b) in enumerate(shots):
-                pp = os.path.join(workdir, f"mseg-{name}-{i}-p{k}.mp4")
-                _edit_tile(resolve(str(v))[1], float(a), float(b), pp, 1080, h)
-                panels.append(pp)
-            _stackN(panels, out)
+        try:
+            if n == 1:
+                v, a, b = shots[0]
+                lp = resolve(str(v))[1]
+                w = _win(lp, a, b)
+                if not w:
+                    continue
+                _edit_short_4k(lp, w[0], w[1], out)
+            elif seg.get("orient") == "cols":
+                # side-by-side vertical columns (each tile W/n x 1920), equal length
+                w = 1080 // n
+                tiles = []
+                for k, (lp, a, b) in enumerate(_equal_wins(shots)):
+                    pp = os.path.join(workdir, f"mseg-{name}-{i}-c{k}.mp4")
+                    _edit_tile(lp, a, b, pp, w, 1920)
+                    tiles.append(pp)
+                _hstackN(tiles, out)
+            else:
+                # stacked rows (each tile 1080 x H/n), equal length
+                h = 1920 // n
+                panels = []
+                for k, (lp, a, b) in enumerate(_equal_wins(shots)):
+                    pp = os.path.join(workdir, f"mseg-{name}-{i}-p{k}.mp4")
+                    _edit_tile(lp, a, b, pp, 1080, h)
+                    panels.append(pp)
+                _stackN(panels, out)
+        except Exception as ex:  # noqa: BLE001 — skip a bad segment, keep the rest
+            print(f"montage seg {i} failed ({ex}); skipping")
+            continue
         seg_clips.append(out)
 
     if not seg_clips or base_ctx is None:
@@ -1213,6 +1777,13 @@ def cut_windows(specs: list[dict]) -> list[dict]:
                                     mute=bool(sp.get("mute")), logo=lg)
                         pl.append(pp)
                     _concat(pl, out_local)
+            # Optional: crossfade the brand outro end-card onto the tail (talking
+            # clips keep audio). Set "outro": true in the spec.
+            if sp.get("outro"):
+                outro = os.path.join(ROOT, "content", "brand", "outro.mp4")
+                fin = os.path.join(os.path.dirname(out_local), f"{base}-{nm}-fin.mp4")
+                _append_outro(out_local, outro, fin)
+                out_local = fin
         except Exception as ex:  # noqa: BLE001
             print(f"cut {nm} failed: {ex}")
             continue
@@ -1275,6 +1846,213 @@ def main(argv: list[str] | None = None) -> int:
         debug_tree()
         return 0
 
+    # DROPBOX_WHOAMI: report which Dropbox account the suite is connected to
+    # (email + name), so the owner knows where to sign in. Writes it to a
+    # committed file and prints it. No secrets exposed.
+    if os.getenv("DROPBOX_WHOAMI", "").strip().lower() in ("1", "true", "yes", "go"):
+        from services.ingest import dropbox_client as _dbx  # lazy
+        acct = _dbx._client().users_get_current_account()
+        info = {
+            "email": getattr(acct, "email", None),
+            "name": getattr(getattr(acct, "name", None), "display_name", None),
+            "account_id": getattr(acct, "account_id", None),
+            "account_type": str(getattr(getattr(acct, "account_type", None), "_tag", "")),
+        }
+        ref = os.path.join(ROOT, "content", "reference")
+        os.makedirs(ref, exist_ok=True)
+        with open(os.path.join(ref, "dropbox_account.json"), "w") as fh:
+            json.dump(info, fh, indent=2)
+        print(f"DROPBOX ACCOUNT: {info}")
+        return 0
+
+    # DROPBOX_INVENTORY: write a complete manifest of every file in the account
+    # (path, size, modified) to a committed CSV so the owner has a permanent
+    # master list to verify nothing goes missing.
+    if os.getenv("DROPBOX_INVENTORY", "").strip().lower() in ("1", "true", "yes", "go"):
+        from services.ingest import dropbox_client as _dbx  # lazy
+        import csv
+        cli = _dbx._client()
+        rows, total = [], 0
+        r = cli.files_list_folder("", recursive=True)
+        while True:
+            for e in r.entries:
+                if e.__class__.__name__ == "FileMetadata":
+                    sz = getattr(e, "size", 0)
+                    total += sz
+                    rows.append((getattr(e, "path_display", ""), sz,
+                                 str(getattr(e, "client_modified", ""))))
+            if not getattr(r, "has_more", False):
+                break
+            r = cli.files_list_folder_continue(r.cursor)
+        rows.sort(key=lambda x: -x[1])
+        ref = os.path.join(ROOT, "content", "reference")
+        os.makedirs(ref, exist_ok=True)
+        with open(os.path.join(ref, "dropbox_inventory.csv"), "w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["path", "size_bytes", "modified"])
+            w.writerows(rows)
+        print(f"DROPBOX INVENTORY: {len(rows)} files, {round(total/1024**3,2)} GB total")
+        return 0
+
+    # DROPBOX_USAGE: report total space used + a size breakdown of each folder
+    # under "HP-Content Auto." so the owner knows what to clear before the plan
+    # drops to the free tier. Writes a committed file and prints it.
+    if os.getenv("DROPBOX_USAGE", "").strip().lower() in ("1", "true", "yes", "go"):
+        from services.ingest import dropbox_client as _dbx  # lazy
+        cli = _dbx._client()
+        su = cli.users_get_space_usage()
+        used = getattr(su, "used", 0)
+        alloc = getattr(su, "allocation", None)
+        allocated = None
+        for m in ("get_individual", "get_team"):
+            try:
+                allocated = getattr(getattr(alloc, m)(), "allocated", None)
+                if allocated:
+                    break
+            except Exception:  # noqa: BLE001
+                pass
+
+        def _folder_size(path):
+            total, nfiles = 0, 0
+            try:
+                r = cli.files_list_folder(path, recursive=True)
+            except Exception:  # noqa: BLE001
+                return 0, 0
+            while True:
+                for e in r.entries:
+                    if e.__class__.__name__ == "FileMetadata":
+                        total += getattr(e, "size", 0); nfiles += 1
+                if not getattr(r, "has_more", False):
+                    break
+                r = cli.files_list_folder_continue(r.cursor)
+            return total, nfiles
+
+        gb = 1024 ** 3
+        folders = {}
+        for path_lower, display in _top_level_folders(_dbx):
+            sub = []
+            try:
+                rr = cli.files_list_folder(path_lower)
+                sub = [e for e in rr.entries if e.__class__.__name__ == "FolderMetadata"]
+            except Exception:  # noqa: BLE001
+                pass
+            for e in sub:
+                sz, nf = _folder_size(e.path_lower)
+                folders[e.path_display] = {"gb": round(sz / gb, 3), "files": nf}
+        report = {
+            "used_gb": round(used / gb, 3),
+            "allocated_gb": round(allocated / gb, 2) if allocated else None,
+            "free_tier_gb": 2,
+            "folders": dict(sorted(folders.items(), key=lambda kv: -kv[1]["gb"])),
+        }
+        ref = os.path.join(ROOT, "content", "reference")
+        os.makedirs(ref, exist_ok=True)
+        with open(os.path.join(ref, "dropbox_usage.json"), "w") as fh:
+            json.dump(report, fh, indent=2)
+        print(f"DROPBOX USAGE: {json.dumps(report, indent=2)}")
+        return 0
+
+    # PURGE_EDITED: delete every pipeline-generated clip sitting in a staging
+    # folder whose name contains "processed" (e.g. "processed", "HP Processed"),
+    # across all brands — these are edited videos + orphans from old renders.
+    # Leaves ORIGINAL content (HP Content / HP Talking Content) and HP Posts
+    # (the ones getting posted) completely untouched. Frees space.
+    # Value "list" = dry run (report only); "go"/"true" = actually delete.
+    _purge = os.getenv("PURGE_EDITED", "").strip().lower()
+    if _purge in ("list", "go", "1", "true", "yes"):
+        from services.ingest import dropbox_client as dbx  # lazy
+        cli = dbx._client()
+        dry = _purge == "list"
+        hit, freed, deleted = [], 0, 0
+        for path_lower, display in _top_level_folders(dbx):
+            try:
+                kids = cli.files_list_folder(path_lower)
+            except Exception:  # noqa: BLE001
+                continue
+            subs = []
+            while True:
+                for e in kids.entries:
+                    if e.__class__.__name__ == "FolderMetadata" and "processed" in e.name.lower():
+                        subs.append(getattr(e, "path_lower", ""))
+                if not getattr(kids, "has_more", False):
+                    break
+                kids = cli.files_list_folder_continue(kids.cursor)
+            for sp in subs:
+                try:
+                    r = cli.files_list_folder(sp, recursive=True)
+                except Exception:  # noqa: BLE001
+                    continue
+                while True:
+                    for e in r.entries:
+                        if e.__class__.__name__ == "FileMetadata":
+                            fp = getattr(e, "path_display", "") or getattr(e, "path_lower", "")
+                            hit.append(fp); freed += getattr(e, "size", 0)
+                            if not dry:
+                                try:
+                                    dbx.delete(fp); deleted += 1
+                                except Exception as ex:  # noqa: BLE001
+                                    print(f"del fail {fp}: {ex}")
+                    if not getattr(r, "has_more", False):
+                        break
+                    r = cli.files_list_folder_continue(r.cursor)
+        tag = "DRY RUN — would delete" if dry else "DELETED"
+        print(f"PURGE_EDITED {tag}: {len(hit)} file(s), {round(freed/1024**3,3)} GB")
+        for fp in hit[:300]:
+            print("  ", fp)
+        if not dry:
+            queue = _load_json(QUEUE_PATH, [])
+            kept = [q for q in queue
+                    if "processed" not in (q.get("media_path") or "").rsplit("/", 1)[0].lower()]
+            if len(kept) != len(queue):
+                _save_json(QUEUE_PATH, kept)
+            print(f"queue: kept {len(kept)} entries (HP Posts + originals)")
+        return 0
+
+    # DELETE_IDS: remove specific clips (Dropbox file + queue entry) up front,
+    # then FALL THROUGH so the same run can also render replacements.
+    _del = os.getenv("DELETE_IDS", "").strip()
+    if _del:
+        delete_ids([x.strip() for x in _del.split(",") if x.strip()])
+
+    # DROPBOX_LS: print the Dropbox tree + the videos discovered under each
+    # brand's Drop Content Here (recursively), then exit.
+    if os.getenv("DROPBOX_LS", "").strip().lower() in ("1", "true", "yes"):
+        debug_tree()
+        from services.ingest import dropbox_client as _dbx  # lazy
+        for path_lower, display in _top_level_folders(_dbx):
+            if not classify_brand(display):
+                continue
+            vids = _brand_videos(_dbx, path_lower)
+            print(f"\n== {display}: {len(vids)} video(s) discoverable ==")
+            for v in vids:
+                print(f"   {getattr(v, 'path', v.name)}  ({getattr(v,'size_bytes',0)//1_000_000} MB)")
+            # also list IMAGES under Drop Content Here (for finished-project end-slides)
+            _cli = _dbx._client()
+            drop = f"{path_lower.rstrip('/')}/{DROP_FOLDER.lower()}"
+            imgs = []
+            try:
+                r = _cli.files_list_folder(drop, recursive=True)
+                while True:
+                    for e in r.entries:
+                        if e.__class__.__name__ == "FileMetadata" and e.name.lower().endswith(IMAGE_EXTS):
+                            imgs.append(getattr(e, "path_display", "") or e.name)
+                    if not getattr(r, "has_more", False):
+                        break
+                    r = _cli.files_list_folder_continue(r.cursor)
+            except Exception:  # noqa: BLE001
+                pass
+            print(f"== {display}: {len(imgs)} image(s) ==")
+            for ip in imgs:
+                print(f"   IMG {ip}")
+        return 0
+
+    # DROPBOX_ORGANIZE: build the Ready-To-Post + Drop-Content-Here layout.
+    # Any value lists the tree (dry run); "go" actually creates/moves.
+    org = os.getenv("DROPBOX_ORGANIZE", "").strip().lower()
+    if org:
+        organize_dropbox(execute=(org == "go"))
+        return 0
+
     # IG_REFERENCE: pull a brand's posted IG media (thumbs+captions) to study its
     # house style. Value = brand key, optional ":N" limit (e.g. "hp" or "hp:30").
     igref = os.getenv("IG_REFERENCE", "").strip()
@@ -1284,12 +2062,30 @@ def main(argv: list[str] | None = None) -> int:
         fetch_ig_reference(bk, int(tail) if tail.isdigit() else 24)
         return 0
 
-    # MONTAGE_SPEC json: assemble a layout-shifting hype montage (3-up/2-up/single).
+    # MONTAGE_SPEC json: one montage (object) OR a BATCH (list of objects). A batch
+    # builds many montages in ONE run with a single sequential queue write — high
+    # throughput and no concurrent-run clobber.
     montage = os.getenv("MONTAGE_SPEC", "").strip()
+    # MONTAGE_SPEC_FILE: read the spec JSON from a committed repo file instead of
+    # the dispatch input — avoids hand-transcription errors for large batches.
+    _mfile = os.getenv("MONTAGE_SPEC_FILE", "").strip()
+    if not montage and _mfile:
+        _mp = _mfile if os.path.isabs(_mfile) else os.path.join(ROOT, _mfile)
+        with open(_mp, encoding="utf-8") as _fh:
+            montage = _fh.read().strip()
     if montage:
         import json as _json
-        made = cut_montage(_json.loads(montage))
-        print(f"\nDone: montage {'created' if made else 'failed'}. Nothing posted (review only).")
+        data = _json.loads(montage)
+        specs = data if isinstance(data, list) else [data]
+        made = []
+        for sp in specs:
+            try:
+                m = cut_montage(sp)
+                if m:
+                    made.append(m)
+            except Exception as ex:  # noqa: BLE001 — one bad montage shouldn't kill the batch
+                print(f"montage {sp.get('name','?')!r} failed: {ex}")
+        print(f"\nDone: {len(made)}/{len(specs)} montage(s). Nothing posted (review only).")
         return 0
 
     # INGEST_CLIP "name:relpath": save a ready-made local clip into Dropbox +
@@ -1304,6 +2100,32 @@ def main(argv: list[str] | None = None) -> int:
     fp = os.getenv("FETCH_PREVIEWS", "").strip()
     if fp:
         fetch_previews(fp)
+        return 0
+
+    # SAVE_STYLED: upload locally-finished clips (logo+outro) from a committed
+    # repo dir straight into HP Posts and repoint the queue. Status stays review.
+    styled = os.getenv("SAVE_STYLED", "").strip()
+    if styled:
+        save_styled(styled)
+        return 0
+
+    # PROMOTE_IDS: move ONLY these clips from processed/ into Ready To Post
+    # (approved keepers). Status stays 'review' — nothing is posted.
+    promote = os.getenv("PROMOTE_IDS", "").strip()
+    if promote:
+        promote_ids([x.strip() for x in promote.split(",") if x.strip()])
+        return 0
+
+    # DEMOTE_IDS: move clips back out of Ready To Post into processed/ (un-save).
+    demote = os.getenv("DEMOTE_IDS", "").strip()
+    if demote:
+        demote_ids(demote)
+        return 0
+
+    # CLEAN_READY: delete stale/old files left in Ready To Post (edited clips'
+    # previous versions) so only the current saved set remains.
+    if os.getenv("CLEAN_READY", "").strip().lower() in ("1", "true", "yes", "go"):
+        clean_ready_orphans()
         return 0
 
     # KEEP_IDS: delete every clip (Dropbox file + queue entry) not in this

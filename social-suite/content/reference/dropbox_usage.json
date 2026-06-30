@@ -1,0 +1,39 @@
+{
+  "used_gb": 199.089,
+  "allocated_gb": 5120.0,
+  "free_tier_gb": 2,
+  "folders": {
+    "/HP-Content Auto./HP Content": {
+      "gb": 87.407,
+      "files": 1834
+    },
+    "/HP-Content Auto./HP Talking Content": {
+      "gb": 3.436,
+      "files": 50
+    },
+    "/HP-Content Auto./HP Posts": {
+      "gb": 0.526,
+      "files": 34
+    },
+    "/HP-Content Auto./Restore- Content Auto": {
+      "gb": 0.208,
+      "files": 1
+    },
+    "/HP-Content Auto./Restore Content": {
+      "gb": 0.0,
+      "files": 0
+    },
+    "/HP-Content Auto./HP Processed": {
+      "gb": 0.0,
+      "files": 0
+    },
+    "/HP-Content Auto./Restore Posts": {
+      "gb": 0.0,
+      "files": 0
+    },
+    "/HP-Content Auto./processed": {
+      "gb": 0.0,
+      "files": 0
+    }
+  }
+}
