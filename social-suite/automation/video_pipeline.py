@@ -1123,6 +1123,7 @@ def copy_clips(ids: list[str], dest_sub: str = "HP Posts") -> int:
 
     sel = {i.strip() for i in ids if i.strip()}
     queue = _load_json(QUEUE_PATH, [])
+    preview_dir = os.path.join(ROOT, "content", "preview")
     n = 0
     for e in queue:
         if e.get("id") not in sel:
@@ -1132,8 +1133,12 @@ def copy_clips(ids: list[str], dest_sub: str = "HP Posts") -> int:
             continue
         brand_root = os.path.dirname(os.path.dirname(mp))   # ".../<brand>"
         dest = f"{brand_root}/{dest_sub}/{os.path.basename(mp)}"
+        local_prev = os.path.join(preview_dir, f"{e.get('id')}.mp4")
         try:
-            dbx.copy(mp, dest)
+            if os.path.exists(local_prev):
+                dbx.upload(local_prev, dest)     # reliable: the committed preview copy
+            else:
+                dbx.copy(mp, dest)               # fall back to Dropbox-to-Dropbox copy
             print(f"copied {e.get('id')} -> {dest}")
             n += 1
         except Exception as ex:  # noqa: BLE001 — one bad copy shouldn't stop the rest
