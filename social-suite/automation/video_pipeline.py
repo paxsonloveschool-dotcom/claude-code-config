@@ -2159,7 +2159,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ls", action="store_true", help="Print the Dropbox app-folder tree and exit.")
     args = parser.parse_args(argv)
 
-    if args.ls:
+    if args.ls or os.getenv("LS_TREE", "").strip():
         debug_tree()
         return 0
 

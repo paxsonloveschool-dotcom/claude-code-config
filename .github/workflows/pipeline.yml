@@ -43,6 +43,10 @@ on:
         description: "Brand subfolder to copy clips into (default 'HP Posts')"
         required: false
         default: ""
+      ls_tree:
+        description: "Set true to print the Dropbox folder tree (diagnosis) and exit"
+        required: false
+        default: ""
       fetch_previews:
         description: "'all' or comma ids: pull finished clips into content/preview/"
         required: false
@@ -147,6 +151,7 @@ jobs:
           DELETE_IDS: ${{ inputs.delete_ids }}
           COPY_IDS: ${{ inputs.copy_ids }}
           COPY_DEST: ${{ inputs.copy_dest }}
+          LS_TREE: ${{ inputs.ls_tree }}
           FETCH_PREVIEWS: ${{ inputs.fetch_previews }}
           IG_REFERENCE: ${{ inputs.ig_reference }}
           INGEST_CLIP: ${{ inputs.ingest_clip }}
