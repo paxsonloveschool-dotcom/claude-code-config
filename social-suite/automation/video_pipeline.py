@@ -1171,7 +1171,30 @@ def fetch_previews(which: str = "all") -> int:
         dest = os.path.join(out_dir, f"{e['id']}.mp4")
         try:
             client.files_download_to_file(dest, mp)
-            print(f"fetched {e['id']}")
+            # GitHub blocks files >100MB. 4K previews can exceed that, so if the
+            # download is too big to commit, transcode in place to a 4K proxy
+            # (same 2160x3840, higher CRF) that fits under the limit. Quality
+            # stays high; it's only the git bridge that needs it small.
+            CAP = 95 * 1024 * 1024
+            if os.path.getsize(dest) > CAP:
+                for crf in (20, 22, 24, 26):
+                    tmp = dest + ".proxy.mp4"
+                    subprocess.run(
+                        ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", dest,
+                         "-c:v", "libx264", "-preset", "medium", "-crf", str(crf),
+                         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k",
+                         "-movflags", "+faststart", tmp],
+                        check=True)
+                    if os.path.getsize(tmp) <= CAP:
+                        os.replace(tmp, dest)
+                        print(f"fetched {e['id']} (proxied crf{crf}, "
+                              f"{os.path.getsize(dest)//(1024*1024)}MB)")
+                        break
+                    os.remove(tmp)
+                else:
+                    print(f"fetched {e['id']} (WARN: still >95MB after crf26)")
+            else:
+                print(f"fetched {e['id']}")
             n += 1
         except Exception as ex:  # noqa: BLE001
             print(f"fetch failed {e['id']}: {ex}")
