@@ -265,7 +265,12 @@ _HP_HOOKS = (
     "Good landscaping starts below the surface. \U0001F331\U0001F4A7",
 )
 _HP_CTA = "Call (979) 777-8851!!"
-_HP_TAGS = "#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals"
+_HP_TAGS = (
+    "#fyp #ForYouPage #Trending #LandscapingTok #WorkHardPlayHard "
+    "#BeforeAndAfter #Timelapse #Craftsmanship #BuildIt #ServiceBusiness "
+    "#ContractorLife #OutdoorLiving #backyardgoals #TXOutdoorLiving #DreamBackyard "
+    "#CollegeStation #Bryan #Navasota #Houston"
+)
 
 
 def _hp_caption(seed: str) -> str:
