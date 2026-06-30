@@ -48,10 +48,10 @@ def build_style(
     primary_colour: str = "&H00FFFFFF",   # white (highlighted/sung text)
     secondary_colour: str = "&H00AAAAAA", # grey (not-yet-spoken karaoke fill)
     outline_colour: str = "&H00000000",   # black outline
-    outline: int = 3,
-    shadow: int = 0,
+    outline: int = 2,                      # thin black outline (clean, readable)
+    shadow: int = 1,                       # subtle drop shadow
     alignment: int = 2,                    # 2 = bottom-center
-    margin_v: int = 120,
+    margin_v: int = 320,                   # sit in the lower-third (not the very bottom)
 ) -> str:
     """Return the ``[V4+ Styles]`` block with a single style named ``Caption``."""
     fmt = (
@@ -68,19 +68,16 @@ def build_style(
     return "[V4+ Styles]\n" + fmt + "\n" + style + "\n"
 
 
-def _karaoke_text(segment: "Segment") -> str:
-    """Build the karaoke-tagged dialogue body for one segment.
+def _chunk_words(words, max_words: int):
+    """Split a word list into short phrase chunks (~max_words each)."""
+    return [words[i:i + max_words] for i in range(0, len(words), max_words)]
 
-    Uses ``\\kf<centiseconds>`` per word (smooth left-to-right fill). Gaps
-    between words are absorbed with a plain ``\\k`` hold so timing stays aligned
-    to speech. Falls back to plain text when the segment has no word timings.
-    """
-    if not segment.words:
-        return _escape(segment.text)
 
+def _karaoke_for_words(words, chunk_start: float) -> str:
+    """Karaoke-tagged body for one short chunk (each word lights up as spoken)."""
     parts: list[str] = []
-    prev_end = segment.start_seconds
-    for word in segment.words:
+    prev_end = chunk_start
+    for word in words:
         word_text = _escape(word.text)
         if not word_text:
             continue
@@ -94,10 +91,15 @@ def _karaoke_text(segment: "Segment") -> str:
         dur_cs = max(1, int(round((end - start) * 100)))
         parts.append(f"{{\\kf{dur_cs}}}{word_text} ")
         prev_end = end
-    if not parts:
-        # Every word was empty/escaped away — fall back to the segment text.
-        return _escape(segment.text)
     return "".join(parts).rstrip()
+
+
+def _karaoke_text(segment: "Segment") -> str:
+    """Whole-segment karaoke body (used when not chunking / no word timings)."""
+    if not segment.words:
+        return _escape(segment.text)
+    body = _karaoke_for_words(segment.words, segment.start_seconds)
+    return body or _escape(segment.text)
 
 
 def build_ass(
@@ -107,13 +109,19 @@ def build_ass(
     video_height: int = 1920,
     font: str = "Arial",
     font_size: int = 64,
+    max_words: int = 4,
 ) -> str:
     """Render ``segments`` into a complete ASS subtitle script (as a string).
+
+    Captions are shown a few words at a time (``max_words``) — the punchy
+    TikTok/Reels look — instead of dumping a whole sentence on screen. Each word
+    still lights up (karaoke) as it's spoken.
 
     Args:
         segments: Word-level transcript segments from ``transcribe``.
         video_width/height: Target resolution (9:16 vertical by default).
         font/font_size: Caption styling.
+        max_words: Max words shown on screen at once (phrase chunk size).
 
     Returns:
         The full ASS file contents, ready to write to disk and pass to
@@ -122,7 +130,7 @@ def build_ass(
     header = (
         "[Script Info]\n"
         "ScriptType: v4.00+\n"
-        "WrapStyle: 2\n"
+        "WrapStyle: 0\n"          # smart wrap so long lines don't run off-frame
         "ScaledBorderAndShadow: yes\n"
         f"PlayResX: {video_width}\n"
         f"PlayResY: {video_height}\n\n"
@@ -135,15 +143,34 @@ def build_ass(
     )
     lines: list[str] = []
     for seg in segments:
-        body = _karaoke_text(seg)
-        if not body:
-            # Skip empty/blank segments — an empty Dialogue body is useless and
-            # an all-whitespace one renders nothing.
-            continue
-        start = _fmt_time(seg.start_seconds)
-        # Clamp end >= start so a zero/negative-duration segment never produces
-        # a Dialogue line whose End precedes its Start (invalid ASS).
-        end = _fmt_time(max(seg.end_seconds, seg.start_seconds))
-        lines.append(f"Dialogue: 0,{start},{end},Caption,,0,0,0,,{body}")
+        if seg.words and max_words > 0:
+            # Few-words-at-a-time: one Dialogue per short phrase chunk.
+            emitted = False
+            for chunk in _chunk_words(seg.words, max_words):
+                if not chunk:
+                    continue
+                cs = chunk[0].start_seconds
+                ce = max(chunk[-1].end_seconds, cs)
+                body = _karaoke_for_words(chunk, cs)
+                if not body.strip():
+                    continue
+                lines.append(f"Dialogue: 0,{_fmt_time(cs)},{_fmt_time(ce)},"
+                             f"Caption,,0,0,0,,{body}")
+                emitted = True
+            if not emitted:
+                # Every word was empty/untimed — fall back to the segment text.
+                body = _escape(seg.text)
+                if body:
+                    lines.append(
+                        f"Dialogue: 0,{_fmt_time(seg.start_seconds)},"
+                        f"{_fmt_time(max(seg.end_seconds, seg.start_seconds))},"
+                        f"Caption,,0,0,0,,{body}")
+        else:
+            body = _karaoke_text(seg)
+            if not body:
+                continue
+            start = _fmt_time(seg.start_seconds)
+            end = _fmt_time(max(seg.end_seconds, seg.start_seconds))
+            lines.append(f"Dialogue: 0,{start},{end},Caption,,0,0,0,,{body}")
     body = ("\n".join(lines) + "\n") if lines else ""
     return header + styles + events_header + body

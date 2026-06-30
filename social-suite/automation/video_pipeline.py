@@ -734,11 +734,18 @@ def _first_video(dbx, match: str | None = None):
     """(file, local_path, base, brand, display) for the first video (optionally
     one whose filename contains ``match``), or None."""
     import shutil
+    # CONTENT_FOLDER scopes reads to a subfolder under each brand, e.g.
+    # "HP Talking Content" (SupoClip talking clips) or "HP Content" (work footage).
+    _sub = (os.getenv("CONTENT_FOLDER") or "").strip()
     for path_lower, display in _top_level_folders(dbx):
         brand = classify_brand(display)
         if not brand:
             continue
-        vids = [f for f in dbx.list_folder(path_lower) if f.name.lower().endswith(VIDEO_EXTS)]
+        src = f"{path_lower.rstrip('/')}/{_sub.lower()}" if _sub else path_lower
+        try:
+            vids = [f for f in dbx.list_folder(src) if f.name.lower().endswith(VIDEO_EXTS)]
+        except Exception:  # noqa: BLE001 — subfolder missing for this brand
+            vids = []
         if match:
             vids = [f for f in vids if match.lower() in f.name.lower()]
         if not vids:
@@ -752,6 +759,42 @@ def _first_video(dbx, match: str | None = None):
             shutil.copy(raw, local)
         return f, local, base, brand, display
     return None
+
+
+def _list_videos(dbx, limit: int = 1, match: str | None = None) -> list:
+    """Up to ``limit`` videos from the first matching brand's (CONTENT_FOLDER-
+    scoped) folder, each downloaded -> (file, local, base, brand, display).
+    Stays within ONE brand folder (per-brand isolation)."""
+    import shutil
+    _sub = (os.getenv("CONTENT_FOLDER") or "").strip()
+    out: list = []
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            continue
+        src = f"{path_lower.rstrip('/')}/{_sub.lower()}" if _sub else path_lower
+        try:
+            vids = [f for f in dbx.list_folder(src)
+                    if f.name.lower().endswith(VIDEO_EXTS)]
+        except Exception:  # noqa: BLE001 — subfolder missing for this brand
+            vids = []
+        if match:
+            # Match against the SLUG (same form as clip ids), so a user-friendly
+            # "sep-17-2025" matches a raw filename like "Video Sep 17 2025 ...".
+            m = _slug(match)
+            vids = [f for f in vids if m in _slug(f.name) or match.lower() in f.name.lower()]
+        if not vids:
+            continue
+        for f in vids[:limit]:
+            raw = dbx.download(f)
+            base = _slug(f.name) or "clip"
+            ext = os.path.splitext(f.name)[1] or ".mp4"
+            local = os.path.join(os.path.dirname(raw), f"{base}{ext}")
+            if os.path.abspath(local) != os.path.abspath(raw):
+                shutil.copy(raw, local)
+            out.append((f, local, base, brand, display))
+        break          # only the first brand folder that has videos
+    return out
 
 
 def dump_transcript() -> None:
@@ -822,6 +865,166 @@ def dump_thumbs() -> None:
                  "-frames:v", "1", "-q:v", "4", sheet],
                 check=False, capture_output=True)
             print(f"contact sheet {base}.jpg (dur={dur:.1f}s)")
+
+
+def detect_shots_bulk(match: str | None = None, force: bool = False) -> int:
+    """Scene-split every brand video into a shot list — Phase 1 of the bulk
+    pipeline. Writes ``content/shots/<brand>-<base>.json`` (start/end per shot)
+    for the scoring stage to consume. NEVER touches the queue or posts anything.
+
+    Dedupe is the shot file itself: a video is re-detected only when its Dropbox
+    ``rev`` changed (or ``force``). ``match`` limits to filenames containing it.
+    Uses the free ffmpeg scene filter (PySceneDetect if installed) — no API keys.
+    """
+    from services.ingest import dropbox_client as dbx  # lazy
+    from services.score.shots import detect_shots  # lazy (ffmpeg)
+
+    out_dir = os.path.join(ROOT, "content", "shots")
+    os.makedirs(out_dir, exist_ok=True)
+    made = 0
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            continue
+        brand_key = brand[0]
+        for f in dbx.list_folder(path_lower):
+            if not f.name.lower().endswith(VIDEO_EXTS):
+                continue
+            if match and match.lower() not in f.name.lower():
+                continue
+            base = _slug(f.name) or "clip"
+            shot_path = os.path.join(out_dir, f"{brand_key}-{base}.json")
+            if not force and os.path.exists(shot_path):
+                prev = _load_json(shot_path, {})
+                if prev.get("rev") and prev.get("rev") == getattr(f, "rev", ""):
+                    print(f"[{brand_key}] shots up-to-date: {base} (skip)")
+                    continue
+            try:
+                raw = dbx.download(f)
+                shots = detect_shots(raw)
+            except Exception as ex:  # noqa: BLE001 — one bad video never kills the run
+                print(f"[{brand_key}] shot-detect FAILED {f.name}: {ex}")
+                continue
+            dur = shots[-1]["end"] if shots else 0.0
+            _save_json(shot_path, {
+                "video": f.name,
+                "base": base,
+                "brand": brand_key,
+                "rev": getattr(f, "rev", ""),
+                "duration": round(dur, 2),
+                "n_shots": len(shots),
+                "detector": getattr(detect_shots, "last_detector", "ffmpeg"),
+                "shots": shots,
+            })
+            made += 1
+            print(f"[{brand_key}] {base}: {len(shots)} shots ({dur:.1f}s) -> "
+                  f"content/shots/{brand_key}-{base}.json")
+    print(f"\ndetect_shots_bulk: wrote/updated {made} shot list(s). "
+          f"Nothing posted (analysis only).")
+    return made
+
+
+def score_shots_bulk(match: str | None = None, force: bool = False) -> int:
+    """Phase 2: score every shot's postability and rank them best-first.
+
+    For each brand video it (re)detects shots if needed, scores each shot with
+    the free visual brain (sharpness/motion/exposure/colour, + optional CLIP),
+    and writes ``content/scores/<brand>-<base>.json`` — the ranked feed Phase 4
+    surfaces. Dedupes on Dropbox ``rev``. NEVER touches the queue or posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+    from services.score.shots import detect_shots  # lazy
+    from services.score.visual import score_shot  # lazy (PIL+ffmpeg)
+
+    shots_dir = os.path.join(ROOT, "content", "shots")
+    scores_dir = os.path.join(ROOT, "content", "scores")
+    os.makedirs(scores_dir, exist_ok=True)
+    scorer = os.getenv("SCORER", "heuristic")
+    made = 0
+    for path_lower, display in _top_level_folders(dbx):
+        brand = classify_brand(display)
+        if not brand:
+            continue
+        brand_key = brand[0]
+        for f in dbx.list_folder(path_lower):
+            if not f.name.lower().endswith(VIDEO_EXTS):
+                continue
+            if match and match.lower() not in f.name.lower():
+                continue
+            base = _slug(f.name) or "clip"
+            score_path = os.path.join(scores_dir, f"{brand_key}-{base}.json")
+            if not force and os.path.exists(score_path):
+                prev = _load_json(score_path, {})
+                if prev.get("rev") and prev.get("rev") == getattr(f, "rev", ""):
+                    print(f"[{brand_key}] scores up-to-date: {base} (skip)")
+                    continue
+            try:
+                raw = dbx.download(f)
+                shot_file = os.path.join(shots_dir, f"{brand_key}-{base}.json")
+                shots = _load_json(shot_file, {}).get("shots") or detect_shots(raw)
+                scored = []
+                for sh in shots:
+                    m = score_shot(raw, float(sh["start"]), float(sh["end"]))
+                    scored.append({**sh, **m})
+            except Exception as ex:  # noqa: BLE001 — one bad video never kills the run
+                print(f"[{brand_key}] score FAILED {f.name}: {ex}")
+                continue
+            ranked = sorted(range(len(scored)),
+                            key=lambda i: scored[i].get("fire_score", 0), reverse=True)
+            best = scored[ranked[0]]["fire_score"] if scored else 0
+            _save_json(score_path, {
+                "video": f.name, "base": base, "brand": brand_key,
+                "rev": getattr(f, "rev", ""), "scorer": scorer,
+                "n_shots": len(scored), "best_score": best,
+                "ranked": ranked, "shots": scored,
+            })
+            made += 1
+            print(f"[{brand_key}] {base}: scored {len(scored)} shots, "
+                  f"best={best:.1f} -> content/scores/{brand_key}-{base}.json")
+    print(f"\nscore_shots_bulk: wrote/updated {made} score file(s). "
+          f"Nothing posted (analysis only).")
+    return made
+
+
+def build_review_feed() -> str:
+    """Phase 4: write content/review/index.html — a best-first page of the
+    clips in review, scored where known. Reads the queue + content/scores/*.json;
+    plays local content/preview/*.mp4 when present, else the Dropbox media_url.
+    Never posts; purely a fast keep/kill surface for the owner."""
+    import glob  # lazy, stdlib
+    from services.review.feed import render_review_html  # lazy
+
+    # base/brand -> best_score, so a clip can inherit a score even if its entry
+    # didn't carry one (e.g. a montage named after the source video's base).
+    best_by_base: dict[str, float] = {}
+    for sp in glob.glob(os.path.join(ROOT, "content", "scores", "*.json")):
+        d = _load_json(sp, {})
+        if d.get("base"):
+            best_by_base[f"{d.get('brand')}-{d['base']}"] = d.get("best_score")
+
+    preview_dir = os.path.join(ROOT, "content", "preview")
+    items = []
+    for e in _load_json(QUEUE_PATH, []):
+        if e.get("status") != "review":
+            continue
+        cid = e.get("id", "")
+        score = e.get("fire_score")
+        if score is None:
+            for key, val in best_by_base.items():
+                if cid.startswith(key):
+                    score = val
+                    break
+        local = os.path.join(preview_dir, f"{cid}.mp4")
+        src = f"../preview/{cid}.mp4" if os.path.exists(local) else (e.get("media_url") or "")
+        items.append({"id": cid, "brand": e.get("brand", ""), "fire_score": score,
+                      "text": e.get("text", ""), "src": src})
+
+    out_dir = os.path.join(ROOT, "content", "review")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "index.html")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(render_review_html(items))
+    print(f"build_review_feed: {len(items)} clip(s) -> content/review/index.html")
+    return out_path
 
 
 def fetch_ig_reference(brand_key: str = "hp", limit: int = 24) -> int:
@@ -964,6 +1167,59 @@ def prune_clips(keep_ids: list[str]) -> list[dict]:
     return kept
 
 
+def copy_clips(ids: list[str], dest_sub: str = "HP Posts") -> int:
+    """Copy the listed clips' Dropbox files into the brand's ``dest_sub`` folder
+    (e.g. 'HP Posts'). Does NOT post — just places the owner-approved clips where
+    they want them. Leaves the originals + queue entries untouched."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    sel = {i.strip() for i in ids if i.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    n = 0
+    for e in queue:
+        if e.get("id") not in sel:
+            continue
+        mp = e.get("media_path")
+        if not mp:
+            continue
+        brand_root = os.path.dirname(os.path.dirname(mp))   # ".../<brand>"
+        dest = f"{brand_root}/{dest_sub}/{os.path.basename(mp)}"
+        try:
+            dbx.copy(mp, dest)
+            print(f"copied {e.get('id')} -> {dest}")
+            n += 1
+        except Exception as ex:  # noqa: BLE001 — one bad copy shouldn't stop the rest
+            print(f"copy failed {e.get('id')}: {ex}")
+    print(f"\nCopied {n} clip(s) to '{dest_sub}'. Nothing posted.")
+    return n
+
+
+def delete_clips(delete_ids: list[str]) -> list[dict]:
+    """Delete the listed clips (Dropbox file + queue entry); keep everything else.
+    The inverse of :func:`prune_clips` — safer when removing a few bad clips out
+    of many (list the few to drop, not the many to keep). Never posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    drop = {k.strip() for k in delete_ids if k.strip()}
+    queue = _load_json(QUEUE_PATH, [])
+    kept, removed = [], 0
+    for e in queue:
+        if e.get("id") not in drop:
+            kept.append(e)
+            continue
+        mp = e.get("media_path")
+        if mp:
+            try:
+                dbx.delete(mp)
+            except Exception as ex:  # noqa: BLE001 — missing file is fine, still drop the entry
+                print(f"delete failed {mp}: {ex}")
+        print(f"deleted {e.get('id')}")
+        removed += 1
+    _save_json(QUEUE_PATH, kept)
+    print(f"\nDeleted {removed} clip(s); kept {len(kept)}.")
+    return kept
+
+
 # ---- SupoClip-style auto highlight selection (free, local Whisper, no LLM) ----
 # Words that signal a strong hook/payoff in landscaping/reno talking-head clips.
 HOOK_WORDS = (
@@ -972,29 +1228,84 @@ HOOK_WORDS = (
     "beautiful", "expensive", "crazy", "insane", "look at", "turned out", "dream",
     "results", "result", "best", "perfect", "love",
 )
-FILLER_WORDS = ("um ", "uh ", " like ", "you know", "i mean", "kind of", "sort of")
+# Phrases that open a strong, self-contained "saying" — a clip that starts on one
+# of these tends to be quotable and grabs attention in the first second.
+OPENER_PHRASES = (
+    "here's", "the biggest", "most people", "the secret", "the truth", "if you",
+    "the number one", "the best", "the worst", "the key", "the problem", "the reason",
+    "this is why", "that's why", "the thing about", "a lot of people", "the mistake",
+    "let me tell you", "i'll tell you", "what i", "remember", "listen", "honestly",
+    "my advice", "pro tip", "fun fact", "the trick",
+)
+# Punchy, opinionated, concrete words that make a line land.
+PUNCH_WORDS = (
+    "never", "always", "huge", "guarantee", "guaranteed", "promise", "proven",
+    "secret", "mistake", "biggest", "number one", "literally", "game changer",
+    "worth it", "trust me", "the most", "every time", "matters", "important",
+    "key", "difference", "quality", "value", "honest", "real",
+)
+FILLER_WORDS = ("um ", "uh ", " like ", "you know", "i mean", "kind of", "sort of",
+                " uh,", " um,", "basically", " so yeah", "i guess")
+# A trailing word that means the thought isn't finished — bad place to end a clip.
+DANGLING_TAILS = ("and", "but", "so", "because", "or", "the", "a", "to", "that",
+                  "with", "for", "of", "if", "when", "we", "i", "it's", "like")
 
 
 def _score_segment_text(text: str, dur: float) -> float:
-    """Heuristic 'is this a good moment' score for a stretch of speech (no LLM).
+    """Heuristic 'is this a good, quotable saying' score (no LLM, $0).
 
-    Rewards lively delivery (words/sec) and hook words; penalizes filler and
-    lengths far from the ~15s sweet spot. Stands in for SupoClip's paid LLM.
+    Rewards: lively delivery, a strong opener, punch/hook words, and a COMPLETE
+    thought (ends on sentence punctuation). Penalizes: filler, word repetition,
+    dead air (very low words/sec), a dangling unfinished tail, and lengths far
+    from the short-clip sweet spot (~14s). A genuinely weak stretch scores <= 0
+    so it never becomes a clip — that's the 'accurate' part.
     """
-    t = (text or "").lower()
+    raw = (text or "").strip()
+    t = raw.lower()
     words = re.findall(r"[a-z']+", t)
-    if not words or dur <= 0:
+    if len(words) < 4 or dur <= 0:
         return 0.0
-    density = min((len(words) / dur) / 3.0, 1.0)      # ~3 words/sec reads as lively
-    hooks = sum(1 for h in HOOK_WORDS if h in t)
+
+    wps = len(words) / dur
+    density = min(wps / 2.8, 1.0)                  # lively delivery
+    if wps < 1.1:                                  # long silences / dead air
+        density -= 0.5
+
+    opener = 1.0 if any(t.startswith(p) or f" {p}" in t[:40] for p in OPENER_PHRASES) else 0.0
+    hooks = min(sum(1 for h in HOOK_WORDS if h in t), 3)
+    punch = min(sum(1 for p in PUNCH_WORDS if p in t), 3)
+
+    ends_clean = 1.0 if raw.endswith((".", "!", "?")) else 0.0
+    last = words[-1]
+    dangling = 1.0 if (last in DANGLING_TAILS and not ends_clean) else 0.0
+
     filler = sum(t.count(f) for f in FILLER_WORDS)
-    score = density + 0.6 * hooks - 0.15 * filler
-    score -= abs(dur - 15.0) / 30.0                   # prefer a satisfying ~15s
+    filler_density = filler / max(1, len(words) / 8)   # per ~8 words
+    uniq = len(set(words)) / len(words)                # 1.0 = no repetition
+    repetition = max(0.0, 0.7 - uniq)                  # penalize heavy repeats
+
+    score = (density
+             + 0.9 * opener
+             + 0.4 * hooks
+             + 0.35 * punch
+             + 0.5 * ends_clean
+             - 0.7 * dangling
+             - 0.25 * filler_density
+             - 1.2 * repetition)
+    # Ideal length 12-30s (no penalty), gentle penalty outside (owner spec #6).
+    score -= max(0.0, abs(dur - 21.0) - 9.0) / 30.0
     return score
 
 
+# Windows shorter than this must be a complete sentence to qualify (so short
+# clips are punchy one-liners, never cut-off fragments).
+SHORT_CLIP_MAX = 6.0
+_SENT_END = re.compile(r"[.!?][\"')\]]*\s*$")
+
+
 def _pick_highlights(segments, n: int = 4, min_len: float = 7.0,
-                     max_len: float = 20.0) -> list[tuple[float, float, str]]:
+                     max_len: float = 20.0, min_score: float = 0.0
+                     ) -> list[tuple[float, float, str]]:
     """Pick up to ``n`` non-overlapping [start,end] windows snapped to sentence
     (segment) boundaries, ranked by :func:`_score_segment_text`.
 
@@ -1011,12 +1322,19 @@ def _pick_highlights(segments, n: int = 4, min_len: float = 7.0,
             a, b = segs[i].start_seconds, segs[j].end_seconds
             if (b - a) >= min_len:
                 text = " ".join(s.text for s in segs[i:j + 1])
+                # Short clips are welcome, but only as a COMPLETE thought — a
+                # window under SHORT_CLIP_MAX must end on . ! or ? so we never
+                # ship a cut-off fragment. Longer windows are trimmed/extended
+                # later, so they aren't gated here.
+                if (b - a) < SHORT_CLIP_MAX and not _SENT_END.search(text.strip()):
+                    j += 1
+                    continue
                 candidates.append((_score_segment_text(text, b - a), a, b))
             j += 1
     candidates.sort(key=lambda c: c[0], reverse=True)
     picked: list[tuple[float, float]] = []
     for score, a, b in candidates:
-        if score <= 0:
+        if score <= min_score:           # only GREAT clips clear the bar
             continue
         if all(b <= pa or a >= pb for pa, pb in picked):
             picked.append((a, b))
@@ -1049,6 +1367,623 @@ def auto_highlights(n: int = 4, match: str | None = None) -> list[dict]:
     print(f"auto_highlights: {base} -> {[(a, b) for a, b, _ in wins]}")
     specs = [{"name": nm, "video": match, "start": a, "end": b} for a, b, nm in wins]
     return cut_windows(specs)
+
+
+def _slice_segments(segments, a: float, b: float):
+    """Return transcript segments inside ``[a,b]``, re-timed to start at 0 — so an
+    animated-caption file lines up with a clip cut from that window."""
+    from services.caption.transcribe import Segment, Word  # lazy
+
+    out = []
+    for s in segments:
+        ss = getattr(s, "start_seconds", None)
+        se = getattr(s, "end_seconds", None)
+        if ss is None or se is None or se <= a or ss >= b:
+            continue
+        ns, ne = max(ss, a) - a, min(se, b) - a
+        if ne <= ns:
+            continue
+        words = []
+        for w in (getattr(s, "words", None) or []):
+            ws = getattr(w, "start_seconds", None)
+            we = getattr(w, "end_seconds", None)
+            if ws is None or we is None or we <= a or ws >= b:
+                continue
+            words.append(Word(text=getattr(w, "text", ""),
+                              start_seconds=max(ws, a) - a, end_seconds=min(we, b) - a))
+        out.append(Segment(text=(getattr(s, "text", "") or "").strip(),
+                           start_seconds=ns, end_seconds=ne, words=words))
+    return out
+
+
+def _burn_ass(src: str, ass_path: str, out_path: str) -> str:
+    """Burn an ASS (word-by-word animated) subtitle file onto a clip, keep audio."""
+    import subprocess  # lazy
+    safe = ass_path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", src, "-vf", f"ass={safe}",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+         "-c:a", "copy", "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    return out_path
+
+
+# ---- clean cuts, internal-weak removal, caption re-timing (talking clips) ----
+# Words that should never START or END a clip (stutters / filler / dangling).
+_EDGE_FILLER = {"um", "uh", "er", "umm", "uhh", "hmm", "so", "like", "well",
+                "yeah", "okay", "ok", "and", "but", "or", "you", "know", "i",
+                "mean", "just", "basically", "actually"}
+
+
+def _norm_word(w) -> str:
+    return re.sub(r"[^a-z']", "", (getattr(w, "text", "") or "").lower())
+
+
+def _words_in(segments, a: float, b: float):
+    """Flat list of timed words inside [a,b], in order."""
+    out = []
+    for s in segments:
+        for w in (getattr(s, "words", None) or []):
+            ws = getattr(w, "start_seconds", None)
+            we = getattr(w, "end_seconds", None)
+            if ws is None or we is None or we <= a or ws >= b:
+                continue
+            out.append(w)
+    return out
+
+
+def _trim_to_clean(segments, a: float, b: float, pad: float = 0.08) -> tuple[float, float]:
+    """Nudge [a,b] so the clip STARTS and ENDS on a clear, content word — never
+    a stutter, filler word, or mid-pause (owner spec #4)."""
+    words = _words_in(segments, a, b)
+    if not words:
+        return a, b
+    i, j = 0, len(words) - 1
+    while i < j and _norm_word(words[i]) in _EDGE_FILLER:
+        i += 1
+    # drop an immediate stutter repeat at the new start ("we we", "the the")
+    if i + 1 < j and _norm_word(words[i]) and _norm_word(words[i]) == _norm_word(words[i + 1]):
+        i += 1
+    while j > i and _norm_word(words[j]) in _EDGE_FILLER:
+        j -= 1
+    na = max(a, float(getattr(words[i], "start_seconds", a)) - pad)
+    nb = min(b, float(getattr(words[j], "end_seconds", b)) + pad)
+    return (na, nb) if nb > na else (a, b)
+
+
+# Whisper "base" mis-hears HP's spoken brand lines. Fix them in the captions
+# (owner choice: fast brand-word correction, not a slower model). Each rule is
+# (mis-heard word sequence -> correct words); matching is case/punctuation
+# -insensitive and timing is redistributed across the replacement words so the
+# karaoke stays in sync. Keep rules specific so normal speech is never touched.
+# Source tokens are MATCHED after _norm_alnum (lowercase, punctuation+hyphens
+# stripped) — so Whisper's hyphenated single tokens like "higher-privileged"
+# normalize to "higherprivileged" and must be listed in that joined form, NOT as
+# two words. Both the 2-token (hyphenated) and 3-word spellings are covered.
+_BRAND_FIXES = [
+    (["higherprivileged", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["higherpurpose", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["higher", "privileged", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["higher", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hide", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hyde", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["high", "purpose", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hydepurpose", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hyperbist", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hyperbness", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hyperb", "nation"], ["Higher", "Purpose", "Nation"]),
+    (["hb", "nation"], ["HP", "Nation"]),
+    (["hp", "nation"], ["HP", "Nation"]),
+    (["hpe", "nation"], ["HP", "Nation"]),
+    (["hbnation"], ["HP", "Nation"]),
+]
+
+
+def _norm_alnum(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def _fix_brand_words(segments):
+    """Correct known brand mis-hears in the transcript before captions are burned.
+
+    Operates on the word list so the burned karaoke text is right; timing for a
+    replacement is spread evenly across the new words and trailing punctuation is
+    preserved. Unmatched words pass through untouched."""
+    from services.caption.transcribe import Segment, Word  # lazy
+
+    out = []
+    for s in segments:
+        words = list(getattr(s, "words", None) or [])
+        if not words:
+            out.append(s)
+            continue
+        fixed: list = []
+        i = 0
+        while i < len(words):
+            hit = None
+            for src, dst in _BRAND_FIXES:
+                k = len(src)
+                if i + k <= len(words) and all(
+                        _norm_alnum(getattr(words[i + t], "text", "")) == src[t]
+                        for t in range(k)):
+                    hit = (k, dst)
+                    break
+            if hit:
+                k, dst = hit
+                a = float(getattr(words[i], "start_seconds", 0.0))
+                b = float(getattr(words[i + k - 1], "end_seconds", a))
+                last_txt = (getattr(words[i + k - 1], "text", "") or "").strip()
+                mt = re.search(r"[^A-Za-z0-9]+$", last_txt)
+                trail = mt.group(0) if mt else ""
+                m = len(dst)
+                span = (b - a) / m if m else 0.0
+                for t, wt in enumerate(dst):
+                    ws = a + t * span
+                    we = b if t == m - 1 else a + (t + 1) * span
+                    fixed.append(Word(text=wt + (trail if t == m - 1 else ""),
+                                      start_seconds=ws, end_seconds=we))
+                i += k
+            else:
+                fixed.append(words[i])
+                i += 1
+        new_text = " ".join((getattr(w, "text", "") or "") for w in fixed).strip()
+        out.append(Segment(text=new_text or s.text, start_seconds=s.start_seconds,
+                           end_seconds=s.end_seconds, words=fixed))
+    return out
+
+
+def _all_words(segments):
+    """Every timed word across the segments, in time order."""
+    ws = []
+    for s in segments:
+        for w in (getattr(s, "words", None) or []):
+            if getattr(w, "start_seconds", None) is not None and \
+               getattr(w, "end_seconds", None) is not None:
+                ws.append(w)
+    ws.sort(key=lambda w: w.start_seconds)
+    return ws
+
+
+def _snap_bounds(segments, a: float, b: float, lead: float = 0.18,
+                 trail: float = 0.32):
+    """Move the cut points into the SILENCE around the speech so a clip never
+    starts or ends mid-word (owner: "stop cutting over my words").
+
+    ``a`` is pulled back into the gap just before the first word inside [a,b]
+    (without crossing into the previous word); ``b`` is pushed into the gap just
+    after the last word (without crossing into the next word). Generous lead/trail
+    give the clip breathing room when there's a real pause."""
+    words = _all_words(segments)
+    if not words:
+        return a, b
+    inside = [w for w in words if w.end_seconds > a and w.start_seconds < b]
+    if not inside:
+        return a, b
+    first, last = inside[0], inside[-1]
+    # previous / next word (may sit outside [a,b]) so we don't slice into them
+    prev_end = max([w.end_seconds for w in words if w.end_seconds <= first.start_seconds + 1e-3]
+                   or [first.start_seconds - lead - 0.001])
+    next_start = min([w.start_seconds for w in words if w.start_seconds >= last.end_seconds - 1e-3]
+                     or [last.end_seconds + trail + 0.001])
+    na = first.start_seconds - lead
+    if na < prev_end:                       # would clip the previous word
+        na = (prev_end + first.start_seconds) / 2.0   # sit in the gap instead
+    nb = last.end_seconds + trail
+    if nb > next_start:                     # would clip the next word
+        nb = (last.end_seconds + next_start) / 2.0
+    na = max(0.0, na)
+    return (na, nb) if nb > na else (a, b)
+
+
+def _split_block(words, max_len: float):
+    """Split a too-long run of words at its LARGEST internal pause, recursively,
+    until every piece is <= ``max_len`` — so a long monologue breaks at natural
+    stops, never mid-sentence."""
+    a, b = words[0].start_seconds, words[-1].end_seconds
+    if b - a <= max_len or len(words) < 2:
+        return [(a, b)]
+    gi = max(range(len(words) - 1),
+             key=lambda i: words[i + 1].start_seconds - words[i].end_seconds)
+    return _split_block(words[:gi + 1], max_len) + _split_block(words[gi + 1:], max_len)
+
+
+def _speech_blocks(segments, min_gap: float = 1.2, min_len: float = 4.0,
+                   max_len: float = 55.0):
+    """Cut the video into NON-OVERLAPPING blocks of continuous talking, split only
+    where the speaker actually pauses (a gap >= ``min_gap``). Each block is one
+    complete clip — a walkthrough that's narrated straight through stays ONE clip;
+    a long block is split at its biggest internal pauses so no piece runs over
+    ``max_len``. This replaces the old overlapping-window picker that chopped over
+    sentences (owner: "one clean complete clip, don't cut over my talking")."""
+    words = _all_words(segments)
+    if not words:
+        return []
+    blocks: list[list] = []
+    cur = [words[0]]
+    for w in words[1:]:
+        if w.start_seconds - cur[-1].end_seconds >= min_gap:
+            blocks.append(cur)
+            cur = [w]
+        else:
+            cur.append(w)
+    blocks.append(cur)
+    out: list[tuple[float, float, str]] = []
+    for blk in blocks:
+        a, b = blk[0].start_seconds, blk[-1].end_seconds
+        if b - a < min_len:
+            continue                       # skip a stray word / tiny fragment
+        text = " ".join((getattr(w, "text", "") or "") for w in blk)
+        if _score_segment_text(text, b - a) <= 0.0:
+            continue                       # pure filler/dead-air block
+        for (pa, pb) in _split_block(blk, max_len):
+            if pb - pa >= min_len:
+                out.append((round(pa, 2), round(pb, 2), ""))
+    return [(a, b, f"auto-{k + 1}") for k, (a, b, _) in enumerate(out)]
+
+
+def _shift_segments(segs, off: float):
+    """Shift sliced (clip-relative) segments by ``off`` seconds (for stitching)."""
+    from services.caption.transcribe import Segment, Word  # lazy
+    out = []
+    for s in segs:
+        out.append(Segment(
+            text=s.text, start_seconds=s.start_seconds + off,
+            end_seconds=s.end_seconds + off,
+            words=[Word(text=w.text, start_seconds=w.start_seconds + off,
+                        end_seconds=w.end_seconds + off) for w in s.words]))
+    return out
+
+
+def _clip_pieces(segments, a: float, b: float, drop_below: float) -> list[tuple[float, float]]:
+    """Inside [a,b], keep the talking and only cut out a LONG dead/filler stretch
+    in the MIDDLE (jump-cut) — never the first or last bit, and never a short
+    connective beat. This keeps clips continuous and complete instead of
+    "cutting out" or ending early; only a genuinely boring >=1.8s middle run is
+    removed (owner spec #5: e.g. "first 5s + 13-20s", boring 6-12s cut).
+
+    Returns merged (start,end) runs. A dropped middle stretch splits the runs;
+    everything else stays one continuous piece."""
+    segs: list[list[float]] = []
+    for s in segments:
+        ss, se = getattr(s, "start_seconds", None), getattr(s, "end_seconds", None)
+        if ss is None or se is None or se <= a or ss >= b:
+            continue
+        ss, se = max(ss, a), min(se, b)
+        if se <= ss:
+            continue
+        score = _score_segment_text(getattr(s, "text", "") or "", se - ss)
+        segs.append([ss, se, score])
+    if not segs:
+        return []
+    n = len(segs)
+    runs: list[list[float]] = []
+    for idx, (ss, se, score) in enumerate(segs):
+        interior = 0 < idx < n - 1
+        # Only drop an INTERIOR, weak, and long-enough (>=1.8s) stretch. Keeping
+        # the first/last segment and all short beats is what stops clips from
+        # ending early or jump-cutting on every little pause.
+        if interior and score < drop_below and (se - ss) >= 1.8:
+            continue
+        if runs and ss - runs[-1][1] < 0.6:
+            runs[-1][1] = se              # bridge small pauses -> one smooth run
+        else:
+            runs.append([ss, se])
+    return [(round(x, 2), round(y, 2)) for x, y in runs]
+
+
+def _extend_to_thought_end(segments, a: float, b: float, hard_max: float,
+                           pause_gap: float = 0.9) -> float:
+    """Push ``b`` forward to where the speaker ACTUALLY stops talking — a real
+    pause — not just the first period (owner: "clips cut off before I finish").
+
+    Whisper drops a period at every little breath, so stopping at the first ``.``
+    chops the thought. Instead, keep extending through every following word while
+    the gap to it is under ``pause_gap`` (still talking), and stop at the first
+    real pause >= ``pause_gap`` or the ``hard_max`` length cap. _snap_bounds then
+    lands the cut inside that pause."""
+    words = _all_words(segments)
+    if not words:
+        return b
+    nb = last_end = b
+    for w in words:
+        if w.start_seconds < nb - 0.05:
+            continue                      # already inside the clip
+        if w.start_seconds - last_end >= pause_gap:
+            break                         # real pause -> the thought is done
+        if w.end_seconds - a > hard_max:
+            break                         # length cap
+        nb = last_end = w.end_seconds
+    return max(nb, b)
+
+
+def _hardcat(parts: list[str], out_path: str) -> str:
+    """Jump-cut concat (no crossfade) — keeps audio and exact durations so the
+    stitched captions stay perfectly in sync."""
+    import subprocess  # lazy
+    if len(parts) == 1:
+        import shutil
+        shutil.copy(parts[0], out_path)
+        return out_path
+    lst = out_path + ".txt"
+    with open(lst, "w") as f:
+        for p in parts:
+            f.write(f"file '{os.path.abspath(p)}'\n")
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst,
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path],
+        check=True, capture_output=True)
+    os.remove(lst)
+    return out_path
+
+
+def auto_clips(n: int = 4, match: str | None = None, captions: bool = True) -> list[dict]:
+    """Talking-head -> short clips of the best sayings, with animated subtitles.
+
+    Processes up to ``AUTO_CLIPS_VIDEOS`` source videos (default 1) from the
+    CONTENT_FOLDER-scoped brand folder. For each: transcribe, accurately pick its
+    strongest self-contained moments, clean-cut + drop weak middles, burn the
+    few-words-at-a-time karaoke captions, add logo + outro, and add a
+    ``status:"review"`` entry. NEVER posts. CAPTIONS=0 skips subs."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    match = match or os.getenv("PIPELINE_VIDEO") or None
+    captions = captions and os.getenv("CAPTIONS", "1").strip().lower() not in ("0", "false", "no")
+    nv_raw = (os.getenv("AUTO_CLIPS_VIDEOS") or "1").strip().lower()
+    n_videos = 100000 if nv_raw in ("all", "0", "max", "*", "") else int(nv_raw)
+    vids = _list_videos(dbx, n_videos, match)
+    if not vids:
+        print("auto_clips: no matching video found.")
+        return []
+    print(f"auto_clips: processing {len(vids)} video(s): {[v[2] for v in vids]}")
+    queue = _load_json(QUEUE_PATH, [])
+    made: list[dict] = []
+    for ctx in vids:
+        try:
+            made += _clips_for_video(ctx, n, captions, dbx, queue)
+        except Exception as ex:  # noqa: BLE001 — one bad video never kills the batch
+            print(f"auto_clips: video {ctx[2]} failed: {ex}")
+    _save_json(QUEUE_PATH, queue)
+    print(f"auto_clips: {len(made)} captioned clip(s) from {len(vids)} video(s). "
+          f"Nothing posted (status=review).")
+    return made
+
+
+def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict]:
+    """Make the captioned clips for ONE source video (mutates ``queue``)."""
+    from services.caption import transcribe  # lazy
+    from services.caption.burn import write_ass  # lazy
+    from services.assemble.style import append_outro  # lazy — brand end-card
+
+    _f, local, base, brand, display = ctx
+    brand_key, dispname, tags = brand
+    segs = _fix_brand_words(transcribe(local))   # correct brand mis-hears first
+    # Diagnostic: how much speech did Whisper actually find? 0 segments == truly
+    # silent/no-audio footage; >0 == someone is talking and MUST yield clips.
+    spoken = [s for s in segs
+              if (getattr(s, "text", "") or "").strip()
+              and getattr(s, "end_seconds", 0) > getattr(s, "start_seconds", 0)]
+    words = sum(len((getattr(s, "text", "") or "").split()) for s in spoken)
+    print(f"auto_clips: {base}: {len(spoken)} speech segment(s), ~{words} words.")
+    # Pull MULTIPLE good sayings per video (owner: "more than 6 clips from 5
+    # videos"). Tighter windows (<=28s, near the 12-30s ideal) let a longer
+    # video pack 2-4 clips instead of one 45s window eating the whole timeline;
+    # a 0.4 floor still drops filler/dead-air (those score <=0) but lets solid
+    # sayings through so weak videos still yield something. Both env-tunable.
+    # ONE clean complete clip per continuous block of talking — split only where
+    # the speaker actually pauses (>= CLIP_PAUSE_GAP). No overlapping windows, no
+    # cutting over sentences. A straight-through walkthrough stays one clip; a
+    # long block is split at its biggest internal pauses (<= CLIP_MAX_LEN).
+    pause_gap = float(os.getenv("CLIP_PAUSE_GAP", "1.2"))
+    max_len = float(os.getenv("CLIP_MAX_LEN", "55"))
+    wins = _speech_blocks(segs, min_gap=pause_gap, min_len=4.0, max_len=max_len)
+    if not wins:
+        why = ("only filler/garbled speech, no real saying"
+               if spoken else "TRULY no speech (0 segments)")
+        print(f"auto_clips: {base}: no usable block ({why}) — skipped as b-roll "
+              f"(use the montage path for footage with no real talking).")
+        return []
+    print(f"auto_clips: {base} -> {[(a, b) for a, b, _ in wins]}")
+
+    workdir = os.path.dirname(local)
+    # Caption look (owner spec): bold sans, white + thin outline, ~48-60px, shown
+    # a few words at a time. Roboto ships on the runner (fonts-roboto).
+    font = os.getenv("CAPTION_FONT", "Roboto")
+    fsize = int(os.getenv("CAPTION_FONT_SIZE", "54"))
+    max_words = int(os.getenv("CAPTION_MAX_WORDS", "4"))
+    made: list[dict] = []
+    lg = _brand_logo(brand_key)
+    for a0, b0, nm in wins:
+        cut = os.path.join(workdir, f"{base}-{nm}.mp4")
+        try:
+            # The block already ends at a real pause; just trim filler edges and
+            # snap the cut points INTO the surrounding silence (never mid-word).
+            a, b = _trim_to_clean(segs, a0, b0)
+            a, b = _snap_bounds(segs, a, b)
+            # ONE continuous slice — never jump-cut, so no words are dropped out
+            # of the middle of someone talking.
+            pieces = [(a, b)]
+            parts: list[str] = []
+            clip_segs: list = []
+            off = 0.0
+            for k, (pa, pb) in enumerate(pieces):
+                pp = os.path.join(workdir, f"{base}-{nm}-p{k}.mp4")
+                _edit_short(local, pa, pb, pp, srt=None, mute=False, logo=lg)
+                parts.append(pp)
+                clip_segs += _shift_segments(_slice_segments(segs, pa, pb), off)
+                off += max(0.1, pb - pa)
+            _hardcat(parts, cut)          # jump-cut concat (single piece = copy)
+            final = cut
+            if captions:
+                ass = os.path.join(workdir, f"{base}-{nm}.ass")
+                write_ass(clip_segs, ass, font=font, font_size=fsize,
+                          max_words=max_words)
+                capped = os.path.join(workdir, f"{base}-{nm}-cap.mp4")
+                _burn_ass(cut, ass, capped)
+                final = capped
+            # brand outro end-card on every clip
+            with_outro = os.path.join(workdir, f"{base}-{nm}-final.mp4")
+            try:
+                append_outro(final, with_outro)
+                final = with_outro
+            except Exception as ex:  # noqa: BLE001 — keep the clip even if outro fails
+                print(f"auto_clips: outro skipped for {nm}: {ex}")
+        except Exception as ex:  # noqa: BLE001 — one bad clip never kills the run
+            print(f"auto_clips: clip {nm} failed: {ex}")
+            continue
+        saying = _transcript_text(clip_segs)[:280]
+        if not saying.strip():
+            # No spoken words landed in this window — never ship a silent
+            # "talking" clip. Skip it rather than upload dead air.
+            print(f"auto_clips: {nm}: empty transcript after trim — skipped (no talking).")
+            continue
+        out_name = f"{base}-{nm}.mp4"
+        out_path = f"{display.rstrip('/')}/processed/{out_name}"
+        dbx.upload(final, out_path)
+        url = dbx.shared_link(out_path, raw=True)
+        queue[:] = [e for e in queue if e.get("id") != f"{brand_key}-{base}-{nm}"]
+        entry = {
+            "id": f"{brand_key}-{base}-{nm}", "brand": brand_key,
+            "text": saying, "media_url": url, "media_path": out_path,
+            "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+            "status": "review", "error": None,
+        }
+        queue.append(entry)
+        made.append(entry)
+        print(f"[{brand_key}] {nm}: {a:.0f}-{b:.0f}s -> {out_path}  \"{saying[:60]}\"")
+    return made
+
+
+_HP_BEATS = (
+    ("Excellence Isn't Optional", "fade"),
+    ("It's Our Standard", "word"),
+    ("Transform Your Outdoors", "fade"),
+)
+
+
+def _auto_beats(duration: float) -> list[dict]:
+    """Spread the default HP serif lines across a montage's duration."""
+    n = len(_HP_BEATS)
+    usable = max(2.0, duration - 0.6)
+    span = usable / n
+    beats = []
+    for i, (text, mode) in enumerate(_HP_BEATS):
+        s = 0.3 + i * span
+        beats.append({"text": text, "start": round(s, 2),
+                      "end": round(s + span - 0.15, 2), "mode": mode})
+    return beats
+
+
+def auto_montage(match: str | None = None, target_s: float | None = None,
+                 style: bool = True) -> dict | None:
+    """Phase 3: auto-build a 10–20s locked-style montage from a video's BEST shots.
+
+    Plans a clip that lands near ``target_s`` (default 15s, env MONTAGE_TARGET)
+    using ONLY shots at/above the quality floor (env MONTAGE_MIN_SCORE, default 50)
+    — a weak video yields no clip rather than bad content. Lays the chosen shots
+    out in shifting layouts (each trimmed to a beat), crossfades them, then — when
+    ``style`` — burns serif beats, logos the corner, and crossfades the outro on.
+    Uploads as a ``status:"review"`` entry carrying its ``fire_score``. NEVER posts."""
+    from services.ingest import dropbox_client as dbx  # lazy
+    from services.score.shots import detect_shots  # lazy
+    from services.score.visual import score_shot  # lazy
+    from services.assemble.style import (  # lazy
+        select_for_montage, serif_beats, add_logo, append_outro)
+
+    match = match or os.getenv("PIPELINE_VIDEO") or None
+    target_s = target_s if target_s is not None else float(os.getenv("MONTAGE_TARGET", "15"))
+    min_score = float(os.getenv("MONTAGE_MIN_SCORE", "50"))
+    beat_s = float(os.getenv("MONTAGE_BEAT", "3.0"))
+    ctx = _first_video(dbx, match)
+    if not ctx:
+        print("auto_montage: no matching video found.")
+        return None
+    _f, local, base, brand, display = ctx
+    brand_key, dispname, tags = brand
+
+    # Load (or compute) shot scores for this video.
+    score_file = os.path.join(ROOT, "content", "scores", f"{brand_key}-{base}.json")
+    scored = _load_json(score_file, {}).get("shots")
+    if not scored:
+        shots = detect_shots(local)
+        scored = [{**s, **score_shot(local, s["start"], s["end"])} for s in shots]
+
+    # Plan a target-length montage from only good shots (quality floor applied).
+    plan = select_for_montage(scored, target_s=target_s, beat_s=beat_s,
+                              min_score=min_score, min_gap=1.0, xfade=0.45)
+    if not plan:
+        print(f"auto_montage: no shots clear the quality bar ({min_score}) for "
+              f"{base} — skipping (no clip rather than weak content).")
+        return None
+    seg_scores = [sc for seg in plan for sc in seg["scores"] if sc is not None]
+
+    # Render each planned segment in its layout.
+    workdir = os.path.dirname(local)
+    seg_clips: list[str] = []
+    for li, seg in enumerate(plan):
+        lay, wins = seg["layout"], seg["windows"]
+        n = len(wins)
+        out = os.path.join(workdir, f"aseg-{base}-{li}.mp4")
+        if n == 1:
+            _edit_short(local, float(wins[0][0]), float(wins[0][1]), out, mute=True)
+        elif lay == "cols2":
+            w = 1080 // n
+            tiles = []
+            for j, (a, b) in enumerate(wins):
+                pp = os.path.join(workdir, f"aseg-{base}-{li}-c{j}.mp4")
+                _edit_tile(local, float(a), float(b), pp, w, 1920)
+                tiles.append(pp)
+            _hstackN(tiles, out)
+        else:  # rows2 / rows3
+            h = 1920 // n
+            panels = []
+            for j, (a, b) in enumerate(wins):
+                pp = os.path.join(workdir, f"aseg-{base}-{li}-p{j}.mp4")
+                _edit_tile(local, float(a), float(b), pp, 1080, h)
+                panels.append(pp)
+            _stackN(panels, out)
+        seg_clips.append(out)
+
+    montage = os.path.join(workdir, f"{base}-automontage.mp4")
+    _concat_v(seg_clips, montage, xfade=0.45)
+
+    final = montage
+    if style:
+        try:
+            import subprocess
+            dur = float(subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=nw=1:nk=1", montage],
+                capture_output=True, text=True).stdout.strip() or "12")
+            styled = os.path.join(workdir, f"{base}-styled.mp4")
+            tmp1 = os.path.join(workdir, f"{base}-t1.mp4")
+            tmp2 = os.path.join(workdir, f"{base}-t2.mp4")
+            serif_beats(montage, tmp1, _auto_beats(dur))   # b-roll: text overlay OK
+            add_logo(tmp1, tmp2)
+            append_outro(tmp2, styled)
+            final = styled
+        except Exception as ex:  # noqa: BLE001 — styling is best-effort; ship the montage
+            print(f"auto_montage: styling skipped ({ex}); using unstyled montage.")
+            final = montage
+
+    fire = round(sum(seg_scores) / len(seg_scores), 1) if seg_scores else 0.0
+    out_path = f"{display.rstrip('/')}/processed/{base}-automontage.mp4"
+    dbx.upload(final, out_path)
+    url = dbx.shared_link(out_path, raw=True)
+    queue = [e for e in _load_json(QUEUE_PATH, [])
+             if e.get("id") != f"{brand_key}-{base}-auto"]
+    entry = {
+        "id": f"{brand_key}-{base}-auto", "brand": brand_key,
+        "text": _hp_caption(base) if brand_key == "hp" else "",
+        "media_url": url, "media_path": out_path,
+        "platforms": list(REVIEW_PLATFORMS), "schedule": None,
+        "status": "review", "error": None, "fire_score": fire,
+    }
+    queue.append(entry)
+    _save_json(QUEUE_PATH, queue)
+    print(f"auto_montage: {brand_key}-{base}-auto ({len(seg_clips)} segments, "
+          f"fire={fire}) -> {out_path}")
+    return entry
 
 
 def cut_montage(spec: dict) -> dict | None:
@@ -1313,6 +2248,19 @@ def main(argv: list[str] | None = None) -> int:
         prune_clips(keep_ids.split(","))
         return 0
 
+    # DELETE_IDS: delete just these clips (Dropbox file + queue entry); keep the
+    # rest — for clearing out a handful of bad/garbled/orphan clips.
+    del_ids = os.getenv("DELETE_IDS", "").strip()
+    if del_ids:
+        delete_clips(del_ids.split(","))
+        return 0
+
+    # COPY_IDS: copy approved clips into a brand subfolder (e.g. 'HP Posts').
+    copy_ids = os.getenv("COPY_IDS", "").strip()
+    if copy_ids:
+        copy_clips(copy_ids.split(","), os.getenv("COPY_DEST", "HP Posts").strip() or "HP Posts")
+        return 0
+
     # Dump a timestamped transcript so clip windows can be chosen by time.
     if os.getenv("DUMP_TRANSCRIPT", "").strip().lower() in ("1", "true", "yes"):
         dump_transcript()
@@ -1321,6 +2269,44 @@ def main(argv: list[str] | None = None) -> int:
     # Dump per-video contact sheets so the footage can be 'seen' to pick shots.
     if os.getenv("DUMP_THUMBS", "").strip().lower() in ("1", "true", "yes"):
         dump_thumbs()
+        return 0
+
+    # DETECT_SHOTS: Phase 1 of the bulk pipeline — scene-split every brand video
+    # into content/shots/*.json for scoring. "1"/"true" = all; "force" to redo
+    # unchanged videos; any other value = a filename substring to target one.
+    ds = os.getenv("DETECT_SHOTS", "").strip()
+    if ds:
+        low = ds.lower()
+        force = low in ("force", "all-force")
+        match = None if low in ("1", "true", "yes", "all", "force", "all-force") else ds
+        detect_shots_bulk(match=match, force=force)
+        return 0
+
+    # SCORE_SHOTS: Phase 2 — score + rank every shot best-first into
+    # content/scores/*.json. Same value grammar as DETECT_SHOTS.
+    ss = os.getenv("SCORE_SHOTS", "").strip()
+    if ss:
+        low = ss.lower()
+        force = low in ("force", "all-force")
+        match = None if low in ("1", "true", "yes", "all", "force", "all-force") else ss
+        score_shots_bulk(match=match, force=force)
+        return 0
+
+    # AUTO_MONTAGE: Phase 3 — auto-assemble a locked-style montage from a video's
+    # top-scored shots (value = how many shots to use, e.g. "6").
+    am = os.getenv("AUTO_MONTAGE", "").strip()
+    if am:
+        try:
+            target = float(am)
+        except ValueError:
+            target = None   # "1"/"true" -> default 15s target
+        made = auto_montage(target_s=target)
+        print(f"\nDone: {1 if made else 0} auto montage. Nothing posted (status=review).")
+        return 0
+
+    # REVIEW_FEED: Phase 4 — (re)build the best-first review page.
+    if os.getenv("REVIEW_FEED", "").strip().lower() in ("1", "true", "yes"):
+        build_review_feed()
         return 0
 
     # AUTO_HIGHLIGHTS: free SupoClip-style brain — auto-pick best moments from a
@@ -1333,6 +2319,18 @@ def main(argv: list[str] | None = None) -> int:
             n = 4
         made = auto_highlights(n=n)
         print(f"\nDone: {len(made)} auto highlight clip(s). Nothing posted (all status=review).")
+        return 0
+
+    # AUTO_CLIPS: talking-head -> best sayings as short clips WITH animated
+    # subtitles (value = how many clips, e.g. "4"). Set CAPTIONS=0 to skip subs.
+    ac = os.getenv("AUTO_CLIPS", "").strip()
+    if ac:
+        try:
+            n = int(ac)
+        except ValueError:
+            n = 4
+        made = auto_clips(n=n)
+        print(f"\nDone: {len(made)} captioned clip(s). Nothing posted (all status=review).")
         return 0
 
     # RECUT_SPECS json: explicit time windows [{"name","start","end"}] (preferred),

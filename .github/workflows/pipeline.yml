@@ -23,8 +23,24 @@ on:
         description: "Number of clips to auto-pick from a narrated video (e.g. 4)"
         required: false
         default: ""
+      auto_clips:
+        description: "Talking-head -> best sayings as short clips WITH animated subtitles (value = #clips, e.g. 4)"
+        required: false
+        default: ""
       keep_ids:
         description: "Comma-separated clip ids to KEEP; all others are deleted"
+        required: false
+        default: ""
+      delete_ids:
+        description: "Comma-separated clip ids to DELETE (file + queue); keep the rest"
+        required: false
+        default: ""
+      copy_ids:
+        description: "Comma-separated clip ids to COPY into the copy_dest folder (e.g. approved clips)"
+        required: false
+        default: ""
+      copy_dest:
+        description: "Brand subfolder to copy clips into (default 'HP Posts')"
         required: false
         default: ""
       fetch_previews:
@@ -43,8 +59,36 @@ on:
         description: "JSON: layout-shifting hype montage (3-up/2-up/single segments)"
         required: false
         default: ""
+      detect_shots:
+        description: "Scene-split brand videos -> content/shots/*.json. '1'/'true'=all, 'force'=redo, or a filename substring"
+        required: false
+        default: ""
+      score_shots:
+        description: "Score+rank shots -> content/scores/*.json. '1'/'true'=all, 'force'=redo, or a filename substring"
+        required: false
+        default: ""
+      review_feed:
+        description: "Set true to (re)build the best-first review page content/review/index.html"
+        required: false
+        default: ""
+      auto_montage:
+        description: "Auto-assemble a 10-20s locked-style montage from a video's BEST shots (value = target seconds, e.g. 15; use 'video' to target one)"
+        required: false
+        default: ""
       video:
         description: "Filename substring to target one specific video (for cuts)"
+        required: false
+        default: ""
+      content_folder:
+        description: "Subfolder under each brand to pull source videos from (e.g. 'HP Talking Content')"
+        required: false
+        default: ""
+      content_videos:
+        description: "How many source videos to process in one run (auto_clips), e.g. 5"
+        required: false
+        default: ""
+      whisper_model:
+        description: "Whisper model for captions: base (fast) | small (default, accurate) | medium (slow, best)"
         required: false
         default: ""
 
@@ -59,7 +103,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-roboto
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -68,7 +112,8 @@ jobs:
 
       - name: Install social-suite + transcription
         run: |
-          pip install -e social-suite
+          # cards => Pillow, which the visual shot-scorer (Phase 2) needs.
+          pip install -e "social-suite[cards]"
           pip install faster-whisper
 
       - name: Process Dropbox videos into the review queue (NO posting)
@@ -84,37 +129,58 @@ jobs:
           BRAND_RESTORE_IG_USER_ID: ${{ secrets.BRAND_RESTORE_IG_USER_ID }}
           BRAND_RESTORE_FB_PAGE_ID: ${{ secrets.BRAND_RESTORE_FB_PAGE_ID }}
           INGEST_DOWNLOAD_DIR: ./_ingest
-          # Small/fast Whisper model + CPU (no GPU on the runner).
-          WHISPER_MODEL: base
+          # 'small' is markedly more accurate than 'base' for the burned-in
+          # captions (fewer mis-hears, tighter word timing) at ~2-3x CPU time —
+          # worth it since the captions are the product. Override via the
+          # whisper_model input if a run needs to trade accuracy for speed.
+          WHISPER_MODEL: ${{ inputs.whisper_model || 'small' }}
           WHISPER_DEVICE: cpu
           # A font that exists on the runner (libass/fontconfig name).
-          CAPTION_FONT: DejaVu Sans
+          CAPTION_FONT: Roboto
           # When set, do precise manual recuts instead of normal chunking.
           RECUT_SPECS: ${{ inputs.recut_specs }}
           DUMP_TRANSCRIPT: ${{ inputs.dump_transcript }}
           DUMP_THUMBS: ${{ inputs.dump_thumbs }}
           AUTO_HIGHLIGHTS: ${{ inputs.auto_highlights }}
+          AUTO_CLIPS: ${{ inputs.auto_clips }}
           KEEP_IDS: ${{ inputs.keep_ids }}
+          DELETE_IDS: ${{ inputs.delete_ids }}
+          COPY_IDS: ${{ inputs.copy_ids }}
+          COPY_DEST: ${{ inputs.copy_dest }}
           FETCH_PREVIEWS: ${{ inputs.fetch_previews }}
           IG_REFERENCE: ${{ inputs.ig_reference }}
           INGEST_CLIP: ${{ inputs.ingest_clip }}
           MONTAGE_SPEC: ${{ inputs.montage_spec }}
+          DETECT_SHOTS: ${{ inputs.detect_shots }}
+          SCORE_SHOTS: ${{ inputs.score_shots }}
+          REVIEW_FEED: ${{ inputs.review_feed }}
+          AUTO_MONTAGE: ${{ inputs.auto_montage }}
           PIPELINE_VIDEO: ${{ inputs.video }}
+          CONTENT_FOLDER: ${{ inputs.content_folder }}
+          AUTO_CLIPS_VIDEOS: ${{ inputs.content_videos }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
       - name: Commit review results (queue + processed set)
         run: |
-          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/reference 2>/dev/null || true
+          # Stage every non-ignored change under content/ in one shot. Using a
+          # directory pathspec (not an explicit file list) is robust to subfolders
+          # that don't exist on a given run (e.g. shots/scores/review when only
+          # auto_clips ran) — an explicit list errors atomically and stages nothing.
+          git add -A social-suite/content 2>/dev/null || true
           # Previews are *.mp4 (gitignored) — force-add so they can be viewed/sent.
           git add -f social-suite/content/preview 2>/dev/null || true
-          if git diff --cached --quiet && git diff --quiet -- social-suite/content; then
+          if git diff --cached --quiet; then
             echo "No new review items."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add social-suite/content/queue.json social-suite/content/processed.json social-suite/content/transcripts social-suite/content/thumbs social-suite/content/reference 2>/dev/null || true
-          git add -f social-suite/content/preview 2>/dev/null || true
           git commit -m "chore(pipeline): add review item(s) from Dropbox videos [skip ci]"
-          git push
+          branch=claude/bulk-pipeline
+          for i in 1 2 3 4 5 6; do
+            if git push origin "HEAD:$branch"; then echo "pushed"; break; fi
+            echo "push rejected (attempt $i) — rebasing on origin/$branch"
+            git pull --rebase --autostash origin "$branch" || true
+            sleep $(( (RANDOM % 4) + i ))
+          done

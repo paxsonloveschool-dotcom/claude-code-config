@@ -30,6 +30,13 @@ queue = ["redis>=5.0", "rq>=1.16"]  # optional: auto-watch orchestration
 portal = ["sqlalchemy>=2.0", "cryptography>=42", "jinja2>=3.1"]
 # Branded image-card rendering (turns post text into an Instagram-ready image).
 cards = ["pillow>=10.0"]
+# Visual scoring brain for the bulk pipeline (Phase 2): sharper scene detection
+# plus sharpness/motion/CLIP shot scoring. Phase 1 (shot split) is ffmpeg-only and
+# needs NONE of this, so it stays optional and lazy-imported.
+score = ["scenedetect", "opencv-python-headless", "numpy"]
+# Optional CLIP "is this shot fire?" judge (Phase 5 upgrade hook). Heavy; opt-in
+# via USE_CLIP=1. The pipeline runs for $0 on the heuristic scorer without it.
+clip = ["open-clip-torch", "torch"]
 dev = ["ruff", "mypy", "pytest"]
 
 [tool.setuptools]
