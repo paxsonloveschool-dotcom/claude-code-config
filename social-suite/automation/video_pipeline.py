@@ -1496,6 +1496,52 @@ def _snap_bounds(segments, a: float, b: float, lead: float = 0.18,
     return (na, nb) if nb > na else (a, b)
 
 
+def _split_block(words, max_len: float):
+    """Split a too-long run of words at its LARGEST internal pause, recursively,
+    until every piece is <= ``max_len`` — so a long monologue breaks at natural
+    stops, never mid-sentence."""
+    a, b = words[0].start_seconds, words[-1].end_seconds
+    if b - a <= max_len or len(words) < 2:
+        return [(a, b)]
+    gi = max(range(len(words) - 1),
+             key=lambda i: words[i + 1].start_seconds - words[i].end_seconds)
+    return _split_block(words[:gi + 1], max_len) + _split_block(words[gi + 1:], max_len)
+
+
+def _speech_blocks(segments, min_gap: float = 1.2, min_len: float = 4.0,
+                   max_len: float = 55.0):
+    """Cut the video into NON-OVERLAPPING blocks of continuous talking, split only
+    where the speaker actually pauses (a gap >= ``min_gap``). Each block is one
+    complete clip — a walkthrough that's narrated straight through stays ONE clip;
+    a long block is split at its biggest internal pauses so no piece runs over
+    ``max_len``. This replaces the old overlapping-window picker that chopped over
+    sentences (owner: "one clean complete clip, don't cut over my talking")."""
+    words = _all_words(segments)
+    if not words:
+        return []
+    blocks: list[list] = []
+    cur = [words[0]]
+    for w in words[1:]:
+        if w.start_seconds - cur[-1].end_seconds >= min_gap:
+            blocks.append(cur)
+            cur = [w]
+        else:
+            cur.append(w)
+    blocks.append(cur)
+    out: list[tuple[float, float, str]] = []
+    for blk in blocks:
+        a, b = blk[0].start_seconds, blk[-1].end_seconds
+        if b - a < min_len:
+            continue                       # skip a stray word / tiny fragment
+        text = " ".join((getattr(w, "text", "") or "") for w in blk)
+        if _score_segment_text(text, b - a) <= 0.0:
+            continue                       # pure filler/dead-air block
+        for (pa, pb) in _split_block(blk, max_len):
+            if pb - pa >= min_len:
+                out.append((round(pa, 2), round(pb, 2), ""))
+    return [(a, b, f"auto-{k + 1}") for k, (a, b, _) in enumerate(out)]
+
+
 def _shift_segments(segs, off: float):
     """Shift sliced (clip-relative) segments by ``off`` seconds (for stitching)."""
     from services.caption.transcribe import Segment, Word  # lazy
@@ -1645,26 +1691,17 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
     # video pack 2-4 clips instead of one 45s window eating the whole timeline;
     # a 0.4 floor still drops filler/dead-air (those score <=0) but lets solid
     # sayings through so weak videos still yield something. Both env-tunable.
-    min_score = float(os.getenv("CLIP_MIN_SCORE", "0.4"))
-    max_len = float(os.getenv("CLIP_MAX_LEN", "28"))
-    # min_len 3.5 lets SHORT punchy one-liners through — but _pick_highlights
-    # only accepts a sub-6s window if it's a COMPLETE sentence, so shorts are
-    # crisp, not fragments (owner: "make short clips too, just accurate + good").
-    wins = _pick_highlights(segs, n=max(n, 12), min_len=3.5, max_len=max_len,
-                            min_score=min_score)
-    if not wins and spoken:
-        # Nothing cleared the "great" bar, but there IS speech — drop the floor
-        # to 0.0 (filler/garbled still score <=0 and stay out) and take the best
-        # clean COMPLETE windows so a real talking video still yields clips,
-        # short ones included. Truly empty/garbled videos still make nothing.
-        print(f"auto_clips: {base}: no 'great' window — falling back to best "
-              f"clean complete sayings (any length) so it still gets clips.")
-        wins = _pick_highlights(segs, n=max(n, 6), min_len=3.5, max_len=max_len,
-                                min_score=0.0)
+    # ONE clean complete clip per continuous block of talking — split only where
+    # the speaker actually pauses (>= CLIP_PAUSE_GAP). No overlapping windows, no
+    # cutting over sentences. A straight-through walkthrough stays one clip; a
+    # long block is split at its biggest internal pauses (<= CLIP_MAX_LEN).
+    pause_gap = float(os.getenv("CLIP_PAUSE_GAP", "1.2"))
+    max_len = float(os.getenv("CLIP_MAX_LEN", "55"))
+    wins = _speech_blocks(segs, min_gap=pause_gap, min_len=4.0, max_len=max_len)
     if not wins:
-        why = ("only filler/garbled speech, no complete saying"
+        why = ("only filler/garbled speech, no real saying"
                if spoken else "TRULY no speech (0 segments)")
-        print(f"auto_clips: {base}: no usable saying ({why}) — skipped as b-roll "
+        print(f"auto_clips: {base}: no usable block ({why}) — skipped as b-roll "
               f"(use the montage path for footage with no real talking).")
         return []
     print(f"auto_clips: {base} -> {[(a, b) for a, b, _ in wins]}")
@@ -1680,14 +1717,12 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
     for a0, b0, nm in wins:
         cut = os.path.join(workdir, f"{base}-{nm}.mp4")
         try:
-            # 1) finish the sentence (don't end mid-thought), trim filler edges,
-            #    then snap the cut points INTO the silence around the speech so we
-            #    never start/end mid-word.
-            b0 = _extend_to_thought_end(segs, a0, b0, hard_max=(b0 - a0) + 16.0)
+            # The block already ends at a real pause; just trim filler edges and
+            # snap the cut points INTO the surrounding silence (never mid-word).
             a, b = _trim_to_clean(segs, a0, b0)
             a, b = _snap_bounds(segs, a, b)
-            # 2) ONE continuous slice — never jump-cut, so no words get dropped
-            #    out of the middle of someone talking.
+            # ONE continuous slice — never jump-cut, so no words are dropped out
+            # of the middle of someone talking.
             pieces = [(a, b)]
             parts: list[str] = []
             clip_segs: list = []

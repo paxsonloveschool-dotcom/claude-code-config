@@ -109,6 +109,27 @@ def test_fix_brand_words_keeps_normal_speech():
     assert out[0].text == "we added a putting green today."
 
 
+def test_speech_blocks_split_only_at_real_pauses():
+    # block A: continuous talk 0-5 (small gaps); 2s PAUSE; block B: 7-11
+    segs = [
+        _seg("here is the number one thing you need", 0.0, 5.0,
+             [("here", 0.0, 0.5), ("is", 0.6, 0.8), ("the", 0.9, 1.1),
+              ("number", 1.2, 1.7), ("one", 1.8, 2.1), ("thing", 2.2, 2.7),
+              ("you", 3.0, 3.3), ("need", 3.4, 5.0)]),
+        _seg("and the biggest secret is consistency wins", 7.0, 11.0,
+             [("and", 7.0, 7.3), ("the", 7.4, 7.6), ("biggest", 7.7, 8.2),
+              ("secret", 8.3, 8.8), ("is", 8.9, 9.1), ("consistency", 9.2, 9.9),
+              ("wins", 10.0, 11.0)]),
+    ]
+    blocks = V._speech_blocks(segs, min_gap=1.2, min_len=2.0, max_len=55.0)
+    assert len(blocks) == 2                       # split at the 2s pause only
+    assert abs(blocks[0][0] - 0.0) < 1e-6 and abs(blocks[0][1] - 5.0) < 1e-6
+    assert abs(blocks[1][0] - 7.0) < 1e-6 and abs(blocks[1][1] - 11.0) < 1e-6
+    # a continuous block under max_len stays ONE clip
+    one = V._speech_blocks([segs[0]], min_gap=1.2, min_len=2.0, max_len=55.0)
+    assert len(one) == 1
+
+
 def test_snap_bounds_lands_in_gaps_not_midword():
     # words: "hello"(1.0-1.4) gap "world"(2.0-2.6) ... "done"(5.0-5.6)
     segs = [_seg("hello world this is done", 1.0, 5.6,
