@@ -47,6 +47,10 @@ on:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
         default: ""
+      full_video:
+        description: "Keep the WHOLE video (no speech-chopping) + house caption. 'true'/'false'"
+        required: false
+        default: "true"
 
 permissions:
   contents: write
@@ -100,6 +104,7 @@ jobs:
           INGEST_CLIP: ${{ inputs.ingest_clip }}
           MONTAGE_SPEC: ${{ inputs.montage_spec }}
           PIPELINE_VIDEO: ${{ inputs.video }}
+          FULL_VIDEO: ${{ inputs.full_video }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 

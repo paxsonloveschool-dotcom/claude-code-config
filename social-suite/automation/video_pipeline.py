@@ -524,6 +524,38 @@ def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> li
     if os.path.abspath(local) != os.path.abspath(raw):
         shutil.copy(raw, local)
 
+    # FULL-VIDEO mode: keep the WHOLE uploaded video as-is (no speech-chopping)
+    # and attach a house-style caption, so the owner just downloads it -> adds a
+    # song -> hits post. One review item = the full clip. (Set FULL_VIDEO=1.)
+    if os.getenv("FULL_VIDEO", "").strip().lower() in ("1", "true", "yes"):
+        stamp = _dt.datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        if brand_key == "hp":
+            caption = _hp_caption(base)
+        else:
+            tags = " ".join("#" + t.lstrip("#") for t in default_tags)
+            caption = f"{display}\n\n{tags}".strip()
+        out_name = f"{base}-full{ext}"
+        out_path = f"{folder_display.rstrip('/')}/processed/{out_name}"
+        dbx.upload(local, out_path)        # the full, unmodified video
+        url = dbx.shared_link(out_path, raw=True)
+        queue = _load_json(QUEUE_PATH, [])
+        entry = {
+            "id": f"{brand_key}-{stamp}-full",
+            "brand": brand_key,
+            "text": caption,
+            "media_url": url,
+            "media_path": out_path,
+            "platforms": list(REVIEW_PLATFORMS),
+            "schedule": None,
+            "status": "review",   # NEVER posts; for manual review/post
+            "error": None,
+        }
+        queue.append(entry)
+        _save_json(QUEUE_PATH, queue)
+        print(f"[{brand_key}] FULL video kept -> {out_path}")
+        print(f"[{brand_key}] caption: {caption[:70]!r}")
+        return [entry]
+
     segments = transcribe(local)
     transcript = _transcript_text(segments)
     copy = generate_caption(
