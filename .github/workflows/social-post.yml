@@ -46,6 +46,12 @@ jobs:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
         run: python social-suite/services/publish/check_token.py
 
+      - name: Stamp drip schedule on approved posts
+        # Spread newly-approved (status "pending", no schedule) posts across each
+        # brand's weekly slots so they trickle out instead of all at once. Edit
+        # BRAND_SCHEDULE in automation/schedule_queue.py to change when/how often.
+        run: python social-suite/automation/schedule_queue.py
+
       - name: Publish due posts
         # Flat BRAND_* secrets (one value each, no JSON) take priority over
         # BRANDS_JSON; both passed. Legacy single-account secrets remain for the
