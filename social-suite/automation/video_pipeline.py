@@ -1730,7 +1730,7 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
     # the speaker actually pauses (>= CLIP_PAUSE_GAP). No overlapping windows, no
     # cutting over sentences. A straight-through walkthrough stays one clip; a
     # long block is split at its biggest internal pauses (<= CLIP_MAX_LEN).
-    pause_gap = float(os.getenv("CLIP_PAUSE_GAP", "1.2"))
+    pause_gap = float(os.getenv("CLIP_PAUSE_GAP") or "1.2")
     max_len = float(os.getenv("CLIP_MAX_LEN", "55"))
     wins = _speech_blocks(segs, min_gap=pause_gap, min_len=4.0, max_len=max_len)
     if not wins:

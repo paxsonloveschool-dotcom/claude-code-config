@@ -83,6 +83,10 @@ on:
         description: "Filename substring to target one specific video (for cuts)"
         required: false
         default: ""
+      clip_pause_gap:
+        description: "Seconds of silence that ends a clip block (default 1.2; raise to end later/smoother)"
+        required: false
+        default: ""
       content_folder:
         description: "Subfolder under each brand to pull source videos from (e.g. 'HP Talking Content')"
         required: false
@@ -168,6 +172,7 @@ jobs:
           CONTENT_FOLDER: ${{ inputs.content_folder }}
           AUTO_CLIPS_VIDEOS: ${{ inputs.content_videos }}
           CLIP_SKIP: ${{ inputs.clip_skip }}
+          CLIP_PAUSE_GAP: ${{ inputs.clip_pause_gap }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
