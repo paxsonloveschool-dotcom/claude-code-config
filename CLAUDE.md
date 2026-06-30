@@ -121,7 +121,25 @@ RTK v0.36.0 binary at `~/.local/bin/rtk.exe`. On native Windows, the transparent
 - Scripts and docs committed at `tools/voxcpm/` in this repo
 - For real-time: use HF Spaces demo at https://huggingface.co/spaces/OpenBMB/VoxCPM-Demo
 
+## HP Landscaping Email Agent (Gmail) — Standing Rules
+- **NEVER create or apply Gmail labels.** Labels are the user's to manage manually only. Do not tag threads (no "Email In Draft", no per-person labels like "Chuck"/"Nelson").
+- **Draft only — never auto-send.** Replies go to the Drafts folder for the user to review and send.
+- **Pricing / quote / payment / potential new work → draft + flag in chat for review.** General client & business questions → just draft a reply.
+- **Write in HP's voice** (study real sent emails first): warm, Texan, upbeat, accountable.
+  - Open: "Hi/Howdy/Good morning/Hey [First]!" then gratitude — "Thanks so much for reaching out!".
+  - Body: take ownership + give a next step & deadline ("Our team is diving in right now — I'll get pricing back to you by end of day!"). Affirm the customer ("Great call!", "You're absolutely right."). Own slips ("I'm so sorry for the delay!", "We apologize for the inconvenience!", "Totally understandable!"). Clarify before assuming. Texan touches: "y'all", sometimes "God Bless Yall!". Exclamation points & casual "??" are normal. Short paragraphs.
+  - Close with "Thanks," + a signature block:
+  > **Default (most replies):**
+  > Thanks,
+  > The HP Landscaping Team
+  > General Communications, HP Landscaping
+  > 979-701-2229 Mobile
+  > higherpurposelandscaping@gmail.com
+  > Homepage | Our Story · LinkedIn: Higher Purpose Landscaping
+  >
+  > **Personal (sales/proposals):** Thanks, → Paxson Layne Cole Berkey, Director of Sales, HP Landscaping (same contact block).
+
 ## Applied Learning
 Add a one-line bullet (under 15 words) whenever something fails repeatedly, I have to re-explain, or a workaround is found. No explanations.
 
-- (none yet)
+- Email agent: never make Gmail labels; draft only in HP's voice; user sends.
