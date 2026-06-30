@@ -614,5 +614,19 @@
     "schedule": null,
     "status": "review",
     "error": null
+  },
+  {
+    "id": "hp-premium-bryan-01",
+    "brand": "hp",
+    "text": "This is what happens when vision meets execution. ✨\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/ss3tfa0mcokmt8jk6w1ah/video-nov-06-2024-5-13-08-pm-premium-bryan-01.mp4?rlkey=nv3ffrq7fi1gw3zqgs8d7kwgv&raw=1",
+    "media_path": "/HP-Content Auto./processed/video-nov-06-2024-5-13-08-pm-premium-bryan-01.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
   }
 ]
