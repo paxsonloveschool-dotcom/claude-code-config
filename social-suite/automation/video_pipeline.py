@@ -1175,6 +1175,7 @@ def fetch_previews(which: str = "all") -> int:
             # download is too big to commit, transcode in place to a 4K proxy
             # (same 2160x3840, higher CRF) that fits under the limit. Quality
             # stays high; it's only the git bridge that needs it small.
+            import subprocess  # lazy, stdlib
             CAP = 95 * 1024 * 1024
             if os.path.getsize(dest) > CAP:
                 for crf in (20, 22, 24, 26):
@@ -1197,6 +1198,10 @@ def fetch_previews(which: str = "all") -> int:
                 print(f"fetched {e['id']}")
             n += 1
         except Exception as ex:  # noqa: BLE001
+            # Never leave an oversized/partial file behind — it would be force-added
+            # and rejected by GitHub's 100MB push limit, blocking the whole commit.
+            if os.path.exists(dest) and os.path.getsize(dest) > 95 * 1024 * 1024:
+                os.remove(dest)
             print(f"fetch failed {e['id']}: {ex}")
     print(f"\n{n} preview(s) in content/preview/")
     return n
