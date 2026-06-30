@@ -1546,30 +1546,28 @@ def _clip_pieces(segments, a: float, b: float, drop_below: float) -> list[tuple[
     return [(round(x, 2), round(y, 2)) for x, y in runs]
 
 
-def _extend_to_sentence_end(segments, a: float, b: float, hard_max: float) -> float:
-    """Push ``b`` forward so the clip ends on a FINISHED sentence, not mid-thought.
+def _extend_to_thought_end(segments, a: float, b: float, hard_max: float,
+                           pause_gap: float = 0.9) -> float:
+    """Push ``b`` forward to where the speaker ACTUALLY stops talking — a real
+    pause — not just the first period (owner: "clips cut off before I finish").
 
-    If the last in-window segment doesn't end with . ! or ?, pull in the
-    following segments that continue the thought (no real pause between them)
-    until one ends a sentence — capped so the clip never exceeds ``hard_max``
-    seconds or jumps a >0.8s pause (a natural place to stop anyway)."""
-    segs = [s for s in segments
-            if getattr(s, "end_seconds", 0) > getattr(s, "start_seconds", -1)
-            and (getattr(s, "text", "") or "").strip()]
-    inwin = [s for s in segs if s.start_seconds < b - 0.05 and s.end_seconds > a]
-    if not inwin or _SENT_END.search(inwin[-1].text.strip()):
-        return b                          # already a clean sentence end
-    nb, last_end = b, inwin[-1].end_seconds
-    for s in segs:
-        if s.start_seconds < last_end - 0.05:
-            continue                      # already covered
-        if s.start_seconds - last_end > 0.8:
-            break                         # real pause -> natural stop
-        if s.end_seconds - a > hard_max:
-            break                         # would blow the length cap
-        nb, last_end = s.end_seconds, s.end_seconds
-        if _SENT_END.search(s.text.strip()):
-            break                         # sentence completed
+    Whisper drops a period at every little breath, so stopping at the first ``.``
+    chops the thought. Instead, keep extending through every following word while
+    the gap to it is under ``pause_gap`` (still talking), and stop at the first
+    real pause >= ``pause_gap`` or the ``hard_max`` length cap. _snap_bounds then
+    lands the cut inside that pause."""
+    words = _all_words(segments)
+    if not words:
+        return b
+    nb = last_end = b
+    for w in words:
+        if w.start_seconds < nb - 0.05:
+            continue                      # already inside the clip
+        if w.start_seconds - last_end >= pause_gap:
+            break                         # real pause -> the thought is done
+        if w.end_seconds - a > hard_max:
+            break                         # length cap
+        nb = last_end = w.end_seconds
     return max(nb, b)
 
 
@@ -1685,7 +1683,7 @@ def _clips_for_video(ctx, n: int, captions: bool, dbx, queue: list) -> list[dict
             # 1) finish the sentence (don't end mid-thought), trim filler edges,
             #    then snap the cut points INTO the silence around the speech so we
             #    never start/end mid-word.
-            b0 = _extend_to_sentence_end(segs, a0, b0, hard_max=(b0 - a0) + 14.0)
+            b0 = _extend_to_thought_end(segs, a0, b0, hard_max=(b0 - a0) + 16.0)
             a, b = _trim_to_clean(segs, a0, b0)
             a, b = _snap_bounds(segs, a, b)
             # 2) ONE continuous slice — never jump-cut, so no words get dropped

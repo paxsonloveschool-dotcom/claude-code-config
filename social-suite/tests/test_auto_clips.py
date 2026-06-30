@@ -167,19 +167,26 @@ def test_clip_pieces_all_good_is_one_run():
     assert len(pieces) == 1 and pieces[0][0] == 0.0
 
 
-def test_extend_to_sentence_end_completes_thought():
-    # Window ends mid-thought (no terminal punctuation); the next segment finishes
-    # the sentence with a small gap -> b should extend to include it.
+def test_extend_to_thought_end_follows_until_pause():
+    # Two segments of continuous talk (small gap), then a long pause before more.
     segs = [
-        _seg("here is the number one thing that matters", 0.0, 6.0),
-        _seg("you have to do it right.", 6.2, 9.0),
-        _seg("and later we talk about something else.", 14.0, 18.0),
+        _seg("here is the number one thing", 0.0, 3.0,
+             [("here", 0.0, 0.4), ("is", 0.5, 0.7), ("the", 0.8, 1.0),
+              ("number", 1.1, 1.5), ("one", 1.6, 1.9), ("thing", 2.0, 3.0)]),
+        _seg("you have to do it right", 3.2, 6.0,
+             [("you", 3.2, 3.4), ("have", 3.5, 3.7), ("to", 3.8, 3.9),
+              ("do", 4.0, 4.2), ("it", 4.3, 4.5), ("right", 4.6, 6.0)]),
+        _seg("and later something else", 12.0, 15.0,
+             [("and", 12.0, 12.3), ("later", 12.4, 12.8),
+              ("something", 12.9, 13.4), ("else", 13.5, 15.0)]),
     ]
-    nb = V._extend_to_sentence_end(segs, 0.0, 6.0, hard_max=30.0)
-    assert abs(nb - 9.0) < 1e-6                 # pulled in the finishing segment
-    # A real pause (>0.8s) is a natural stop — don't jump it.
-    nb2 = V._extend_to_sentence_end(segs, 0.0, 9.0, hard_max=30.0)
-    assert abs(nb2 - 9.0) < 1e-6                # 9.0 already ends with "."
+    # b starts at 3.0 (a breath); should follow the talking to 6.0, then stop —
+    # the next word is a 6s pause away, the real end of the thought.
+    nb = V._extend_to_thought_end(segs, 0.0, 3.0, hard_max=30.0)
+    assert abs(nb - 6.0) < 1e-6
+    # the length cap stops it early
+    nb2 = V._extend_to_thought_end(segs, 0.0, 3.0, hard_max=4.0)
+    assert nb2 < 6.0
 
 
 def test_clip_pieces_keeps_last_weak_segment():

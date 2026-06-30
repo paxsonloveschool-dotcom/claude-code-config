@@ -79,6 +79,10 @@ on:
         description: "How many source videos to process in one run (auto_clips), e.g. 5"
         required: false
         default: ""
+      whisper_model:
+        description: "Whisper model for captions: base (fast) | small (default, accurate) | medium (slow, best)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -117,8 +121,11 @@ jobs:
           BRAND_RESTORE_IG_USER_ID: ${{ secrets.BRAND_RESTORE_IG_USER_ID }}
           BRAND_RESTORE_FB_PAGE_ID: ${{ secrets.BRAND_RESTORE_FB_PAGE_ID }}
           INGEST_DOWNLOAD_DIR: ./_ingest
-          # Small/fast Whisper model + CPU (no GPU on the runner).
-          WHISPER_MODEL: base
+          # 'small' is markedly more accurate than 'base' for the burned-in
+          # captions (fewer mis-hears, tighter word timing) at ~2-3x CPU time —
+          # worth it since the captions are the product. Override via the
+          # whisper_model input if a run needs to trade accuracy for speed.
+          WHISPER_MODEL: ${{ inputs.whisper_model || 'small' }}
           WHISPER_DEVICE: cpu
           # A font that exists on the runner (libass/fontconfig name).
           CAPTION_FONT: Roboto
