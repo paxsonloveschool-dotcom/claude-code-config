@@ -51,21 +51,30 @@ fed by the same `content/queue.json` the rest of the suite uses.
    business. If the song is refused → it's the business-account copyright wall,
    not the tool.
 
-## Everyday use (after the test passes)
-- Approve posts as usual (flip `review` → `pending`), give each a `"sound"`, and
-  let `automation/schedule_queue.py` stamp the drip times.
-- Then run:
-  ```
-  python automation/tiktok_browser_post.py --brand hp
-  ```
-  It uploads every approved TikTok post, attaches its sound, and schedules it on
-  TikTok (up to 10 days out — so the laptop can be off until the next batch).
-- `--sound "Song Name"` overrides the song for every post in one run.
+## Everyday use — basically one command a week
+1. Approve the videos you want out (flip each one's `status` from `review` →
+   `pending` in `content/queue.json`; make sure `platforms` includes `"tiktok"`).
+2. Run:
+   ```
+   python automation/tiktok_browser_post.py --brand hp
+   ```
+   For each approved post it automatically:
+   - grabs the **next song** from `content/tiktok_songs_hp.txt` (cycled in order),
+   - picks the **next Mon/Wed/Fri 10:00** slot (your cadence), and
+   - uploads + schedules it on TikTok (up to 10 days out).
+   Because TikTok fires the scheduled posts itself, the **laptop can be off**
+   until you queue the next batch (~weekly).
+3. Preview first anytime with `--dry-run` (shows song + time per post, uploads
+   nothing).
 
-### Notes
-- **Timezone:** TikTok schedules in the **account's local time**. The times in
-  `schedule_queue.py` are UTC, so either set them to your local time there, or
-  adjust before relying on exact slots.
-- **Sound volume:** `TIKTOK_SOUND_VOLUME=background|mix|main` (default
-  `background` — song quiet under the clip's own audio).
-- Re-running is safe: posted items flip to `status="scheduled"` and are skipped.
+### Change the songs or cadence
+- **Songs:** edit `content/tiktok_songs_hp.txt` — one `Artist - Title` per line.
+- **Days/time:** edit `POST_WEEKDAYS` / `POST_HOUR` at the top of
+  `automation/tiktok_browser_post.py` (default Mon/Wed/Fri 10:00 **local** time —
+  TikTok schedules in the account's local timezone).
+- **One-off override:** `--sound "Song Name"` forces one song for the whole run;
+  a post can also carry its own `"sound"` / `"schedule"` to override the defaults.
+- **Sound volume:** `TIKTOK_SOUND_VOLUME=background|mix|main` (default `mix`).
+
+Re-running is safe: posted items flip to `status="scheduled"` and are skipped, and
+anything that doesn't fit the 10-day window is left for the next run.
