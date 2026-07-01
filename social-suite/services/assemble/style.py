@@ -248,8 +248,14 @@ def append_outro(src: str, out: str, outro: str | None = None,
                     "anullsrc=channel_layout=stereo:sample_rate=48000"]
         cmd += ["-vf", norm_vf, "-c:v", "libx264", "-preset", "veryfast",
                 "-crf", "19", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2"]
+        # -shortest ALWAYS: some source clips have a video track that ends before
+        # their audio (phone/screen recordings). Without this the norm clip keeps
+        # audio the video can't cover, the tail freezes, and the xfade below fails
+        # (outro silently skipped, leaving a frozen frame + trailing audio). Clamp
+        # to the shorter stream so video and audio match and the outro splices.
+        cmd += ["-shortest"]
         if silent:
-            cmd += ["-shortest", "-map", "0:v:0", "-map", "1:a:0"]
+            cmd += ["-map", "0:v:0", "-map", "1:a:0"]
         cmd += [norm]
         subprocess.run(cmd, check=True, capture_output=True)
 
