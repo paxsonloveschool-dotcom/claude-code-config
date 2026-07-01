@@ -543,9 +543,28 @@ def debug_tree() -> None:
         if is_dir:
             try:
                 sub = client.files_list_folder(getattr(e, "path_lower", ""))
-                for se in sub.entries:
-                    print(f"        - {getattr(se, 'name', '?')}")
-                if not sub.entries:
+                sub_entries = list(sub.entries)
+                while getattr(sub, "has_more", False):
+                    sub = client.files_list_folder_continue(sub.cursor)
+                    sub_entries += list(sub.entries)
+                for se in sub_entries:
+                    se_is_dir = se.__class__.__name__ == "FolderMetadata"
+                    print(f"        - {'DIR ' if se_is_dir else ''}{getattr(se, 'name', '?')}")
+                    # One more level for content subfolders (e.g. HP Talking Content)
+                    if se_is_dir:
+                        try:
+                            gc = client.files_list_folder(getattr(se, "path_lower", ""))
+                            gc_entries = list(gc.entries)
+                            while getattr(gc, "has_more", False):
+                                gc = client.files_list_folder_continue(gc.cursor)
+                                gc_entries += list(gc.entries)
+                            for ge in gc_entries:
+                                print(f"              . {getattr(ge, 'name', '?')}")
+                            if not gc_entries:
+                                print("              (empty)")
+                        except Exception as ex2:  # noqa: BLE001
+                            print(f"              (could not list: {ex2})")
+                if not sub_entries:
                     print("        (empty)")
             except Exception as ex:  # noqa: BLE001
                 print(f"        (could not list: {ex})")
