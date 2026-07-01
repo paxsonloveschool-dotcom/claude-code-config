@@ -1,0 +1,40 @@
+# HP TikTok song rotation — one "Artist - Title" per line (the browser tool
+# searches TikTok's sound library by this text). Blank lines and #comments are
+# ignored. Reorder/add/remove freely; the poster cycles through them in order.
+Luke Combs - Ain't No Love in Oklahoma
+Luke Combs - Lovin' On You
+Luke Combs - When It Rains It Pours
+Jon Pardi - Night Shift
+Jon Pardi - Heartache on the Dance Floor
+Jon Pardi - Your Heart or Mine
+Brooks & Dunn - Boot Scootin' Boogie
+Brooks & Dunn - Hard Workin' Man
+Alan Jackson - Good Time
+Alan Jackson - Chattahoochee
+Alan Jackson - Little Bitty
+Alan Jackson - Don't Rock the Jukebox
+Tim McGraw - Something Like That
+Tim McGraw - I Like It, I Love It
+Tim McGraw - Down on the Farm
+Cody Johnson - Me and My Kind
+Cody Johnson - Dance Her Home
+Cody Johnson - Honky Tonk Mood
+Turnpike Troubadours - 7 & 7
+Merle Haggard - Workin' Man Blues
+Hank Williams Jr. - A Country Boy Can Survive
+Dolly Parton - 9 to 5
+Nitty Gritty Dirt Band - Fishin' in the Dark
+John Denver - Thank God I'm a Country Boy
+The Osborne Brothers - Rocky Top
+Kenny Chesney - American Kids
+Tracy Lawrence - Time Marches On
+Joe Diffie - Pickup Man
+Joe Diffie - John Deere Green
+Toby Keith - Should've Been a Cowboy
+Chris Stapleton - Loving You On My Mind
+AC/DC - Thunderstruck
+Aerosmith - Sweet Emotion
+Aerosmith - Walk This Way
+Alice In Chains - Rooster
+Creedence Clearwater Revival - Fortunate Son
+Foghat - Slow Ride
