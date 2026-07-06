@@ -1,0 +1,56 @@
+name: Facebook auto-post (HP videos -> FB Page)
+
+# Schedules HP's Dropbox videos onto the HP Facebook Page as native videos (own
+# audio / outro sound; no added library music — a Page can't). Uses Facebook's
+# server-side scheduling to queue each new clip onto the next Mon/Wed/Fri/Sat
+# 11:00-ish local slot, so nothing needs to stay running. Cloud-only — no Mac.
+on:
+  schedule:
+    - cron: "0 12 * * *"   # daily 12:00 UTC — pick up new clips, queue them onto FB
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Set 'true' to print the plan and post nothing"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  fb-post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install social-suite + Dropbox
+        run: pip install -e social-suite dropbox
+
+      - name: Schedule HP videos onto Facebook
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          BRAND_HP_FB_PAGE_ID: ${{ secrets.BRAND_HP_FB_PAGE_ID }}
+          BRAND_HP_META_ACCESS_TOKEN: ${{ secrets.BRAND_HP_META_ACCESS_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        working-directory: social-suite
+        run: python automation/fb_autopost.py
+
+      - name: Commit posted state (if changed)
+        run: |
+          git add social-suite/content/fb_posted.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No state change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(fb): update Facebook posted state [skip ci]"
+          git push
