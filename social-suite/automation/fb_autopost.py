@@ -20,7 +20,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
+
+
+def natkey(name: str):
+    """Natural sort key so 2 < 10 (numbers compared as numbers, not text)."""
+    return [int(p) if p.isdigit() else p.lower() for p in re.split(r"(\d+)", name)]
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.path.join(os.path.dirname(HERE), "content", "fb_posted.json")
@@ -89,7 +95,7 @@ def main() -> int:
         return 1
 
     files = [f for f in dbx.list_folder(folder) if f.name.lower().endswith(VIDEO_EXTS)]
-    files.sort(key=lambda f: f.name)
+    files.sort(key=lambda f: natkey(f.name))
 
     s = load_state()
     already = set(s.get("posted", []))
