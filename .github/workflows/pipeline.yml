@@ -35,16 +35,8 @@ on:
         description: "'all' or comma ids: pull finished clips into content/preview/"
         required: false
         default: ""
-      ig_reference:
-        description: "Brand key to pull posted IG style from (e.g. hp or hp:30)"
-        required: false
-        default: ""
       ingest_clip:
         description: "Save a ready-made clip: 'name:relpath' (uploads + review entry)"
-        required: false
-        default: ""
-      montage_spec:
-        description: "JSON: layout-shifting hype montage (3-up/2-up/single segments)"
         required: false
         default: ""
       montage_spec_file:
@@ -161,9 +153,7 @@ jobs:
           AUTO_HIGHLIGHTS: ${{ inputs.auto_highlights }}
           KEEP_IDS: ${{ inputs.keep_ids }}
           FETCH_PREVIEWS: ${{ inputs.fetch_previews }}
-          IG_REFERENCE: ${{ inputs.ig_reference }}
           INGEST_CLIP: ${{ inputs.ingest_clip }}
-          MONTAGE_SPEC: ${{ inputs.montage_spec }}
           MONTAGE_SPEC_FILE: ${{ inputs.montage_spec_file }}
           PIPELINE_VIDEO: ${{ inputs.video }}
           CONTENT_FOLDER: ${{ inputs.content_folder }}
