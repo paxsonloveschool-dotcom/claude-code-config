@@ -824,5 +824,33 @@
     "schedule": null,
     "status": "review",
     "error": null
+  },
+  {
+    "id": "hp-premium-fox-01",
+    "brand": "hp",
+    "text": "Built to stand out and thrive. 🌱\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/437me1i9tgwt5mtq9dt5p/video-jun-17-2026-7-32-07-pm-premium-fox-01.mp4?rlkey=hfiqn4bhvlvx2ybkpv6nwt2fl&raw=1",
+    "media_path": "/HP-Content Auto./processed/video-jun-17-2026-7-32-07-pm-premium-fox-01.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
+  },
+  {
+    "id": "hp-premium-fox-02",
+    "brand": "hp",
+    "text": "From overgrown to outdoor escape. 🔥🌿\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/3x7ydgrd0pwzvln6hjcwz/video-jun-17-2026-7-34-42-pm-premium-fox-02.mp4?rlkey=sixu6fy8h6hcny59cq5q6nlln&raw=1",
+    "media_path": "/HP-Content Auto./processed/video-jun-17-2026-7-34-42-pm-premium-fox-02.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
   }
 ]
