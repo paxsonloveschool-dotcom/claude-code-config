@@ -60,7 +60,7 @@ fed by the same `content/queue.json` the rest of the suite uses.
    ```
    For each approved post it automatically:
    - grabs the **next song** from `content/tiktok_songs_hp.txt` (cycled in order),
-   - picks the **next Mon/Wed/Fri 10:00** slot (your cadence), and
+   - picks the **next Mon/Wed/Fri 12:00** slot (your cadence), and
    - uploads + schedules it on TikTok (up to 10 days out).
    Because TikTok fires the scheduled posts itself, the **laptop can be off**
    until you queue the next batch (~weekly).
@@ -70,7 +70,7 @@ fed by the same `content/queue.json` the rest of the suite uses.
 ### Change the songs or cadence
 - **Songs:** edit `content/tiktok_songs_hp.txt` — one `Artist - Title` per line.
 - **Days/time:** edit `POST_WEEKDAYS` / `POST_HOUR` at the top of
-  `automation/tiktok_browser_post.py` (default Mon/Wed/Fri 10:00 **local** time —
+  `automation/tiktok_browser_post.py` (default Mon/Wed/Fri 12:00 **local** time —
   TikTok schedules in the account's local timezone).
 - **One-off override:** `--sound "Song Name"` forces one song for the whole run;
   a post can also carry its own `"sound"` / `"schedule"` to override the defaults.

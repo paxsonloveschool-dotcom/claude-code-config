@@ -47,7 +47,7 @@ SOUND_VOLUME = os.getenv("TIKTOK_SOUND_VOLUME", "mix")
 
 # Posting cadence for auto-scheduling: Mon/Wed/Fri at 10:00 local time.
 POST_WEEKDAYS = (0, 2, 4)  # Mon, Wed, Fri
-POST_HOUR = 10
+POST_HOUR = 12  # noon (local)
 POST_MINUTE = 0
 # TikTok's native scheduler only accepts times within ~10 days out.
 SCHEDULE_HORIZON_DAYS = 10
