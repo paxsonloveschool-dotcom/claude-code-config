@@ -100,6 +100,44 @@ def post_facebook(
     return _post_form(url, params)
 
 
+def post_facebook_video(
+    page_id: str,
+    access_token: str,
+    message: str,
+    video_url: str,
+    scheduled_time: int | None = None,
+) -> dict:
+    """Post a native video to a Facebook Page (keeps the video's own audio).
+
+    Uploads to the Page's ``/videos`` edge via ``file_url`` (Meta fetches the
+    bytes server-side, so a public URL — e.g. a Dropbox ``raw=1`` link — works and
+    the process needn't stay running). The video plays with its own audio track
+    (outro/native sound); no library music is added (a Page can't).
+
+    Args:
+        page_id: The Facebook Page id.
+        access_token: Page access token with ``pages_manage_posts``.
+        message: Caption / description.
+        video_url: PUBLIC video URL Meta can fetch.
+        scheduled_time: Optional unix timestamp (seconds, UTC). When set, the
+            video is created unpublished with ``scheduled_publish_time`` so
+            Facebook publishes it later (must be 10 min–30 days out).
+
+    Returns:
+        The Graph API response dict (e.g. ``{"id": "<video-id>"}``).
+    """
+    url = f"{GRAPH_BASE}/{page_id}/videos"
+    params: dict = {
+        "access_token": access_token,
+        "file_url": video_url,
+        "description": message,
+    }
+    if scheduled_time is not None:
+        params["published"] = "false"
+        params["scheduled_publish_time"] = str(int(scheduled_time))
+    return _post_form(url, params)
+
+
 def post_instagram(
     ig_user_id: str,
     access_token: str,
