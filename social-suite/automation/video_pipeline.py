@@ -1393,6 +1393,35 @@ def save_styled(dir_rel: str) -> list[dict]:
     return queue
 
 
+def copy_styled(dir_rel: str, folder: str) -> int:
+    """Upload locally-finished clips to a SECOND Dropbox folder (e.g. 'HP Tiktok')
+    as a pure copy — no queue repoint, nothing deleted, nothing posted. Runs after
+    save_styled so a clip can live in HP Posts AND another folder at once."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    src_dir = dir_rel if os.path.isabs(dir_rel) else os.path.join(ROOT, dir_rel)
+    queue = _load_json(QUEUE_PATH, [])
+    n = 0
+    for e in queue:
+        cid = e.get("id", "")
+        cands = [f"{cid}.mp4"]
+        if "-" in cid:
+            cands.append(cid.split("-", 1)[1] + ".mp4")
+        local = next((os.path.join(src_dir, c) for c in cands
+                      if os.path.exists(os.path.join(src_dir, c))), None)
+        if not local:
+            continue
+        mp = e.get("media_path") or ""
+        fname = mp.rsplit("/", 1)[-1] if mp else f"{cid}.mp4"
+        prefix = mp.rsplit("/", 2)[0] if mp.count("/") >= 2 else "/HP-Content Auto."
+        dest = f"{prefix}/{folder}/{fname}"
+        dbx.upload(local, dest)
+        n += 1
+        print(f"copied {cid} -> {dest}")
+    print(f"\nCopied {n} clip(s) to {folder}. Nothing posted.")
+    return n
+
+
 def prune_clips(keep_ids: list[str]) -> list[dict]:
     """Delete every queued clip NOT in ``keep_ids`` — both its Dropbox file and
     its queue entry — leaving only the kept set. Clears stale batches so the
@@ -2055,6 +2084,14 @@ def main(argv: list[str] | None = None) -> int:
     styled = os.getenv("SAVE_STYLED", "").strip()
     if styled:
         save_styled(styled)
+        return 0
+
+    # COPY_STYLED: "dir:Folder" — upload the committed finished clips to a SECOND
+    # Dropbox folder (e.g. HP Tiktok) as a copy, without touching the queue.
+    copy_st = os.getenv("COPY_STYLED", "").strip()
+    if copy_st and ":" in copy_st:
+        d, folder = copy_st.split(":", 1)
+        copy_styled(d.strip(), folder.strip())
         return 0
 
     # PROMOTE_IDS: move ONLY these clips from processed/ into Ready To Post

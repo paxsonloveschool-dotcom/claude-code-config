@@ -107,6 +107,10 @@ on:
         description: "Repo dir of locally-finished clips (logo+outro) to upload into HP Posts + repoint queue"
         required: false
         default: ""
+      copy_styled:
+        description: "'dir:Folder' — copy committed finished clips to a second Dropbox folder (e.g. HP Tiktok)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -175,6 +179,7 @@ jobs:
           DEMOTE_IDS: ${{ inputs.demote_ids }}
           CLEAN_READY: ${{ inputs.clean_ready }}
           SAVE_STYLED: ${{ inputs.save_styled }}
+          COPY_STYLED: ${{ inputs.copy_styled }}
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
