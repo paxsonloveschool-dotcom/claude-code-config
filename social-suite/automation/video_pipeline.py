@@ -1027,9 +1027,10 @@ def dump_thumbs() -> None:
             if match and match not in fp.lower():
                 continue
             raw = dbx.download(f)
-            # Base from parent folder + name so same-named clips don't collide.
+            # Base = filename FIRST (keeps the unique timestamp within _slug's 40-char
+            # cap) + short parent tag, so bulk-folder clips never collide/overwrite.
             parent = os.path.basename(os.path.dirname(fp)) if fp else ""
-            base = _slug(f"{parent}-{f.name}") or "clip"
+            base = (_slug(f.name) + "-" + _slug(parent)[:8]).strip("-") or "clip"
             r = subprocess.run(
                 ["ffprobe", "-v", "error", "-show_entries", "format=duration",
                  "-of", "default=nw=1:nk=1", raw],
