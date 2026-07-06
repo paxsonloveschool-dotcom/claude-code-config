@@ -519,18 +519,33 @@ def _edit_short_4k(src: str, a: float, b: float, out_path: str) -> str:
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     dur = max(0.1, b - a)
     fr = max(2, int(round(dur * 30)))
-    # gentle continuous zoom (1.00 -> ~1.06) over the cut = premium, never static
-    vf = (
-        "scale=2400:4267:force_original_aspect_ratio=increase:flags=lanczos,"
-        "crop=2400:4267,"
-        f"zoompan=z='min(zoom+0.00045,1.06)':d=1:x='iw/2-(iw/zoom/2)':"
-        f"y='ih/2-(ih/zoom/2)':s=2160x3840:fps=30,"
-        "setsar=1,format=yuv420p"
-    )
+    # MONTAGE_HD=1 -> fast 1080x1920 encode (much quicker to render/fetch/finish);
+    # else true 4K vertical. Same gentle Ken-Burns push either way.
+    hd = os.getenv("MONTAGE_HD", "").strip().lower() in ("1", "true", "yes")
+    if hd:
+        vf = (
+            "scale=1200:2134:force_original_aspect_ratio=increase:flags=lanczos,"
+            "crop=1200:2134,"
+            f"zoompan=z='min(zoom+0.00045,1.06)':d=1:x='iw/2-(iw/zoom/2)':"
+            f"y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30,"
+            "setsar=1,format=yuv420p"
+        )
+        enc = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-an",
+               "-movflags", "+faststart"]
+    else:
+        # gentle continuous zoom (1.00 -> ~1.06) over the cut = premium, never static
+        vf = (
+            "scale=2400:4267:force_original_aspect_ratio=increase:flags=lanczos,"
+            "crop=2400:4267,"
+            f"zoompan=z='min(zoom+0.00045,1.06)':d=1:x='iw/2-(iw/zoom/2)':"
+            f"y='ih/2-(ih/zoom/2)':s=2160x3840:fps=30,"
+            "setsar=1,format=yuv420p"
+        )
+        enc = ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-an",
+               "-movflags", "+faststart"]
     subprocess.run(
         ["ffmpeg", "-y", "-ss", f"{a:.2f}", "-i", src, "-t", f"{dur:.2f}", "-vf", vf,
-         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-an",
-         "-movflags", "+faststart", out_path],
+         *enc, out_path],
         check=True, capture_output=True)
     return out_path
 
@@ -616,10 +631,14 @@ def _concat_v(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
         except ValueError:
             durs.append(3.0)
     n = len(parts)
+    hd = os.getenv("MONTAGE_HD", "").strip().lower() in ("1", "true", "yes")
+    tgt = "1080:1920" if hd else "2160:3840"
+    cenc = (["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"] if hd
+            else ["-c:v", "libx264", "-preset", "medium", "-crf", "18"])
     cmd = ["ffmpeg", "-y"]
     for p in parts:
         cmd += ["-i", p]
-    fc = [f"[{i}:v]fps=30,scale=2160:3840:flags=lanczos,setsar=1,format=yuv420p[n{i}]"
+    fc = [f"[{i}:v]fps=30,scale={tgt}:flags=lanczos,setsar=1,format=yuv420p[n{i}]"
           for i in range(n)]
     vlab, off = "[n0]", durs[0] - xfade
     for i in range(1, n):
@@ -627,8 +646,7 @@ def _concat_v(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
         fc.append(f"{vlab}[n{i}]xfade=transition=fade:duration={xfade}:offset={off:.3f}{nv}")
         vlab, off = nv, off + durs[i] - xfade
     cmd += ["-filter_complex", ";".join(fc), "-map", vlab, "-an",
-            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-            "-movflags", "+faststart", out_path]
+            *cenc, "-movflags", "+faststart", out_path]
     try:
         subprocess.run(cmd, check=True, capture_output=True)
         return out_path

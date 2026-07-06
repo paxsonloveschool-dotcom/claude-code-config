@@ -170,6 +170,8 @@ jobs:
           CLEAN_READY: ${{ inputs.clean_ready }}
           SAVE_STYLED: ${{ inputs.save_styled }}
           COPY_STYLED: ${{ inputs.copy_styled }}
+          # Render montages at fast 1080x1920 (speed over 4K) — quick to render/fetch/finish.
+          MONTAGE_HD: "1"
         working-directory: social-suite
         run: python automation/video_pipeline.py
 
