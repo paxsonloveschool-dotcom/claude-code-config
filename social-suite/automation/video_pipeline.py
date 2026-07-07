@@ -294,11 +294,9 @@ def organize_posts() -> None:
             for e in queue:
                 mp = e.get("media_path") or ""
                 if mp and mp.rsplit("/", 1)[-1].lower() == f.name.lower():
+                    # Just repoint the path — a Dropbox move keeps the existing
+                    # shared link, so skip the slow per-file shared_link() call.
                     e["media_path"] = dest
-                    try:
-                        e["media_url"] = dbx.shared_link(dest, raw=True)
-                    except Exception:  # noqa: BLE001
-                        pass
                     changed += 1
     _save_json(QUEUE_PATH, queue)
     print(f"\nOrganized {moved} clip(s) into subfolders inside {READY_FOLDER} "
