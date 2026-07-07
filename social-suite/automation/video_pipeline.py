@@ -246,6 +246,16 @@ POSTS_CATEGORIES: list[tuple[tuple[str, ...], str]] = [
 ]
 
 
+def _posts_category(name: str) -> str:
+    """Map a clip filename (or queue id) to its HP Posts subfolder. First match
+    wins; anything unrecognized -> Misc. Shared by save_styled + organize_posts."""
+    low = name.lower()
+    for keys, folder in POSTS_CATEGORIES:
+        if any(k in low for k in keys):
+            return folder
+    return "Misc"
+
+
 def organize_posts() -> None:
     """Sort every loose clip in HP Posts into per-project subfolders that live
     INSIDE HP Posts (never outside), plus Talking Videos and Misc. Repoints the
@@ -253,14 +263,7 @@ def organize_posts() -> None:
     from services.ingest import dropbox_client as dbx  # lazy
 
     client = dbx._client()
-
-    def cat_for(name: str) -> str:
-        low = name.lower()
-        for keys, folder in POSTS_CATEGORIES:
-            if any(k in low for k in keys):
-                return folder
-        return "Misc"
-
+    cat_for = _posts_category
     queue = _load_json(QUEUE_PATH, [])
     changed = moved = 0
     for path_lower, display in _top_level_folders(dbx):
@@ -1466,7 +1469,10 @@ def save_styled(dir_rel: str) -> list[dict]:
         else:
             print(f"save_styled: can't derive folder for {cid} ({mp})")
             continue
-        dest = f"{prefix}/{READY_FOLDER}/{fname}"
+        # Save straight into the clip's project subfolder INSIDE HP Posts so new
+        # keepers are always organized (Dropbox auto-creates the subfolder).
+        cat = _posts_category(fname if fname else cid)
+        dest = f"{prefix}/{READY_FOLDER}/{cat}/{fname}"
         dbx.upload(local, dest)
         if mp and mp != dest:
             try:
