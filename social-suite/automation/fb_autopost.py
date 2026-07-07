@@ -1,19 +1,19 @@
-"""Auto-post HP's Dropbox videos to the HP Facebook Page — native video, own audio.
+"""Auto-post HP's Dropbox videos to the HP Facebook Page — next-number mode.
 
-Cloud-friendly: runs on GitHub Actions (Dropbox + Meta secrets live there), needs
-no Mac. Reuses the suite's Dropbox client and the Meta Graph poster. Uses
-Facebook's server-side scheduling to queue each new video onto the next
-Mon/Wed/Fri/Sat 11:00 (local) slot — Facebook then publishes it itself.
+Each POST DAY (Mon/Wed/Fri/Sat), the daily cron looks at the HP Dropbox folder
+FRESH and schedules exactly ONE video — the lowest-numbered clip whose leading
+number is greater than the last number posted — onto TODAY's 11:00 (US Central)
+slot via Facebook's server-side scheduler. Nothing is queued days ahead, so the
+owner can rename/replace/reorder clips any time before the morning they post and
+every platform picks up the same change together.
 
-No added song: a Facebook Page can't use library music, so the video posts with
-its OWN audio (outro/native sound). TikTok + Instagram carry the real songs.
+Rules:
+  * Clips must be numbered: ``1.mp4, 2.mp4, ... 10.mp4`` (leading number = order).
+  * State is just {"last_num": N} in content/fb_posted.json — rename-proof.
+  * No added music (a Page can't); the video posts with its own audio.
 
-Dedupe is by Dropbox ``rev`` (kept in content/fb_posted.json), so re-runs never
-double-post and the file's name/order can change freely.
-
-Usage (on a runner with the secrets, or locally):
-    python automation/fb_autopost.py            # schedule new videos
-    DRY_RUN=1 python automation/fb_autopost.py  # show the plan, post nothing
+Cloud-only (GitHub Actions): DROPBOX_* + BRAND_HP_FB_PAGE_ID +
+BRAND_HP_META_ACCESS_TOKEN secrets. DRY_RUN=1 prints the plan, posts nothing.
 """
 
 from __future__ import annotations
@@ -21,29 +21,24 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime, timedelta, timezone
-
-
-def natkey(name: str):
-    """Natural sort key so 2 < 10 (numbers compared as numbers, not text)."""
-    return [int(p) if p.isdigit() else p.lower() for p in re.split(r"(\d+)", name)]
+from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.path.join(os.path.dirname(HERE), "content", "fb_posted.json")
 
 VIDEO_EXTS = (".mp4", ".mov", ".m4v")
 POST_WEEKDAYS = (0, 2, 4, 5)  # Mon, Wed, Fri, Sat
-POST_HOUR_UTC = 16            # 11:00 America/Chicago (CDT); ~10:00 in winter (CST)
-POST_MINUTE = 0
-HORIZON_DAYS = 28             # Facebook allows scheduling up to 30 days ahead
+POST_HOUR_UTC = 16            # 11:00 America/Chicago (CDT)
 CAPTION = "Higher Purpose Landscaping 🌿 Call (979) 777-8851 for a free quote!"
 
 
 def load_state() -> dict:
     if os.path.exists(STATE_PATH):
         with open(STATE_PATH, encoding="utf-8") as f:
-            return json.load(f)
-    return {"posted": [], "last_slot": None}
+            s = json.load(f)
+            if "last_num" in s:
+                return s
+    return {"last_num": 0}
 
 
 def save_state(s: dict) -> None:
@@ -52,20 +47,20 @@ def save_state(s: dict) -> None:
         f.write("\n")
 
 
-def next_slots(start: datetime, count: int) -> list[datetime]:
-    """Next ``count`` Mon/Wed/Fri/Sat 11:00-local slots after ``start`` (UTC, ≤horizon)."""
-    out: list[datetime] = []
-    for off in range(HORIZON_DAYS + 1):
-        d = start + timedelta(days=off)
-        if d.weekday() in POST_WEEKDAYS:
-            slot = d.replace(hour=POST_HOUR_UTC, minute=POST_MINUTE, second=0, microsecond=0)
-            if slot > start and len(out) < count:
-                out.append(slot)
-    return out
+def clip_number(name: str) -> int | None:
+    """Leading number of a clip filename ('12 talk.mp4' -> 12); None if unnumbered."""
+    m = re.match(r"\s*(\d+)", name)
+    return int(m.group(1)) if m else None
+
+
+def next_clip(files, last_num: int):
+    """The file with the smallest leading number greater than ``last_num``."""
+    numbered = [(clip_number(f.name), f) for f in files]
+    candidates = [(n, f) for n, f in numbered if n is not None and n > last_num]
+    return min(candidates, key=lambda x: x[0]) if candidates else (None, None)
 
 
 def _hp_folder_path(dbx) -> str | None:
-    """Find the HP Tiktok folder at the Dropbox app-folder root."""
     client = dbx._client()
     res = client.files_list_folder("")
     while True:
@@ -83,6 +78,15 @@ def main() -> int:
     from services.ingest import dropbox_client as dbx
     from services.publish.direct import meta
 
+    now = datetime.now(timezone.utc)
+    if now.weekday() not in POST_WEEKDAYS:
+        print(f"Not a post day ({now:%A}) — nothing to do.")
+        return 0
+    slot = now.replace(hour=POST_HOUR_UTC, minute=0, second=0, microsecond=0)
+    if now >= slot:
+        print("Today's slot already passed — nothing to do.")
+        return 0
+
     page_id = os.environ.get("BRAND_HP_FB_PAGE_ID", "").strip()
     token = os.environ.get("BRAND_HP_META_ACCESS_TOKEN", "").strip()
     if not page_id or not token:
@@ -95,42 +99,22 @@ def main() -> int:
         return 1
 
     files = [f for f in dbx.list_folder(folder) if f.name.lower().endswith(VIDEO_EXTS)]
-    files.sort(key=lambda f: natkey(f.name))
-
     s = load_state()
-    already = set(s.get("posted", []))
-    new = [f for f in files if f.rev not in already]
-    if not new:
-        print("No new HP videos for Facebook.")
+    num, f = next_clip(files, s.get("last_num", 0))
+    if not f:
+        print(f"No clip numbered above {s.get('last_num', 0)} — nothing to post.")
         return 0
 
-    now = datetime.now(timezone.utc)
-    start = now
-    if s.get("last_slot"):
-        try:
-            start = max(now, datetime.fromisoformat(s["last_slot"]) + timedelta(minutes=1))
-        except ValueError:
-            pass
-    slots = next_slots(start, len(new))
-    print(f"{len(new)} new video(s); {len(slots)} slot(s) open in the next {HORIZON_DAYS} days.")
+    print(f"Next up: #{num} ({f.name}) -> today {slot:%a %b %d %H:%M}Z")
+    if os.environ.get("DRY_RUN", "").strip().lower() in ("1", "true", "yes"):
+        print("[dry-run] posting nothing.")
+        return 0
 
-    dry = os.environ.get("DRY_RUN", "").strip().lower() in ("1", "true", "yes")
-    for i, f in enumerate(new):
-        if i >= len(slots):
-            print("Waiting for next run (window full):", f.name)
-            continue
-        slot = slots[i]
-        print(f"{f.name} -> {slot:%a %b %d %H:%M}Z")
-        if dry:
-            continue
-        url = dbx.shared_link(f.path, raw=True)
-        meta.post_facebook_video(page_id, token, CAPTION, url, scheduled_time=int(slot.timestamp()))
-        s.setdefault("posted", []).append(f.rev)
-        s["last_slot"] = slot.isoformat()
-        save_state(s)
-        print("  scheduled ✅")
-
-    print("Done.")
+    url = dbx.shared_link(f.path, raw=True)
+    meta.post_facebook_video(page_id, token, CAPTION, url, scheduled_time=int(slot.timestamp()))
+    s["last_num"] = num
+    save_state(s)
+    print("scheduled ✅")
     return 0
 
 
