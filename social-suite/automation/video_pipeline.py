@@ -227,6 +227,81 @@ def organize_dropbox(execute: bool = False) -> None:
     debug_tree()
 
 
+# HP Posts organization: filename-substring -> subfolder INSIDE HP Posts.
+# First match wins (ordered); anything unmatched sweeps into Misc.
+POSTS_CATEGORIES: list[tuple[tuple[str, ...], str]] = [
+    (("talking",), "Talking Videos"),
+    (("premium-fw",), "Fire & Water Backyard"),
+    (("premium-ap",), "Estate Sport Court"),
+    (("premium-jn",), "Plunge Pool Backyard"),
+    (("premium-wf",), "Waterfall Pool"),
+    (("premium-sd",), "Sod & Irrigation"),
+    (("bry",), "Bryan Pool"),
+    (("premium-bd", "barry"), "Barry Pool"),
+    (("bob",), "Bob Putting Green"),
+    (("june",), "June Pergola"),
+    (("alice",), "Alice"),
+    (("richard",), "Richard"),
+    (("william",), "William Adams"),
+]
+
+
+def organize_posts() -> None:
+    """Sort every loose clip in HP Posts into per-project subfolders that live
+    INSIDE HP Posts (never outside), plus Talking Videos and Misc. Repoints the
+    queue's media_path/media_url for moved clips. Existing subfolders untouched."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+
+    def cat_for(name: str) -> str:
+        low = name.lower()
+        for keys, folder in POSTS_CATEGORIES:
+            if any(k in low for k in keys):
+                return folder
+        return "Misc"
+
+    queue = _load_json(QUEUE_PATH, [])
+    changed = moved = 0
+    for path_lower, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        posts_dir = f"{display.rstrip('/')}/{READY_FOLDER}"
+        files = [f for f in dbx.list_folder(posts_dir)
+                 if f.name.lower().endswith(VIDEO_EXTS)]
+        made: set[str] = set()
+        for f in files:
+            folder = cat_for(f.name)
+            dest_dir = f"{posts_dir}/{folder}"
+            if folder not in made:
+                try:
+                    client.files_create_folder_v2(dest_dir)
+                    print(f"created  {folder}/")
+                except Exception:  # noqa: BLE001 — already exists is fine
+                    pass
+                made.add(folder)
+            dest = f"{dest_dir}/{f.name}"
+            try:
+                client.files_move_v2(f.path, dest, autorename=True)
+            except Exception as ex:  # noqa: BLE001
+                print(f"move failed {f.name}: {ex}")
+                continue
+            moved += 1
+            print(f"{f.name} -> {folder}/")
+            for e in queue:
+                mp = e.get("media_path") or ""
+                if mp and mp.rsplit("/", 1)[-1].lower() == f.name.lower():
+                    e["media_path"] = dest
+                    try:
+                        e["media_url"] = dbx.shared_link(dest, raw=True)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    changed += 1
+    _save_json(QUEUE_PATH, queue)
+    print(f"\nOrganized {moved} clip(s) into subfolders inside {READY_FOLDER} "
+          f"({changed} queue entr{'y' if changed == 1 else 'ies'} repointed). Nothing posted.")
+
+
 def process_folder(folder_path: str, folder_display: str, brand, dbx, *, dry_run: bool = False) -> list[dict]:
     """Process the videos directly inside one matched brand folder."""
     brand_key, display, default_tags = brand
@@ -2044,7 +2119,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # DROPBOX_ORGANIZE: build the Ready-To-Post + Drop-Content-Here layout.
     # Any value lists the tree (dry run); "go" actually creates/moves.
+    # "posts" instead sorts HP Posts into per-project subfolders (inside it).
     org = os.getenv("DROPBOX_ORGANIZE", "").strip().lower()
+    if org == "posts":
+        organize_posts()
+        return 0
     if org:
         organize_dropbox(execute=(org == "go"))
         return 0
