@@ -59,10 +59,6 @@ on:
         description: "Set true to print the Dropbox folder tree and exit"
         required: false
         default: ""
-      dropbox_whoami:
-        description: "Set true to report which Dropbox account is connected (email/name)"
-        required: false
-        default: ""
       dropbox_usage:
         description: "Set true to report storage used + per-folder size breakdown"
         required: false
@@ -168,7 +164,6 @@ jobs:
           CONTENT_FOLDER: ${{ inputs.content_folder }}
           POSTS_FOLDER: ${{ inputs.posts_folder }}
           DROPBOX_LS: ${{ inputs.dropbox_ls }}
-          DROPBOX_WHOAMI: ${{ inputs.dropbox_whoami }}
           DROPBOX_USAGE: ${{ inputs.dropbox_usage }}
           DROPBOX_INVENTORY: ${{ inputs.dropbox_inventory }}
           PURGE_EDITED: ${{ inputs.purge_edited }}
