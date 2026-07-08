@@ -1552,8 +1552,27 @@ def swap_outro(ids_csv: str) -> None:
                     "fps=30,setsar=1,format=yuv420p", "-c:v", "libx264", "-preset", "veryfast",
                     "-crf", "18", "-c:a", "aac", "-ar", "44100", "-ac", "2", on], check=True)
 
+    # detection reference: the OLD (8851) outro's phone-number band. A clip is only
+    # swapped if its final frame matches this band — clips on the new outro or ending
+    # on content are left untouched.
+    import numpy as np  # lazy
+    from PIL import Image  # lazy
+    ref = np.asarray(Image.open(os.path.join(ROOT, "content", "brand", "outro_ref_8851.png"))
+                     .convert("L")).astype("int16")
+    THRESH = 4.5  # 8851 card ~1, new card ~8.5, content ~90
+
+    def _is_old_outro(clip: str, d: float) -> float:
+        fp = os.path.join(work, "lastframe.png")
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{max(0, d - 0.12):.2f}",
+                        "-i", clip, "-frames:v", "1", "-s", "1080x1920", fp], check=False)
+        try:
+            b = np.asarray(Image.open(fp).convert("L"))[1180:1420, :].astype("int16")
+            return float(np.abs(b - ref).mean())
+        except Exception:  # noqa: BLE001
+            return 999.0
+
     ids = [x.strip() for x in ids_csv.split(",") if x.strip()]
-    n = 0
+    n = skipped = 0
     for cid in ids:
         e = by_id.get(cid)
         if not e or not e.get("media_path"):
@@ -1566,7 +1585,11 @@ def swap_outro(ids_csv: str) -> None:
             print(f"swap_outro: download failed {cid}: {ex}"); continue
         d = _dur(src)
         if d <= OUTRO_SEC + 0.5:
-            print(f"swap_outro: {cid} too short ({d:.2f}s) — skipping"); continue
+            print(f"swap_outro: {cid} too short ({d:.2f}s) — skipping"); os.remove(src); continue
+        diff = _is_old_outro(src, d)
+        if diff >= THRESH:
+            print(f"skip {cid} (not 8851 outro, diff={diff:.1f}) — left alone")
+            skipped += 1; os.remove(src); continue
         body = os.path.join(work, f"body-{cid}.mp4")
         # re-encode the body [0 .. d-3.0] (visually lossless crf18); strip old outro
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-t", f"{d - OUTRO_SEC:.3f}",
@@ -1585,7 +1608,8 @@ def swap_outro(ids_csv: str) -> None:
         for f in (src, body, final, lst):
             try: os.remove(f)
             except OSError: pass
-    print(f"\nSwapped outro on {n} clip(s). Body + text + logo unchanged.")
+    print(f"\nSwapped outro on {n} clip(s); left {skipped} alone (new outro / no 8851). "
+          f"Body + text + logo unchanged.")
 
 
 def prune_clips(keep_ids: list[str]) -> list[dict]:
