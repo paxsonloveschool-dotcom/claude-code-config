@@ -1520,6 +1520,74 @@ def copy_styled(dir_rel: str, folder: str) -> int:
     return n
 
 
+def swap_outro(ids_csv: str) -> None:
+    """Surgically replace the last OUTRO_SEC seconds (the old brand outro) of each
+    saved clip with the current brand outro (content/brand/outro.mp4) — nothing else
+    changes. Downloads each clip, trims the old tail, appends the normalized new
+    outro, re-uploads to the SAME Dropbox path. Both outros are 3.0s so the body is
+    left exactly intact. ids_csv = comma queue ids."""
+    from services.ingest import dropbox_client as dbx  # lazy
+    import subprocess  # lazy
+
+    OUTRO_SEC = 3.0
+    client = dbx._client()
+    queue = _load_json(QUEUE_PATH, [])
+    by_id = {e.get("id"): e for e in queue}
+    work = os.path.join(os.getenv("INGEST_DOWNLOAD_DIR", "."), "swapoutro")
+    os.makedirs(work, exist_ok=True)
+
+    def _dur(p: str) -> float:
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                            "-of", "default=nw=1:nk=1", p], capture_output=True, text=True)
+        try:
+            return float(r.stdout.strip())
+        except ValueError:
+            return 0.0
+
+    # normalize the new outro once (1080x1920@30, aac stereo)
+    on = os.path.join(work, "_outro_new.mp4")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i",
+                    os.path.join(ROOT, "content", "brand", "outro.mp4"), "-vf",
+                    "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+                    "fps=30,setsar=1,format=yuv420p", "-c:v", "libx264", "-preset", "veryfast",
+                    "-crf", "18", "-c:a", "aac", "-ar", "44100", "-ac", "2", on], check=True)
+
+    ids = [x.strip() for x in ids_csv.split(",") if x.strip()]
+    n = 0
+    for cid in ids:
+        e = by_id.get(cid)
+        if not e or not e.get("media_path"):
+            print(f"swap_outro: {cid} not found / no path"); continue
+        mp = e["media_path"]
+        src = os.path.join(work, f"src-{cid}.mp4")
+        try:
+            client.files_download_to_file(src, mp)
+        except Exception as ex:  # noqa: BLE001
+            print(f"swap_outro: download failed {cid}: {ex}"); continue
+        d = _dur(src)
+        if d <= OUTRO_SEC + 0.5:
+            print(f"swap_outro: {cid} too short ({d:.2f}s) — skipping"); continue
+        body = os.path.join(work, f"body-{cid}.mp4")
+        # re-encode the body [0 .. d-3.0] (visually lossless crf18); strip old outro
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-t", f"{d - OUTRO_SEC:.3f}",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                        "-c:a", "aac", "-ar", "44100", "-ac", "2", body], check=True)
+        lst = os.path.join(work, f"l-{cid}.txt")
+        with open(lst, "w") as fh:
+            fh.write(f"file '{os.path.abspath(body)}'\nfile '{os.path.abspath(on)}'\n")
+        final = os.path.join(work, f"final-{cid}.mp4")
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst,
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                        "-c:a", "aac", "-ar", "44100", "-ac", "2", final], check=True)
+        dbx.upload(final, mp)  # overwrites the same path (Edit = Replace)
+        n += 1
+        print(f"swapped outro: {cid}  ({mp.split('/HP Posts/')[-1] if '/HP Posts/' in mp else mp})")
+        for f in (src, body, final, lst):
+            try: os.remove(f)
+            except OSError: pass
+    print(f"\nSwapped outro on {n} clip(s). Body + text + logo unchanged.")
+
+
 def prune_clips(keep_ids: list[str]) -> list[dict]:
     """Delete every queued clip NOT in ``keep_ids`` — both its Dropbox file and
     its queue entry — leaving only the kept set. Clears stale batches so the
@@ -2194,6 +2262,12 @@ def main(argv: list[str] | None = None) -> int:
     if copy_st and ":" in copy_st:
         d, folder = copy_st.split(":", 1)
         copy_styled(d.strip(), folder.strip())
+        return 0
+
+    # SWAP_OUTRO: comma ids — replace the old brand-outro tail with the current one.
+    swap = os.getenv("SWAP_OUTRO", "").strip()
+    if swap:
+        swap_outro(swap)
         return 0
 
     # PROMOTE_IDS: move ONLY these clips from processed/ into Ready To Post

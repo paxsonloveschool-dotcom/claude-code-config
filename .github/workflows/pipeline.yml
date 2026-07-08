@@ -103,6 +103,10 @@ on:
         description: "'dir:Folder' — copy committed finished clips to a second Dropbox folder (e.g. HP Tiktok)"
         required: false
         default: ""
+      swap_outro:
+        description: "Comma queue ids — replace the old 3s brand outro tail with the current brand outro"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -170,6 +174,7 @@ jobs:
           CLEAN_READY: ${{ inputs.clean_ready }}
           SAVE_STYLED: ${{ inputs.save_styled }}
           COPY_STYLED: ${{ inputs.copy_styled }}
+          SWAP_OUTRO: ${{ inputs.swap_outro }}
           # Render montages at fast 1080x1920 (speed over 4K) — quick to render/fetch/finish.
           MONTAGE_HD: "1"
         working-directory: social-suite
