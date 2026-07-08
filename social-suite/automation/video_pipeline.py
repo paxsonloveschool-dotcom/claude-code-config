@@ -1571,18 +1571,42 @@ def swap_outro(ids_csv: str) -> None:
         except Exception:  # noqa: BLE001
             return 999.0
 
+    # Index basename -> real Dropbox path across the Posts tree so a stale queue
+    # path (wrong/absent subfolder) still resolves to where the file truly lives.
+    index: dict = {}
+    posts_roots = set()
+    for e in queue:
+        mp = e.get("media_path") or ""
+        if f"/{READY_FOLDER}/" in mp:
+            posts_roots.add(mp.split(f"/{READY_FOLDER}/", 1)[0] + f"/{READY_FOLDER}")
+    for root in posts_roots:
+        try:
+            res = client.files_list_folder(root, recursive=True)
+            ents = list(res.entries)
+            while getattr(res, "has_more", False):
+                res = client.files_list_folder_continue(res.cursor); ents += res.entries
+            for en in ents:
+                nm = getattr(en, "name", "")
+                if nm.lower().endswith(".mp4"):
+                    index[nm.lower()] = getattr(en, "path_display", None) or getattr(en, "path_lower", "")
+        except Exception as ex:  # noqa: BLE001
+            print(f"swap_outro: could not index {root}: {ex}")
+
     ids = [x.strip() for x in ids_csv.split(",") if x.strip()]
-    n = skipped = 0
+    n = skipped = failed = 0
     for cid in ids:
         e = by_id.get(cid)
         if not e or not e.get("media_path"):
             print(f"swap_outro: {cid} not found / no path"); continue
         mp = e["media_path"]
+        real = index.get(mp.rsplit("/", 1)[-1].lower(), mp)  # self-heal stale path
         src = os.path.join(work, f"src-{cid}.mp4")
         try:
-            client.files_download_to_file(src, mp)
+            client.files_download_to_file(src, real)
         except Exception as ex:  # noqa: BLE001
-            print(f"swap_outro: download failed {cid}: {ex}"); continue
+            print(f"swap_outro: download failed {cid} ({real}): {ex}"); failed += 1; continue
+        if real != mp:
+            e["media_path"] = mp = real  # repoint queue to the true location
         d = _dur(src)
         if d <= OUTRO_SEC + 0.5:
             print(f"swap_outro: {cid} too short ({d:.2f}s) — skipping"); os.remove(src); continue
@@ -1608,8 +1632,9 @@ def swap_outro(ids_csv: str) -> None:
         for f in (src, body, final, lst):
             try: os.remove(f)
             except OSError: pass
-    print(f"\nSwapped outro on {n} clip(s); left {skipped} alone (new outro / no 8851). "
-          f"Body + text + logo unchanged.")
+    _save_json(QUEUE_PATH, queue)  # persist any self-healed paths
+    print(f"\nSwapped outro on {n} clip(s); left {skipped} alone (new outro / no 8851); "
+          f"{failed} download-failed. Body + text + logo unchanged.")
 
 
 def prune_clips(keep_ids: list[str]) -> list[dict]:
