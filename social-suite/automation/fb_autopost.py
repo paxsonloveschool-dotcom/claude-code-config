@@ -70,7 +70,7 @@ def _hp_folder_path(dbx) -> str | None:
         for e in res.entries:
             if e.__class__.__name__ == "FolderMetadata":
                 name = getattr(e, "path_display", e.name).lower()
-                if "hp" in name and "tiktok" in name:
+                if "hp" in name and "auto" in name and "post" in name:
                     return getattr(e, "path_lower", "") or getattr(e, "path_display", "")
         if not getattr(res, "has_more", False):
             return None
@@ -98,7 +98,7 @@ def main() -> int:
 
     folder = _hp_folder_path(dbx)
     if not folder:
-        print("Could not find the HP Tiktok folder in Dropbox.")
+        print("Could not find the HP Auto Post folder in Dropbox.")
         return 1
 
     files = [
