@@ -303,6 +303,68 @@ def organize_posts() -> None:
           f"({changed} queue entr{'y' if changed == 1 else 'ies'} repointed). Nothing posted.")
 
 
+def move_saved_folder(src: str, dest: str) -> None:
+    """Move every saved clip from ``<Brand>/<src>`` into ``<Brand>/<dest>`` keeping
+    the EXACT subfolder structure and filenames. A Dropbox move preserves shared
+    links. When ``<dest>`` doesn't exist yet the whole folder is renamed in one op;
+    when it already exists each child (file or subfolder) is merged in and the now-
+    empty ``<src>`` is removed. Repoints queue media_paths ``/src/`` -> ``/dest/``."""
+    from services.ingest import dropbox_client as dbx  # lazy
+
+    client = dbx._client()
+    queue = _load_json(QUEUE_PATH, [])
+    renamed = merged = 0
+    for _pl, display in _top_level_folders(dbx):
+        if not classify_brand(display):
+            continue
+        base = display.rstrip("/")
+        src_path, dest_path = f"{base}/{src}", f"{base}/{dest}"
+        try:
+            client.files_get_metadata(src_path)
+        except Exception:  # noqa: BLE001 — no such src under this brand
+            continue
+        dest_exists = True
+        try:
+            client.files_get_metadata(dest_path)
+        except Exception:  # noqa: BLE001
+            dest_exists = False
+        if not dest_exists:
+            try:
+                client.files_move_v2(src_path, dest_path)
+                renamed += 1
+                print(f"renamed  {src_path}  ->  {dest_path}")
+            except Exception as ex:  # noqa: BLE001
+                print(f"rename failed {src_path}: {ex}"); continue
+        else:
+            res = client.files_list_folder(src_path)
+            children = list(res.entries)
+            while getattr(res, "has_more", False):
+                res = client.files_list_folder_continue(res.cursor); children += res.entries
+            for en in children:
+                nm = getattr(en, "name", "")
+                child_src = getattr(en, "path_display", f"{src_path}/{nm}")
+                try:
+                    client.files_move_v2(child_src, f"{dest_path}/{nm}", autorename=False)
+                    merged += 1
+                    print(f"merged   {nm}  ->  {dest}/")
+                except Exception as ex:  # noqa: BLE001 — already present in dest
+                    print(f"skip {nm} (in dest already / {ex})")
+            try:
+                if not client.files_list_folder(src_path).entries:
+                    client.files_delete_v2(src_path)
+                    print(f"removed empty {src_path}")
+            except Exception:  # noqa: BLE001
+                pass
+    changed = 0
+    for e in queue:
+        mp = e.get("media_path") or ""
+        if f"/{src}/" in mp:
+            e["media_path"] = mp.replace(f"/{src}/", f"/{dest}/"); changed += 1
+    _save_json(QUEUE_PATH, queue)
+    print(f"\nMove done: {renamed} folder-rename(s), {merged} merged child(ren); "
+          f"repointed {changed} queue path(s) {src} -> {dest}. Nothing posted.")
+
+
 def process_folder(folder_path: str, folder_display: str, brand, dbx, *, dry_run: bool = False) -> list[dict]:
     """Process the videos directly inside one matched brand folder."""
     brand_key, display, default_tags = brand
@@ -1520,14 +1582,23 @@ def copy_styled(dir_rel: str, folder: str) -> int:
     return n
 
 
+# Folder-name fragments that mark a clip as a SAVED/finished clip (case-insensitive).
+# Covers the HP Posts -> HP Auto Post rename plus the HP Tiktok mirror.
+SAVED_MARKERS = ("/hp posts/", "/hp auto post/", "/hp tiktok/", "/hp tik tok/")
+
+
 def swap_outro(ids_csv: str) -> None:
-    """Surgically replace the last OUTRO_SEC seconds (the old brand outro) of each
-    saved clip with the current brand outro (content/brand/outro.mp4) — nothing else
-    changes. Downloads each clip, trims the old tail, appends the normalized new
-    outro, re-uploads to the SAME Dropbox path. Both outros are 3.0s so the body is
-    left exactly intact. ids_csv = comma queue ids."""
+    """Surgically replace the last OUTRO_SEC seconds (the old 8851 brand outro) of
+    each saved clip with the current brand outro (content/brand/outro.mp4) — nothing
+    else changes. Downloads each clip, trims the old tail, appends the normalized new
+    outro, re-uploads to the SAME Dropbox path, then re-downloads to PROVE the swap
+    stuck. Both outros are 3.0s so the body is left exactly intact.
+
+    ids_csv = comma queue ids, OR "all" to scan every saved clip across HP Auto Post /
+    HP Posts / HP Tiktok (rename-agnostic) and swap only the ones still on 8851."""
     from services.ingest import dropbox_client as dbx  # lazy
     import subprocess  # lazy
+    import time  # lazy
 
     OUTRO_SEC = 3.0
     client = dbx._client()
@@ -1535,6 +1606,8 @@ def swap_outro(ids_csv: str) -> None:
     by_id = {e.get("id"): e for e in queue}
     work = os.path.join(os.getenv("INGEST_DOWNLOAD_DIR", "."), "swapoutro")
     os.makedirs(work, exist_ok=True)
+    proof_dir = os.path.join(ROOT, "content", "preview")
+    os.makedirs(proof_dir, exist_ok=True)
 
     def _dur(p: str) -> float:
         r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -1543,6 +1616,28 @@ def swap_outro(ids_csv: str) -> None:
             return float(r.stdout.strip())
         except ValueError:
             return 0.0
+
+    def _dl(dest: str, path: str, tries: int = 4) -> bool:
+        for i in range(tries):
+            try:
+                client.files_download_to_file(dest, path); return True
+            except Exception as ex:  # noqa: BLE001 — transient conn resets happen
+                if "not_found" in str(ex).lower() or i == tries - 1:
+                    if i == tries - 1:
+                        print(f"  download error ({path}): {ex}")
+                    return False
+                time.sleep(2 * (i + 1))
+        return False
+
+    def _up(local: str, path: str, tries: int = 4) -> bool:
+        for i in range(tries):
+            try:
+                dbx.upload(local, path); return True
+            except Exception as ex:  # noqa: BLE001
+                if i == tries - 1:
+                    print(f"  upload error ({path}): {ex}"); return False
+                time.sleep(2 * (i + 1))
+        return False
 
     # normalize the new outro once (1080x1920@30, aac stereo)
     on = os.path.join(work, "_outro_new.mp4")
@@ -1561,8 +1656,8 @@ def swap_outro(ids_csv: str) -> None:
                      .convert("L")).astype("int16")
     THRESH = 4.5  # 8851 card ~1, new card ~8.5, content ~90
 
-    def _is_old_outro(clip: str, d: float) -> float:
-        fp = os.path.join(work, "lastframe.png")
+    def _band_diff(clip: str, d: float, save_png: str | None = None) -> float:
+        fp = save_png or os.path.join(work, "lastframe.png")
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{max(0, d - 0.12):.2f}",
                         "-i", clip, "-frames:v", "1", "-s", "1080x1920", fp], check=False)
         try:
@@ -1571,71 +1666,121 @@ def swap_outro(ids_csv: str) -> None:
         except Exception:  # noqa: BLE001
             return 999.0
 
-    # Index basename -> real Dropbox path across the ENTIRE app scope so a stale
-    # queue path still resolves to wherever the file actually lives (prefers a copy
-    # under HP Posts if a name exists in multiple places).
-    index: dict = {}
+    # One recursive listing of the whole app scope: powers both the basename index
+    # (id-mode self-heal) and the "all" saved-clip sweep.
+    ents: list = []
     try:
         res = client.files_list_folder("", recursive=True)
         ents = list(res.entries)
         while getattr(res, "has_more", False):
             res = client.files_list_folder_continue(res.cursor); ents += res.entries
+    except Exception as ex:  # noqa: BLE001
+        print(f"swap_outro: could not list app scope: {ex}")
+    index: dict = {}
+    for en in ents:
+        nm = getattr(en, "name", "")
+        if not nm.lower().endswith(".mp4"):
+            continue
+        p = getattr(en, "path_display", None) or getattr(en, "path_lower", "")
+        key = nm.lower()
+        if key not in index or (f"/{READY_FOLDER}/" in p and f"/{READY_FOLDER}/" not in index[key]):
+            index[key] = p
+    print(f"swap_outro: indexed {len(index)} mp4(s) across the app")
+
+    # Build the target list: (cid, dropbox_path). "all" = every saved clip anywhere.
+    targets: list[tuple[str, str]] = []
+    if ids_csv.strip().lower() == "all":
+        seen = set()
         for en in ents:
             nm = getattr(en, "name", "")
             if not nm.lower().endswith(".mp4"):
                 continue
             p = getattr(en, "path_display", None) or getattr(en, "path_lower", "")
-            key = nm.lower()
-            # prefer an HP Posts copy over one elsewhere
-            if key not in index or (f"/{READY_FOLDER}/" in p and f"/{READY_FOLDER}/" not in index[key]):
-                index[key] = p
-        print(f"swap_outro: indexed {len(index)} mp4(s) across the app")
-    except Exception as ex:  # noqa: BLE001
-        print(f"swap_outro: could not index app scope: {ex}")
+            pl = p.lower()
+            if not any(m in pl for m in SAVED_MARKERS) or p in seen:
+                continue
+            seen.add(p)
+            targets.append((nm.rsplit(".", 1)[0], p))
+        folders = sorted({p.rsplit("/", 1)[0] for _c, p in targets})
+        print(f"swap_outro ALL: {len(targets)} saved clip(s) across {len(folders)} folder(s):")
+        for fld in folders:
+            print(f"    {fld}")
+    else:
+        for cid in [x.strip() for x in ids_csv.split(",") if x.strip()]:
+            e = by_id.get(cid)
+            mp = (e or {}).get("media_path") or ""
+            real = index.get(mp.rsplit("/", 1)[-1].lower()) or mp
+            if not real:
+                print(f"swap_outro: {cid} not found / no path"); continue
+            targets.append((cid, real))
 
-    ids = [x.strip() for x in ids_csv.split(",") if x.strip()]
-    n = skipped = failed = 0
-    for cid in ids:
-        e = by_id.get(cid)
-        if not e or not e.get("media_path"):
-            print(f"swap_outro: {cid} not found / no path"); continue
-        mp = e["media_path"]
-        real = index.get(mp.rsplit("/", 1)[-1].lower(), mp)  # self-heal stale path
-        src = os.path.join(work, f"src-{cid}.mp4")
-        try:
-            client.files_download_to_file(src, real)
-        except Exception as ex:  # noqa: BLE001
-            print(f"swap_outro: download failed {cid} ({real}): {ex}"); failed += 1; continue
-        if real != mp:
-            e["media_path"] = mp = real  # repoint queue to the true location
+    n = skipped = failed = verify_fail = 0
+    report: list[dict] = []
+    proof_saved = 0
+    for cid, path in targets:
+        src = os.path.join(work, "src.mp4")
+        if os.path.exists(src):
+            os.remove(src)
+        if not _dl(src, path):
+            print(f"download failed: {cid} ({path})"); failed += 1
+            report.append({"id": cid, "path": path, "status": "download_failed"}); continue
         d = _dur(src)
         if d <= OUTRO_SEC + 0.5:
-            print(f"swap_outro: {cid} too short ({d:.2f}s) — skipping"); os.remove(src); continue
-        diff = _is_old_outro(src, d)
-        if diff >= THRESH:
-            print(f"skip {cid} (not 8851 outro, diff={diff:.1f}) — left alone")
-            skipped += 1; os.remove(src); continue
-        body = os.path.join(work, f"body-{cid}.mp4")
-        # re-encode the body [0 .. d-3.0] (visually lossless crf18); strip old outro
+            print(f"skip {cid} (too short {d:.2f}s)"); skipped += 1
+            report.append({"id": cid, "path": path, "status": "too_short"}); continue
+        before = _band_diff(src, d)
+        if before >= THRESH:
+            print(f"skip {cid} (already new / no 8851, diff={before:.1f})"); skipped += 1
+            report.append({"id": cid, "path": path, "before": round(before, 1),
+                           "status": "already_new"}); continue
+        body = os.path.join(work, "body.mp4")
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-t", f"{d - OUTRO_SEC:.3f}",
                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
                         "-c:a", "aac", "-ar", "44100", "-ac", "2", body], check=True)
-        lst = os.path.join(work, f"l-{cid}.txt")
+        lst = os.path.join(work, "l.txt")
         with open(lst, "w") as fh:
             fh.write(f"file '{os.path.abspath(body)}'\nfile '{os.path.abspath(on)}'\n")
-        final = os.path.join(work, f"final-{cid}.mp4")
+        final = os.path.join(work, "final.mp4")
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst,
                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
                         "-c:a", "aac", "-ar", "44100", "-ac", "2", final], check=True)
-        dbx.upload(final, mp)  # overwrites the same path (Edit = Replace)
-        n += 1
-        print(f"swapped outro: {cid}  ({mp.split('/HP Posts/')[-1] if '/HP Posts/' in mp else mp})")
-        for f in (src, body, final, lst):
+        if not _up(final, path):
+            failed += 1
+            report.append({"id": cid, "path": path, "before": round(before, 1),
+                           "status": "upload_failed"}); continue
+        # PROVE it: re-download the just-uploaded file and re-measure the band.
+        chk = os.path.join(work, "chk.mp4")
+        if os.path.exists(chk):
+            os.remove(chk)
+        after = 999.0
+        if _dl(chk, path):
+            png = None
+            if proof_saved < 10:
+                png = os.path.join(proof_dir, f"verify-{cid}.png")
+                proof_saved += 1
+            after = _band_diff(chk, _dur(chk), save_png=png)
+        if after < THRESH:
+            print(f"VERIFY FAILED {cid}: still 8851 after upload (after={after:.1f})")
+            verify_fail += 1
+            report.append({"id": cid, "path": path, "before": round(before, 1),
+                           "after": round(after, 1), "status": "verify_failed"})
+        else:
+            n += 1
+            short = path.split("/HP Auto Post/")[-1].split("/HP Posts/")[-1]
+            print(f"SWAPPED+VERIFIED {cid}  (before={before:.1f} after={after:.1f})  {short}")
+            report.append({"id": cid, "path": path, "before": round(before, 1),
+                           "after": round(after, 1), "status": "swapped_verified"})
+        for f in (src, body, final, lst, chk):
             try: os.remove(f)
             except OSError: pass
-    _save_json(QUEUE_PATH, queue)  # persist any self-healed paths
-    print(f"\nSwapped outro on {n} clip(s); left {skipped} alone (new outro / no 8851); "
-          f"{failed} download-failed. Body + text + logo unchanged.")
+    rep_path = os.path.join(ROOT, "content", "reference", "swap_outro_report.json")
+    os.makedirs(os.path.dirname(rep_path), exist_ok=True)
+    _save_json(rep_path, report)
+    print(f"\nswap_outro done: {n} swapped+verified, {skipped} left alone "
+          f"(already new / short), {failed} download/upload-failed, "
+          f"{verify_fail} VERIFY-FAILED. Report -> content/reference/swap_outro_report.json")
+    if verify_fail:
+        print("WARNING: some uploads did not take effect — re-run to retry those.")
 
 
 def prune_clips(keep_ids: list[str]) -> list[dict]:
@@ -2314,7 +2459,16 @@ def main(argv: list[str] | None = None) -> int:
         copy_styled(d.strip(), folder.strip())
         return 0
 
-    # SWAP_OUTRO: comma ids — replace the old brand-outro tail with the current one.
+    # MOVE_SAVED: "src:dest" — move all saved clips from <Brand>/src into
+    # <Brand>/dest preserving the exact subfolder structure (e.g. HP Posts:HP Auto Post).
+    mv = os.getenv("MOVE_SAVED", "").strip()
+    if mv and ":" in mv:
+        s, d = mv.split(":", 1)
+        move_saved_folder(s.strip(), d.strip())
+        return 0
+
+    # SWAP_OUTRO: comma ids OR "all" — replace the old 8851 outro tail with the
+    # current brand outro on every saved clip, then verify the swap stuck.
     swap = os.getenv("SWAP_OUTRO", "").strip()
     if swap:
         swap_outro(swap)

@@ -104,7 +104,11 @@ on:
         required: false
         default: ""
       swap_outro:
-        description: "Comma queue ids — replace the old 3s brand outro tail with the current brand outro"
+        description: "Comma queue ids OR 'all' — replace the old 8851 outro tail with the current brand outro (verifies)"
+        required: false
+        default: ""
+      move_saved:
+        description: "'src:dest' — move saved clips between folders, structure-preserving (e.g. HP Posts:HP Auto Post)"
         required: false
         default: ""
 
@@ -176,6 +180,7 @@ jobs:
           SAVE_STYLED: ${{ inputs.save_styled }}
           COPY_STYLED: ${{ inputs.copy_styled }}
           SWAP_OUTRO: ${{ inputs.swap_outro }}
+          MOVE_SAVED: ${{ inputs.move_saved }}
           # Render montages at fast 1080x1920 (speed over 4K) — quick to render/fetch/finish.
           MONTAGE_HD: "1"
         working-directory: social-suite
