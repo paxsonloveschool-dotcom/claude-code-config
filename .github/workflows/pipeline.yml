@@ -130,6 +130,7 @@ jobs:
         run: |
           pip install -e social-suite
           pip install faster-whisper
+          pip install Pillow numpy
 
       - name: Process Dropbox videos into the review queue (NO posting)
         env:
