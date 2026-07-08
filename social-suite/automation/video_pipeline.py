@@ -303,66 +303,83 @@ def organize_posts() -> None:
           f"({changed} queue entr{'y' if changed == 1 else 'ies'} repointed). Nothing posted.")
 
 
+def _merge_move(client, src_path: str, dest_path: str) -> tuple[int, int]:
+    """Move ``src_path`` into ``dest_path`` preserving structure. If dest doesn't
+    exist, rename the whole folder in one op; else merge each child (subfolders move
+    wholesale) and delete the emptied src. Returns (renamed, merged) counts."""
+    try:
+        client.files_get_metadata(src_path)
+    except Exception:  # noqa: BLE001 — no such src
+        return 0, 0
+    dest_exists = True
+    try:
+        client.files_get_metadata(dest_path)
+    except Exception:  # noqa: BLE001
+        dest_exists = False
+    if not dest_exists:
+        try:
+            client.files_move_v2(src_path, dest_path)
+            print(f"renamed  {src_path}  ->  {dest_path}")
+            return 1, 0
+        except Exception as ex:  # noqa: BLE001
+            print(f"rename failed {src_path}: {ex}"); return 0, 0
+    merged = 0
+    res = client.files_list_folder(src_path)
+    children = list(res.entries)
+    while getattr(res, "has_more", False):
+        res = client.files_list_folder_continue(res.cursor); children += res.entries
+    for en in children:
+        nm = getattr(en, "name", "")
+        child_src = getattr(en, "path_display", f"{src_path}/{nm}")
+        try:
+            client.files_move_v2(child_src, f"{dest_path}/{nm}", autorename=False)
+            merged += 1
+            print(f"merged   {nm}  ->  {dest_path}/")
+        except Exception as ex:  # noqa: BLE001 — already present in dest
+            print(f"skip {nm} (in dest already / {ex})")
+    try:
+        if not client.files_list_folder(src_path).entries:
+            client.files_delete_v2(src_path)
+            print(f"removed empty {src_path}")
+    except Exception:  # noqa: BLE001
+        pass
+    return 0, merged
+
+
 def move_saved_folder(src: str, dest: str) -> None:
-    """Move every saved clip from ``<Brand>/<src>`` into ``<Brand>/<dest>`` keeping
-    the EXACT subfolder structure and filenames. A Dropbox move preserves shared
-    links. When ``<dest>`` doesn't exist yet the whole folder is renamed in one op;
-    when it already exists each child (file or subfolder) is merged in and the now-
-    empty ``<src>`` is removed. Repoints queue media_paths ``/src/`` -> ``/dest/``."""
+    """Move every saved clip from ``src`` into ``dest`` keeping the EXACT subfolder
+    structure and filenames (Dropbox move preserves shared links). ``src``/``dest``
+    may be BARE folder names (applied under each brand root, e.g. ``HP Posts`` ->
+    ``HP Auto Post``) OR absolute Dropbox paths (start with ``/``) for a single
+    explicit move. Repoints queue media_paths from the old prefix to the new one."""
     from services.ingest import dropbox_client as dbx  # lazy
 
     client = dbx._client()
     queue = _load_json(QUEUE_PATH, [])
     renamed = merged = 0
-    for _pl, display in _top_level_folders(dbx):
-        if not classify_brand(display):
-            continue
-        base = display.rstrip("/")
-        src_path, dest_path = f"{base}/{src}", f"{base}/{dest}"
-        try:
-            client.files_get_metadata(src_path)
-        except Exception:  # noqa: BLE001 — no such src under this brand
-            continue
-        dest_exists = True
-        try:
-            client.files_get_metadata(dest_path)
-        except Exception:  # noqa: BLE001
-            dest_exists = False
-        if not dest_exists:
-            try:
-                client.files_move_v2(src_path, dest_path)
-                renamed += 1
-                print(f"renamed  {src_path}  ->  {dest_path}")
-            except Exception as ex:  # noqa: BLE001
-                print(f"rename failed {src_path}: {ex}"); continue
-        else:
-            res = client.files_list_folder(src_path)
-            children = list(res.entries)
-            while getattr(res, "has_more", False):
-                res = client.files_list_folder_continue(res.cursor); children += res.entries
-            for en in children:
-                nm = getattr(en, "name", "")
-                child_src = getattr(en, "path_display", f"{src_path}/{nm}")
-                try:
-                    client.files_move_v2(child_src, f"{dest_path}/{nm}", autorename=False)
-                    merged += 1
-                    print(f"merged   {nm}  ->  {dest}/")
-                except Exception as ex:  # noqa: BLE001 — already present in dest
-                    print(f"skip {nm} (in dest already / {ex})")
-            try:
-                if not client.files_list_folder(src_path).entries:
-                    client.files_delete_v2(src_path)
-                    print(f"removed empty {src_path}")
-            except Exception:  # noqa: BLE001
-                pass
+    prefixes: list[tuple[str, str]] = []
+    if src.startswith("/"):
+        r, m = _merge_move(client, src.rstrip("/"), dest.rstrip("/"))
+        renamed += r; merged += m
+        prefixes.append((src.rstrip("/") + "/", dest.rstrip("/") + "/"))
+    else:
+        for _pl, display in _top_level_folders(dbx):
+            if not classify_brand(display):
+                continue
+            base = display.rstrip("/")
+            sp, dp = f"{base}/{src}", f"{base}/{dest}"
+            r, m = _merge_move(client, sp, dp)
+            renamed += r; merged += m
+            prefixes.append((sp + "/", dp + "/"))
     changed = 0
     for e in queue:
         mp = e.get("media_path") or ""
-        if f"/{src}/" in mp:
-            e["media_path"] = mp.replace(f"/{src}/", f"/{dest}/"); changed += 1
+        for sp, dp in prefixes:
+            if mp.startswith(sp):
+                e["media_path"] = dp + mp[len(sp):]; changed += 1; break
     _save_json(QUEUE_PATH, queue)
     print(f"\nMove done: {renamed} folder-rename(s), {merged} merged child(ren); "
-          f"repointed {changed} queue path(s) {src} -> {dest}. Nothing posted.")
+          f"repointed {changed} queue path(s). Nothing posted.")
 
 
 def process_folder(folder_path: str, folder_display: str, brand, dbx, *, dry_run: bool = False) -> list[dict]:
