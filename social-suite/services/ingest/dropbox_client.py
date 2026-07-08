@@ -173,16 +173,21 @@ def download(file: DropboxFile, dest_dir: str | None = None) -> str:
     return os.path.abspath(local_path)
 
 
-def list_folder(folder: str) -> list[DropboxFile]:
-    """List the files directly inside ``folder`` (one full pass, paginated).
+def list_folder(folder: str, recursive: bool = False) -> list[DropboxFile]:
+    """List the files inside ``folder`` (one full pass, paginated).
 
     Unlike ``list_new_files`` (which uses an env default + delta cursor), this
     takes an explicit folder — used to scan each brand's subfolder (e.g. ``/HP``).
     A missing folder returns ``[]`` rather than raising.
+
+    When ``recursive`` is True, Dropbox walks every nested subfolder too, so
+    videos organized into per-project subfolders are all found (folders are
+    filtered out by ``_to_files`` — only real files come back, each with its
+    full nested ``path``).
     """
     dbx = _client()
     try:
-        result = _call_with_retry(dbx.files_list_folder, folder)
+        result = _call_with_retry(dbx.files_list_folder, folder, recursive=recursive)
     except Exception as exc:  # noqa: BLE001 — missing folder shouldn't crash a run
         if "not_found" in str(exc).lower():
             return []

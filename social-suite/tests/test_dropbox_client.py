@@ -18,6 +18,7 @@ from services.ingest import dropbox_client  # noqa: E402
 from services.ingest.dropbox_client import (  # noqa: E402
     DropboxFile,
     download,
+    list_folder,
     list_new_files,
     longpoll,
 )
@@ -72,8 +73,9 @@ class _FakeDbx:
             ),
         ]
 
-    def files_list_folder(self, folder):
+    def files_list_folder(self, folder, recursive=False):
         self.calls.append(("list_folder", folder))
+        self.last_recursive = recursive
         return self._pages[0]
 
     def files_list_folder_continue(self, cursor):
@@ -153,6 +155,20 @@ def test_cursor_delta_uses_continue():
     assert dbx.calls[0] == ("continue", "existing_cursor")
     # No full list_folder call on the delta path.
     assert all(c[0] != "list_folder" for c in dbx.calls)
+
+
+def test_list_folder_recursive_passes_flag_to_sdk():
+    captured: dict = {}
+    _install_fake_dropbox(captured)
+    _set_refresh_env()
+
+    # Default: top-level only (recursive=False).
+    list_folder("/HP")
+    assert captured["dbx"].last_recursive is False
+
+    # Opt-in: walk every nested subfolder.
+    list_folder("/HP", recursive=True)
+    assert captured["dbx"].last_recursive is True
 
 
 def test_longpoll_reports_changes():
