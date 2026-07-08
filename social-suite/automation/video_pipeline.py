@@ -1571,26 +1571,27 @@ def swap_outro(ids_csv: str) -> None:
         except Exception:  # noqa: BLE001
             return 999.0
 
-    # Index basename -> real Dropbox path across the Posts tree so a stale queue
-    # path (wrong/absent subfolder) still resolves to where the file truly lives.
+    # Index basename -> real Dropbox path across the ENTIRE app scope so a stale
+    # queue path still resolves to wherever the file actually lives (prefers a copy
+    # under HP Posts if a name exists in multiple places).
     index: dict = {}
-    posts_roots = set()
-    for e in queue:
-        mp = e.get("media_path") or ""
-        if f"/{READY_FOLDER}/" in mp:
-            posts_roots.add(mp.split(f"/{READY_FOLDER}/", 1)[0] + f"/{READY_FOLDER}")
-    for root in posts_roots:
-        try:
-            res = client.files_list_folder(root, recursive=True)
-            ents = list(res.entries)
-            while getattr(res, "has_more", False):
-                res = client.files_list_folder_continue(res.cursor); ents += res.entries
-            for en in ents:
-                nm = getattr(en, "name", "")
-                if nm.lower().endswith(".mp4"):
-                    index[nm.lower()] = getattr(en, "path_display", None) or getattr(en, "path_lower", "")
-        except Exception as ex:  # noqa: BLE001
-            print(f"swap_outro: could not index {root}: {ex}")
+    try:
+        res = client.files_list_folder("", recursive=True)
+        ents = list(res.entries)
+        while getattr(res, "has_more", False):
+            res = client.files_list_folder_continue(res.cursor); ents += res.entries
+        for en in ents:
+            nm = getattr(en, "name", "")
+            if not nm.lower().endswith(".mp4"):
+                continue
+            p = getattr(en, "path_display", None) or getattr(en, "path_lower", "")
+            key = nm.lower()
+            # prefer an HP Posts copy over one elsewhere
+            if key not in index or (f"/{READY_FOLDER}/" in p and f"/{READY_FOLDER}/" not in index[key]):
+                index[key] = p
+        print(f"swap_outro: indexed {len(index)} mp4(s) across the app")
+    except Exception as ex:  # noqa: BLE001
+        print(f"swap_outro: could not index app scope: {ex}")
 
     ids = [x.strip() for x in ids_csv.split(",") if x.strip()]
     n = skipped = failed = 0
