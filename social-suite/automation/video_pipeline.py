@@ -1751,16 +1751,25 @@ def swap_outro(ids_csv: str) -> None:
             report.append({"id": cid, "path": path, "before": round(before, 1),
                            "status": "already_new"}); continue
         body = os.path.join(work, "body.mp4")
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-t", f"{d - OUTRO_SEC:.3f}",
-                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
-                        "-c:a", "aac", "-ar", "44100", "-ac", "2", body], check=True)
         lst = os.path.join(work, "l.txt")
-        with open(lst, "w") as fh:
-            fh.write(f"file '{os.path.abspath(body)}'\nfile '{os.path.abspath(on)}'\n")
         final = os.path.join(work, "final.mp4")
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst,
-                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
-                        "-c:a", "aac", "-ar", "44100", "-ac", "2", final], check=True)
+        try:
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-t", f"{d - OUTRO_SEC:.3f}",
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                            "-c:a", "aac", "-ar", "44100", "-ac", "2", body], check=True)
+            with open(lst, "w") as fh:
+                fh.write(f"file '{os.path.abspath(body)}'\nfile '{os.path.abspath(on)}'\n")
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst,
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                            "-c:a", "aac", "-ar", "44100", "-ac", "2", final], check=True)
+        except Exception as ex:  # noqa: BLE001 — one bad encode must not kill the batch
+            print(f"encode failed {cid}: {ex}"); failed += 1
+            report.append({"id": cid, "path": path, "before": round(before, 1),
+                           "status": "encode_failed"})
+            for f in (src, body, final, lst):
+                try: os.remove(f)
+                except OSError: pass
+            continue
         if not _up(final, path):
             failed += 1
             report.append({"id": cid, "path": path, "before": round(before, 1),
