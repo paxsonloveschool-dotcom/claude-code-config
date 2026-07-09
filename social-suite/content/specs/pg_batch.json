@@ -1,0 +1,29 @@
+[
+  {"name": "pg-a-showcase", "xfade": 0.3, "transitions": ["zoomin","smoothleft","circleopen","fade"], "segments": [
+    {"shot": ["bob willis putting green/video sep 16 2025, 12 20 17", 1.0, 3.2]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 11 57 35", 3.5, 5.7]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 29 55", 1.5, 3.7]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 12 20 17", 5.5, 7.7]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 11 57 35", 7.5, 9.7]}
+  ]},
+  {"name": "pg-b-build", "xfade": 0.35, "transitions": ["slideleft","wiperight","slideup","fade"], "segments": [
+    {"shot": ["bob willis putting green/video sep 16 2025, 11 57 35", 0.3, 2.5]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 29 55", 2.0, 4.2]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 12 20 17", 2.5, 4.7]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 11 57 35", 6.0, 8.2]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 12 20 17", 7.5, 9.7]}
+  ]},
+  {"name": "pg-c-velocity", "xfade": 0.1, "min_seg": 0.5, "transitions": ["hlslice","zoomin","hrslice","zoomin","fade"], "segments": [
+    {"shot": ["bob willis putting green/video sep 16 2025, 11 57 35", 0.5, 1.2]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 12 20 17", 2.0, 2.7]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 29 55", 2.5, 3.2]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 12 20 17", 5.0, 5.7]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 11 57 35", 7.0, 7.7]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 12 20 17", 7.5, 9.5]}
+  ]},
+  {"name": "pg-d-reveal", "xfade": 0.3, "transitions": ["dissolve","zoomin"], "segments": [
+    {"shot": ["bob willis putting green/video sep 16 2025, 11 57 35", 0.4, 2.6]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 29 55", 1.5, 3.5]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 12 20 17", 3.0, 6.0]}
+  ]}
+]
