@@ -68,7 +68,7 @@ def render_png(ev, idx):
     img.save(p)
     return p
 
-FI, FO = 0.14, 0.18
+FI, FO = 0.08, 0.10   # snap on, hold fully solid, quick clean fade to fully gone
 inputs, filt, prev = ["-i", inp], [], "[0:v]"
 for i, ev in enumerate(events):
     png = render_png(ev, i)
