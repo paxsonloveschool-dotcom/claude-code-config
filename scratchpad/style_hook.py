@@ -53,7 +53,8 @@ nodes, prev = [], "0:v"
 FI, FO = 0.14, 0.18
 MAXW = W * 0.94
 for k, ev in enumerate(events):
-    txt = ev["text"].upper()
+    # keepcase=True renders text as written (POV/casual look); default is ALL CAPS
+    txt = ev["text"] if ev.get("keepcase") else ev["text"].upper()
     hook = ev.get("hook", False)
     yf = ev.get("y", 0.30 if hook else 0.72)
     sf = ev.get("size", 0.11 if hook else 0.085)
@@ -62,7 +63,9 @@ for k, ev in enumerate(events):
     full = measure(font, txt)
     if full > MAXW:
         sz = max(24, int(sz * MAXW / full)); font = ImageFont.truetype(FONT, sz)
-    accent = (ev.get("accent") or "").upper().strip()
+    accent = (ev.get("accent") or "").strip()
+    if not ev.get("keepcase"):
+        accent = accent.upper()
     start, end = float(ev["start"]), float(ev["end"])
     toutf = round(end + FO, 3); tin = round(start + FI, 3)
     fin  = f"if(lt(t\\,{start})\\,0\\,if(lt(t\\,{tin})\\,(t-{start})/{FI}\\,1))"
