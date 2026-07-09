@@ -1,0 +1,146 @@
+[
+  {"name": "mp-a-drone", "xfade": 0.3, "transitions": ["zoomin","circleopen","zoomin","smoothleft","fade"], "segments": [
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 51 36", 3.5, 5.5]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 59 53", 17.5, 19.5]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 51 36", 14.5, 16.5]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 13.0, 15.3]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 51 36", 38.5, 40.5]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 51 36", 26.0, 29.0]}
+  ]},
+  {"name": "mp-b-build", "xfade": 0.35, "transitions": ["slideleft","wiperight","slideup","wipedown","fade"], "segments": [
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 15 48", 14.5, 17.0]},
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 31 18", 1.2, 3.4]},
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 15 48", 27.0, 29.0]},
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 36 26", 2.0, 5.0]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 2.5, 4.7]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 13.0, 16.3]}
+  ]},
+  {"name": "mp-c-velocity", "xfade": 0.1, "min_seg": 0.5, "transitions": ["hlslice","zoomin","hrslice","zoomin","hlslice","zoomin","hrslice","fade"], "segments": [
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 15 48", 15.0, 15.7]},
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 31 18", 1.5, 2.2]},
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 36 26", 2.0, 2.7]},
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 15 48", 27.0, 27.7]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 2.5, 3.2]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 59 53", 17.5, 18.2]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 51 36", 26.5, 27.2]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 13.0, 16.0]}
+  ]},
+  {"name": "mp-d-beforeafter", "xfade": 0.3, "transitions": ["smoothright","zoomin"], "segments": [
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 15 48", 14.5, 17.0]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 13.0, 16.3]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 51 36", 26.0, 29.0]}
+  ]},
+
+  {"name": "bw-a-showcase", "xfade": 0.3, "transitions": ["zoomin","smoothleft","zoomin","circleopen","fade"], "segments": [
+    {"shot": ["bob willis/video sep 16 2025, 11 51 21", 1.5, 3.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 53 20", 1.5, 3.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 56 07", 1.5, 3.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 56 34", 1.5, 3.7]},
+    {"shot": ["bob willis/video sep 16 2025, 12 00 04", 1.5, 3.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 51 57", 1.5, 4.0]}
+  ]},
+  {"name": "bw-b-build", "xfade": 0.35, "transitions": ["slideleft","wipeleft","slideup","fade"], "segments": [
+    {"shot": ["bob willis/video sep 17 2025, 5 24 35", 1.5, 3.7]},
+    {"shot": ["bob willis/video sep 17 2025, 5 25 38", 1.5, 3.7]},
+    {"shot": ["bob willis/video sep 17 2025, 5 26 06", 1.5, 3.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 55 41", 1.5, 3.7]},
+    {"shot": ["bob willis/video sep 16 2025, 12 00 04", 1.5, 4.0]}
+  ]},
+  {"name": "bw-c-velocity", "xfade": 0.1, "min_seg": 0.5, "transitions": ["hlslice","zoomin","hrslice","zoomin","hlslice","zoomin","fade"], "segments": [
+    {"shot": ["bob willis/video sep 16 2025, 11 51 21", 2.0, 2.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 52 40", 2.0, 2.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 53 20", 2.0, 2.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 55 25", 2.0, 2.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 56 34", 2.0, 2.7]},
+    {"shot": ["bob willis/video sep 16 2025, 12 00 04", 1.5, 4.0]}
+  ]},
+  {"name": "bw-d-reveal", "xfade": 0.3, "transitions": ["dissolve","zoomin","smoothright","fade"], "segments": [
+    {"shot": ["bob willis/video sep 16 2025, 11 50 39", 1.5, 3.5]},
+    {"shot": ["bob willis/video sep 16 2025, 11 51 38", 1.5, 3.5]},
+    {"shot": ["bob willis/video sep 16 2025, 11 55 53", 1.5, 3.5]},
+    {"shot": ["bob willis/video sep 16 2025, 11 56 07", 1.5, 3.5]},
+    {"shot": ["bob willis/video sep 16 2025, 12 00 04", 1.5, 4.0]}
+  ]},
+
+  {"name": "by-a-progress", "xfade": 0.3, "transitions": ["smoothleft","slideup","zoomin","smoothright","fade"], "segments": [
+    {"shot": ["bryan pool/video oct 23 2024, 6 49 49", 2.0, 4.5]},
+    {"shot": ["bryan pool/video oct 24 2024, 4 19 51", 3.0, 5.5]},
+    {"shot": ["bryan pool/video nov 06 2024, 5 18 32", 2.0, 4.5]},
+    {"shot": ["bryan pool/video nov 13 2024, 3 43 35", 3.0, 5.5]},
+    {"shot": ["bryan pool/video nov 13 2024, 3 44 38", 3.0, 5.5]},
+    {"shot": ["bryan pool/video feb 03 2025, 2 20 20", 3.0, 6.0]}
+  ]},
+  {"name": "by-b-build", "xfade": 0.35, "transitions": ["wiperight","slideleft","wipedown","fade"], "segments": [
+    {"shot": ["bryan pool/video oct 24 2024, 4 20 36", 3.0, 5.5]},
+    {"shot": ["bryan pool/video nov 06 2024, 5 18 01", 1.5, 3.5]},
+    {"shot": ["bryan pool/video nov 06 2024, 5 18 53", 2.0, 4.5]},
+    {"shot": ["bryan pool/video nov 13 2024, 3 43 35", 4.0, 6.5]},
+    {"shot": ["bryan pool/video feb 03 2025, 2 20 43", 3.0, 6.0]}
+  ]},
+  {"name": "by-c-velocity", "xfade": 0.1, "min_seg": 0.5, "transitions": ["hlslice","zoomin","hrslice","zoomin","hlslice","fade"], "segments": [
+    {"shot": ["bryan pool/video oct 23 2024, 6 49 49", 3.0, 3.7]},
+    {"shot": ["bryan pool/video oct 24 2024, 4 19 51", 5.0, 5.7]},
+    {"shot": ["bryan pool/video nov 06 2024, 5 18 32", 3.0, 3.7]},
+    {"shot": ["bryan pool/video nov 13 2024, 3 44 38", 5.0, 5.7]},
+    {"shot": ["bryan pool/video feb 03 2025, 2 20 20", 3.0, 6.0]}
+  ]},
+  {"name": "by-d-beforeafter", "xfade": 0.3, "transitions": ["smoothright","zoomin"], "segments": [
+    {"shot": ["bryan pool/video oct 23 2024, 6 49 49", 2.0, 4.5]},
+    {"shot": ["bryan pool/video nov 13 2024, 3 44 38", 3.0, 5.5]},
+    {"shot": ["bryan pool/video feb 03 2025, 2 20 20", 3.0, 6.0]}
+  ]},
+
+  {"name": "pg-a-showcase", "xfade": 0.3, "transitions": ["zoomin","smoothleft","circleopen","fade"], "segments": [
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 29 40", 1.5, 3.7]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 29 55", 1.5, 3.7]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 30 17", 1.5, 3.7]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 30 27", 1.5, 3.7]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 12 20 17", 1.5, 4.0]}
+  ]},
+  {"name": "pg-b-build", "xfade": 0.35, "transitions": ["slideleft","wiperight","slideup","fade"], "segments": [
+    {"shot": ["bob willis putting green/video sep 16 2025, 11 57 35", 1.5, 3.7]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 11 58 05", 1.5, 3.7]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 12 20 17", 1.5, 3.7]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 30 01", 1.5, 3.7]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 30 27", 1.5, 4.0]}
+  ]},
+  {"name": "pg-c-velocity", "xfade": 0.1, "min_seg": 0.5, "transitions": ["hlslice","zoomin","hrslice","zoomin","fade"], "segments": [
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 29 40", 2.0, 2.7]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 29 55", 2.0, 2.7]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 30 01", 2.0, 2.7]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 30 17", 2.0, 2.7]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 30 27", 1.5, 3.5]}
+  ]},
+  {"name": "pg-d-reveal", "xfade": 0.3, "transitions": ["dissolve","zoomin","fade"], "segments": [
+    {"shot": ["bob willis putting green/video sep 16 2025, 11 57 35", 1.5, 3.5]},
+    {"shot": ["bob willis putting green/video sep 16 2025, 12 20 17", 1.5, 3.5]},
+    {"shot": ["bob willis putting green/video sep 17 2025, 11 30 17", 1.5, 4.0]}
+  ]},
+
+  {"name": "ac-a-showcase", "xfade": 0.3, "transitions": ["zoomin","smoothleft","zoomin","circleopen","fade"], "segments": [
+    {"shot": ["alice carport/video dec 09 2025, 4 40 54", 1.5, 3.7]},
+    {"shot": ["alice carport/video dec 09 2025, 5 09 10", 1.5, 3.7]},
+    {"shot": ["alice carport/video oct 22 2025, 1 22 44", 1.5, 3.7]},
+    {"shot": ["alice carport/video oct 24 2025, 6 51 37", 1.5, 3.7]},
+    {"shot": ["alice carport/video dec 09 2025, 5 09 26", 1.5, 4.0]}
+  ]},
+  {"name": "ac-b-build", "xfade": 0.35, "transitions": ["slideleft","wiperight","slideup","wipedown","fade"], "segments": [
+    {"shot": ["alice carport/video oct 22 2025, 11 42 48", 1.5, 3.7]},
+    {"shot": ["alice carport/video oct 22 2025, 12 33 35", 1.5, 3.7]},
+    {"shot": ["alice carport/video oct 23 2025, 12 45 17", 1.5, 3.7]},
+    {"shot": ["alice carport/video oct 24 2025, 6 51 37", 1.5, 3.7]},
+    {"shot": ["alice carport/video dec 09 2025, 4 40 54", 1.5, 4.0]}
+  ]},
+  {"name": "ac-c-velocity", "xfade": 0.1, "min_seg": 0.5, "transitions": ["hlslice","zoomin","hrslice","zoomin","hlslice","fade"], "segments": [
+    {"shot": ["alice carport/video oct 22 2025, 11 42 48", 2.0, 2.7]},
+    {"shot": ["alice carport/video oct 22 2025, 12 33 54", 2.0, 2.7]},
+    {"shot": ["alice carport/video dec 09 2025, 5 09 10", 2.0, 2.7]},
+    {"shot": ["alice carport/video oct 24 2025, 6 51 37", 2.0, 2.7]},
+    {"shot": ["alice carport/video dec 09 2025, 4 40 54", 1.5, 3.5]}
+  ]},
+  {"name": "ac-d-beforeafter", "xfade": 0.3, "transitions": ["smoothright","zoomin"], "segments": [
+    {"shot": ["alice carport/video oct 22 2025, 11 42 48", 1.5, 4.0]},
+    {"shot": ["alice carport/video dec 09 2025, 5 09 10", 1.5, 4.0]},
+    {"shot": ["alice carport/video dec 09 2025, 4 40 54", 1.5, 4.0]}
+  ]}
+]
