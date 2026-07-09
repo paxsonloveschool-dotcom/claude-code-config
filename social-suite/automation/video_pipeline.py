@@ -2491,8 +2491,12 @@ def main(argv: list[str] | None = None) -> int:
     # Dropbox folder (e.g. HP Tiktok) as a copy, without touching the queue.
     copy_st = os.getenv("COPY_STYLED", "").strip()
     if copy_st and ":" in copy_st:
-        d, folder = copy_st.split(":", 1)
-        copy_styled(d.strip(), folder.strip())
+        d, folders = copy_st.split(":", 1)
+        # pipe-separated folders -> copy the finished clip into each (e.g.
+        # "content/topost:HP Auto Post/Reels|HP Tiktok"). Dropbox creates nesting.
+        for folder in folders.split("|"):
+            if folder.strip():
+                copy_styled(d.strip(), folder.strip())
         return 0
 
     # MOVE_SAVED: "src:dest" — move all saved clips from <Brand>/src into
