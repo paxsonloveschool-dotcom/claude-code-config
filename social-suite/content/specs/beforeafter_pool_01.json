@@ -1,0 +1,13 @@
+{
+  "name": "beforeafter-pool-01",
+  "xfade": 0.3,
+  "transition": "fade",
+  "transitions": ["smoothright", "fade", "fade", "fade"],
+  "segments": [
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 15 48", 14.5, 17.0]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 13.0, 16.3]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 6.0, 8.5]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 59 53", 16.5, 19.0]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 2.5, 5.3]}
+  ]
+}

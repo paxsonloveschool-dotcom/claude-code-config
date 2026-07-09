@@ -766,10 +766,16 @@ def _stackN(parts: list[str], out_path: str) -> str:
     return out_path
 
 
-def _concat_v(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
+def _concat_v(parts: list[str], out_path: str, xfade: float = 0.4,
+              transition: str = "fade", transitions: list | None = None) -> str:
     """Crossfade-concat VIDEO only (silent output) — for mixed silent montage
     segments where an audio crossfade isn't possible. Normalizes every segment to
-    1080x1920@30 so xfade never chokes on mismatched fps/size. Plain-concat fallback."""
+    1080x1920@30 so xfade never chokes on mismatched fps/size. Plain-concat fallback.
+
+    ``transition`` sets the xfade type for every gap (e.g. "fade", "wiperight",
+    "smoothleft", "slideup" — any ffmpeg xfade transition). ``transitions`` overrides
+    per gap (list of length n-1); missing/None entries fall back to ``transition``.
+    A whip/wipe before->after reveal uses e.g. "smoothright"/"wiperight"."""
     import shutil  # lazy
     import subprocess  # lazy
 
@@ -798,7 +804,10 @@ def _concat_v(parts: list[str], out_path: str, xfade: float = 0.4) -> str:
     vlab, off = "[n0]", durs[0] - xfade
     for i in range(1, n):
         nv = f"[v{i}]"
-        fc.append(f"{vlab}[n{i}]xfade=transition=fade:duration={xfade}:offset={off:.3f}{nv}")
+        tr = transition
+        if transitions and i - 1 < len(transitions) and transitions[i - 1]:
+            tr = transitions[i - 1]
+        fc.append(f"{vlab}[n{i}]xfade=transition={tr}:duration={xfade}:offset={off:.3f}{nv}")
         vlab, off = nv, off + durs[i] - xfade
     cmd += ["-filter_complex", ";".join(fc), "-map", vlab, "-an",
             *cenc, "-movflags", "+faststart", out_path]
@@ -2040,7 +2049,8 @@ def cut_montage(spec: dict) -> dict | None:
         return None
     _f, local, base, brand, display = base_ctx
     out_local = os.path.join(workdir, f"{base}-{name}.mp4")
-    _concat_v(seg_clips, out_local, xfade=float(spec.get("xfade", 0.4)))
+    _concat_v(seg_clips, out_local, xfade=float(spec.get("xfade", 0.4)),
+              transition=spec.get("transition", "fade"), transitions=spec.get("transitions"))
     brand_key, dispname, tags = brand
     out_path = f"{display.rstrip('/')}/processed/{base}-{name}.mp4"
     dbx.upload(out_local, out_path)
