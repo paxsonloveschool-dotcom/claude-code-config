@@ -1,0 +1,16 @@
+{
+  "name": "build-story-02",
+  "xfade": 0.15,
+  "transition": "fade",
+  "transitions": ["smoothright", "hlslice", "fade", "hrslice", "fade", "smoothleft", "fade"],
+  "segments": [
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 13.3, 15.3]},
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 15 48", 14.5, 16.5]},
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 31 18", 1.2, 3.4]},
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 15 48", 27.0, 29.0]},
+    {"shot": ["bulk pool videos copy/video jun 16 2025, 8 36 26", 2.0, 4.0]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 2.5, 4.7]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 59 53", 16.5, 18.7]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 12.8, 16.0]}
+  ]
+}
