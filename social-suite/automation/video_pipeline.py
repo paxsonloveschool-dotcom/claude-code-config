@@ -1610,7 +1610,12 @@ def copy_styled(dir_rel: str, folder: str) -> int:
                 break
         if prefix is None:
             prefix = mp.rsplit("/", 2)[0] if mp.count("/") >= 2 else "/HP-Content Auto."
-        dest = f"{prefix}/{folder}/{fname}"
+        # "HP Auto Post" lives at the Dropbox scope ROOT (not under the brand folder),
+        # so target it there; other folders (e.g. HP Tiktok) live under the brand root.
+        if folder.lower().lstrip("/").startswith("hp auto post"):
+            dest = f"/{folder.lstrip('/')}/{fname}"
+        else:
+            dest = f"{prefix}/{folder}/{fname}"
         dbx.upload(local, dest)
         n += 1
         print(f"copied {cid} -> {dest}")
