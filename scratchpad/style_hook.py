@@ -1,113 +1,92 @@
 #!/usr/bin/env python3
-# Hook-first caption engine: timed ALL-CAPS chunks that pop in (fade), hold, pop
-# out — Hormozi style. Word-based layout with explicit gaps (ffmpeg drawtext trims
-# leading spaces). Accent words get a highlight color. Heavy black stroke (plain)
-# or filled karaoke boxes (box mode) for muted legibility. Auto-fits to width.
+# Hook caption engine v2 — renders each caption to a PNG with PIL (self-consistent
+# kerning + per-word accent color + heavy black stroke), then overlays it PERFECTLY
+# centered with ffmpeg (x=(W-w)/2) and a quick fade in/out. Fixes the off-center /
+# loose-spacing drift of the old drawtext word-by-word layout.
 #
 # Usage: style_hook.py IN.mp4 OUT.mp4 events.json [accent] [font] [mode]
-#   accent : color name (yellow|green|white|red|cyan|orange) or 0xRRGGBB. default yellow
-#   font   : shortname (bigshoulders|boldonse|bricolage|outfit|worksans) or a path
-#   mode   : plain (stroke) | box (filled karaoke boxes). default plain
-# events.json = [ {"start":0,"end":1.4,"text":"...","accent":"WORD","y":0.72,
-#                  "size":0.085,"hook":true}, ... ]
-import sys, json, subprocess
-from PIL import ImageFont
+#   accent: color name (yellow|amber|coral|green|white|red|cyan) or 0xRRGGBB (default coral)
+#   font  : shortname (bigshoulders|boldonse|bricolage|outfit|worksans) or a path
+#   mode  : plain (default). (box reserved)
+# events.json = [ {"start":0,"end":1.6,"text":"...","accent":"WORD","y":0.72,
+#                  "size":0.085,"hook":true,"keepcase":false}, ... ]
+import sys, json, subprocess, os
+from PIL import Image, ImageFont, ImageDraw
 
 inp, outp, evpath = sys.argv[1], sys.argv[2], sys.argv[3]
-accent_arg = sys.argv[4] if len(sys.argv) > 4 else "yellow"
+accent_arg = sys.argv[4] if len(sys.argv) > 4 else "coral"
 font_arg   = sys.argv[5] if len(sys.argv) > 5 else "bigshoulders"
-mode       = sys.argv[6] if len(sys.argv) > 6 else "plain"
 
 FDIR = "/mnt/skills/examples/canvas-design/canvas-fonts/"
-FONTS = {
-    "bigshoulders": FDIR + "BigShoulders-Bold.ttf",
-    "boldonse":     FDIR + "Boldonse-Regular.ttf",
-    "bricolage":    FDIR + "BricolageGrotesque-Bold.ttf",
-    "outfit":       FDIR + "Outfit-Bold.ttf",
-    "worksans":     FDIR + "WorkSans-Bold.ttf",
-}
-COLORS = {
-    "yellow": "0xF5D020", "green": "0x20B040", "white": "0xFFFFFF",
-    "red": "0xF23A2F", "cyan": "0x28E0D0", "orange": "0xFF7A1A", "lime": "0xB6FF3C",
-    "amber": "0xFFB020", "coral": "0xFF6B4A",  # best pops over green/earth footage
-}
+FONTS = {"bigshoulders": FDIR + "BigShoulders-Bold.ttf", "boldonse": FDIR + "Boldonse-Regular.ttf",
+         "bricolage": FDIR + "BricolageGrotesque-Bold.ttf", "outfit": FDIR + "Outfit-Bold.ttf",
+         "worksans": FDIR + "WorkSans-Bold.ttf"}
+COLORS = {"yellow": "#F5D020", "amber": "#FFB020", "coral": "#FF6B4A", "green": "#20B040",
+          "white": "#FFFFFF", "red": "#F23A2F", "cyan": "#28E0D0", "orange": "#FF7A1A", "lime": "#B6FF3C"}
 FONT = FONTS.get(font_arg.lower(), font_arg if "/" in font_arg else FONTS["bigshoulders"])
-ACCENT = COLORS.get(accent_arg.lower(), accent_arg if accent_arg.startswith("0x") else COLORS["yellow"])
-BOXACC = ACCENT            # accent-word box color in box mode
-BOXBG  = "black@0.82"      # normal-word box color in box mode
+ACCENT = COLORS.get(accent_arg.lower(), accent_arg if accent_arg.startswith("#") else COLORS["coral"])
 
-r = subprocess.run(["ffprobe","-v","error","-select_streams","v:0",
-                    "-show_entries","stream=width,height","-show_entries","format=duration",
-                    "-of","json", inp], capture_output=True, text=True)
+r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                    "stream=width,height", "-of", "json", inp], capture_output=True, text=True)
 j = json.loads(r.stdout)
 W, H = int(j["streams"][0]["width"]), int(j["streams"][0]["height"])
 events = json.load(open(evpath))
 
-def esc(t):
-    return t.replace("\\","").replace(":","\\:").replace("'","’").replace("%","\\%")
+work = os.path.join(os.path.dirname(os.path.abspath(outp)) or ".", "_caps")
+os.makedirs(work, exist_ok=True)
+MAXW = W * 0.92
 
-def measure(font, s):
-    return font.getlength(s)  # advance width incl spaces
-
-nodes, prev = [], "0:v"
-FI, FO = 0.14, 0.18
-MAXW = W * 0.94
-for k, ev in enumerate(events):
-    # keepcase=True renders text as written (POV/casual look); default is ALL CAPS
+def render_png(ev, idx):
     txt = ev["text"] if ev.get("keepcase") else ev["text"].upper()
-    hook = ev.get("hook", False)
-    yf = ev.get("y", 0.30 if hook else 0.72)
-    sf = ev.get("size", 0.11 if hook else 0.085)
+    sf = ev.get("size", 0.11 if ev.get("hook") else 0.085)
     sz = int(W * sf)
     font = ImageFont.truetype(FONT, sz)
-    full = measure(font, txt)
-    if full > MAXW:
-        sz = max(24, int(sz * MAXW / full)); font = ImageFont.truetype(FONT, sz)
-    accent = (ev.get("accent") or "").strip()
+    if font.getlength(txt) > MAXW:                       # auto-fit to width
+        sz = max(24, int(sz * MAXW / font.getlength(txt)))
+        font = ImageFont.truetype(FONT, sz)
+    accent = (ev.get("accent") or "")
     if not ev.get("keepcase"):
         accent = accent.upper()
+    # prefix / accent / suffix by character index (keeps natural kerning + spaces)
+    if accent and accent in txt:
+        i = txt.index(accent)
+        parts = [(txt[:i], "#FFFFFF"), (accent, ACCENT), (txt[i + len(accent):], "#FFFFFF")]
+    else:
+        parts = [(txt, "#FFFFFF")]
+    parts = [(t, c) for t, c in parts if t != ""]
+    stroke = max(6, int(W * 0.0065))
+    total = font.getlength(txt)
+    asc, desc = font.getmetrics()
+    pad = stroke * 2 + 8
+    img = Image.new("RGBA", (int(total) + pad * 2, asc + desc + pad * 2), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    x = float(pad)
+    for t, col in parts:
+        d.text((x, pad), t, font=font, fill=col, stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+        x += font.getlength(t)
+    p = os.path.join(work, f"cap{idx}.png")
+    img.save(p)
+    return p
+
+FI, FO = 0.14, 0.18
+inputs, filt, prev = ["-i", inp], [], "[0:v]"
+for i, ev in enumerate(events):
+    png = render_png(ev, i)
     start, end = float(ev["start"]), float(ev["end"])
-    toutf = round(end + FO, 3); tin = round(start + FI, 3)
-    fin  = f"if(lt(t\\,{start})\\,0\\,if(lt(t\\,{tin})\\,(t-{start})/{FI}\\,1))"
-    fout = f"if(lt(t\\,{end})\\,1\\,if(lt(t\\,{toutf})\\,({toutf}-t)/{FO}\\,0))"
-    alpha = f"({fin})*({fout})"
-    sh = max(6, int(W * 0.006))
+    yf = ev.get("y", 0.30 if ev.get("hook") else 0.72)
+    dur = end - start + FO + 0.05
+    inputs += ["-loop", "1", "-itsoffset", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", png]
+    idx = i + 1
+    cap = f"[c{i}]"
+    filt.append(f"[{idx}:v]format=rgba,fade=t=in:st={start:.3f}:d={FI}:alpha=1,"
+                f"fade=t=out:st={end:.3f}:d={FO}:alpha=1{cap}")
+    out = f"[v{i}]"
+    filt.append(f"{prev}{cap}overlay=x=(W-w)/2:y=H*{yf}-h/2:eval=init{out}")
+    prev = out
 
-    tokens = txt.split()
-    acc = accent.split()
-    astart = -1
-    if acc:
-        for s in range(len(tokens) - len(acc) + 1):
-            if tokens[s:s + len(acc)] == acc:
-                astart = s; break
-    is_acc = [astart >= 0 and astart <= idx < astart + len(acc) for idx in range(len(tokens))]
-    space = measure(font, " ")
-    wws = [measure(font, t) for t in tokens]
-    boxbw = int(sz * 0.16)
-    # in box mode each word carries its own padded box → widen the gap a touch
-    gap = space + (boxbw * 1.4 if mode == "box" else 0)
-    total = sum(wws) + gap * (len(tokens) - 1)
-    x = (W - total) / 2.0
-    y = f"(h*{yf})-({sz}*0.5)"
-    for wi, (tok, wd, acc_hit) in enumerate(zip(tokens, wws, is_acc)):
-        if mode == "box":
-            col = "black" if acc_hit else "white"
-            box = f":box=1:boxcolor={BOXACC if acc_hit else BOXBG}:boxborderw={boxbw}"
-            stroke = ""
-        else:
-            col = ACCENT if acc_hit else "white"
-            box = ""
-            stroke = f":borderw={sh}:bordercolor=black@0.98:shadowcolor=black@0.9:shadowx={sh//2}:shadowy={sh//2}"
-        dt = (f"drawtext=fontfile={FONT}:text='{esc(tok)}':fontcolor={col}:fontsize={sz}:"
-              f"x={int(x)}:y={y}{box}{stroke}:alpha='{alpha}'")
-        out = f"v{k}_{wi}"
-        nodes.append(f"[{prev}]{dt}[{out}]")
-        prev = out
-        x += wd + gap
-
-fc = ";".join(nodes)
-subprocess.run(["ffmpeg","-nostdin","-loglevel","error","-y","-i",inp,
-                "-filter_complex", fc, "-map", f"[{prev}]", "-map", "0:a?",
-                "-c:v","libx264","-preset","veryfast","-crf","18","-pix_fmt","yuv420p",
-                "-c:a","aac", outp], check=True)
-print("OK", outp, "|", font_arg, accent_arg, mode)
+fc = ";".join(filt)
+subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", *inputs,
+                "-filter_complex", fc, "-map", prev, "-map", "0:a?",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", outp], check=True)
+print("OK", outp, "|", font_arg, accent_arg)
