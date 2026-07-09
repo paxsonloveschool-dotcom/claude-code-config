@@ -1604,6 +1604,13 @@ def copy_styled(dir_rel: str, folder: str) -> int:
         dbx.upload(local, dest)
         n += 1
         print(f"copied {cid} -> {dest}")
+    try:  # audit log so the run commits (branch advances) and the save is observable
+        logp = os.path.join(ROOT, "content", "reference", "copy_log.json")
+        log = _load_json(logp, [])
+        log.append({"folder": folder, "count": n, "dir": dir_rel})
+        _save_json(logp, log)
+    except Exception:  # noqa: BLE001
+        pass
     print(f"\nCopied {n} clip(s) to {folder}. Nothing posted.")
     return n
 
