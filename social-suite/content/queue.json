@@ -1132,5 +1132,19 @@
     "schedule": null,
     "status": "review",
     "error": null
+  },
+  {
+    "id": "hp-drone-showcase-01",
+    "brand": "hp",
+    "text": "This is what happens when vision meets execution. ✨\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/mksipp54bkbutz5zykcqh/video-jun-07-2025-9-51-36-am-drone-showcase-01.mp4?rlkey=q8a66oe3wkszw3dj2d9ey9ps1&raw=1",
+    "media_path": "/HP-Content Auto./processed/video-jun-07-2025-9-51-36-am-drone-showcase-01.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
   }
 ]
