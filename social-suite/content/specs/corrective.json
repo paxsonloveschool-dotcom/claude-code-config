@@ -1,0 +1,22 @@
+[
+  {"name": "bw-b-build", "xfade": 0.35, "transitions": ["slideleft","wipeleft","slideup","wiperight","fade"], "segments": [
+    {"shot": ["bob willis/video sep 16 2025, 11 50 39", 2.5, 4.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 52 40", 2.5, 4.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 55 25", 2.5, 4.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 55 53", 2.5, 4.7]},
+    {"shot": ["bob willis/video sep 16 2025, 11 51 57", 3.0, 5.2]},
+    {"shot": ["bob willis/video sep 16 2025, 12 00 04", 3.0, 5.5]}
+  ]},
+  {"name": "ac-a-showcase", "xfade": 0.3, "transitions": ["zoomin","smoothleft","zoomin","circleopen","fade"], "segments": [
+    {"shot": ["alice carport/video dec 09 2025, 5 09 10", 1.5, 3.4]},
+    {"shot": ["alice carport/video dec 09 2025, 4 40 54", 1.5, 3.7]},
+    {"shot": ["alice carport/video oct 24 2025, 6 51 37", 1.5, 3.7]},
+    {"shot": ["alice carport/video oct 22 2025, 1 22 44", 1.5, 3.7]},
+    {"shot": ["alice carport/video dec 09 2025, 4 40 54", 4.2, 6.4]}
+  ]},
+  {"name": "ac-d-beforeafter", "xfade": 0.3, "transitions": ["smoothright","zoomin"], "segments": [
+    {"shot": ["alice carport/video oct 22 2025, 11 42 48", 1.5, 4.0]},
+    {"shot": ["alice carport/video dec 09 2025, 5 09 10", 1.5, 3.3]},
+    {"shot": ["alice carport/video dec 09 2025, 4 40 54", 1.5, 4.0]}
+  ]}
+]
