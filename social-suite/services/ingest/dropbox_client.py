@@ -40,7 +40,15 @@ class DropboxFile:
 
 
 def _client():
-    """Construct an authenticated Dropbox client (refresh-token preferred)."""
+    """Construct an authenticated Dropbox client (refresh-token preferred).
+
+    On a Dropbox **Business/Team** account, team-space folders (e.g. a shared
+    ``/TROPHY EXTERIOR``) live in the *team root* namespace, not the member's
+    personal namespace — a plain ``files_list_folder("")`` won't see them. Set
+    ``DROPBOX_ROOT_NAMESPACE_ID`` to the team root namespace id and the client is
+    scoped to it via ``with_path_root`` so absolute team paths resolve. Leave it
+    unset for personal / app-folder apps (the default; no behavior change).
+    """
     import dropbox  # lazy: keep module import dep-free
 
     app_key = os.getenv("DROPBOX_APP_KEY")
@@ -49,17 +57,23 @@ def _client():
     access_token = os.getenv("DROPBOX_ACCESS_TOKEN")
 
     if refresh_token and app_key and app_secret:
-        return dropbox.Dropbox(
+        dbx = dropbox.Dropbox(
             oauth2_refresh_token=refresh_token,
             app_key=app_key,
             app_secret=app_secret,
         )
-    if access_token:
-        return dropbox.Dropbox(oauth2_access_token=access_token)
-    raise RuntimeError(
-        "Set DROPBOX_APP_KEY/DROPBOX_APP_SECRET/DROPBOX_REFRESH_TOKEN "
-        "(or DROPBOX_ACCESS_TOKEN) to authenticate Dropbox."
-    )
+    elif access_token:
+        dbx = dropbox.Dropbox(oauth2_access_token=access_token)
+    else:
+        raise RuntimeError(
+            "Set DROPBOX_APP_KEY/DROPBOX_APP_SECRET/DROPBOX_REFRESH_TOKEN "
+            "(or DROPBOX_ACCESS_TOKEN) to authenticate Dropbox."
+        )
+
+    root_ns = os.getenv("DROPBOX_ROOT_NAMESPACE_ID")
+    if root_ns:
+        dbx = dbx.with_path_root(dropbox.common.PathRoot.root(root_ns))
+    return dbx
 
 
 def _retry_after_seconds(exc: Exception) -> float | None:

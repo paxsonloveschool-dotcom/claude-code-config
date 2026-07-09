@@ -73,6 +73,11 @@ class _FakeDbx:
             ),
         ]
 
+    def with_path_root(self, path_root):
+        # Team-root scoping: record and return self (SDK returns a new client).
+        self.path_root = path_root
+        return self
+
     def files_list_folder(self, folder, recursive=False):
         self.calls.append(("list_folder", folder))
         self.last_recursive = recursive
@@ -108,6 +113,18 @@ def _install_fake_dropbox(captured: dict):
         return dbx
 
     mod.Dropbox = _ctor
+
+    # dropbox.common.PathRoot.root(ns) — used for team-root namespace scoping.
+    common = types.ModuleType("dropbox.common")
+
+    class _PathRoot:
+        @staticmethod
+        def root(ns):
+            return {"root": ns}
+
+    common.PathRoot = _PathRoot
+    mod.common = common
+
     sys.modules["dropbox"] = mod
     return mod
 
@@ -117,6 +134,7 @@ def _set_refresh_env():
     os.environ["DROPBOX_APP_SECRET"] = "s"
     os.environ["DROPBOX_REFRESH_TOKEN"] = "r"
     os.environ.pop("DROPBOX_ACCESS_TOKEN", None)
+    os.environ.pop("DROPBOX_ROOT_NAMESPACE_ID", None)
 
 
 def test_initial_listing_paginates_and_filters():
@@ -155,6 +173,24 @@ def test_cursor_delta_uses_continue():
     assert dbx.calls[0] == ("continue", "existing_cursor")
     # No full list_folder call on the delta path.
     assert all(c[0] != "list_folder" for c in dbx.calls)
+
+
+def test_team_root_namespace_scoping():
+    captured: dict = {}
+    _install_fake_dropbox(captured)
+    _set_refresh_env()
+
+    # Unset: no path-root scoping applied (personal / app-folder default).
+    list_folder("/TROPHY EXTERIOR/Trophy Social Auto")
+    assert getattr(captured["dbx"], "path_root", None) is None
+
+    # Set: client is scoped to the team root namespace before any listing.
+    os.environ["DROPBOX_ROOT_NAMESPACE_ID"] = "13679018067"
+    try:
+        list_folder("/TROPHY EXTERIOR/Trophy Social Auto")
+    finally:
+        os.environ.pop("DROPBOX_ROOT_NAMESPACE_ID", None)
+    assert captured["dbx"].path_root == {"root": "13679018067"}
 
 
 def test_list_folder_recursive_passes_flag_to_sdk():
