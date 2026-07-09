@@ -1118,5 +1118,19 @@
     "schedule": null,
     "status": "review",
     "error": null
+  },
+  {
+    "id": "hp-build-story-02",
+    "brand": "hp",
+    "text": "Luxury landscaping, redefined. ✨🌿\n\nCall (979) 777-8851!!\n•\n•\n#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals",
+    "media_url": "https://www.dropbox.com/scl/fi/j6y4w6icg69rixut31ls1/video-jun-07-2025-10-03-15-am-build-story-02.mp4?rlkey=o8aif3ogkhw9elhkuo5du0g0d&raw=1",
+    "media_path": "/HP-Content Auto./processed/video-jun-07-2025-10-03-15-am-build-story-02.mp4",
+    "platforms": [
+      "instagram",
+      "facebook"
+    ],
+    "schedule": null,
+    "status": "review",
+    "error": null
   }
 ]
