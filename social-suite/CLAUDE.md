@@ -9,6 +9,12 @@ let old versions pile up in Dropbox.
   `HP Processed` staging folders hold **nothing** but the latest work.
 - End state is always: **HP Posts = only the current finished clips; processed folders = empty.**
 
+## HARD content rules
+- **NO pricing on videos, ever.** Never put dollar amounts, build cost, or "$X" price
+  callouts (or price-guessing formats) on any clip. No exceptions.
+- Never fabricate specifics (gallons, sq ft, weeks, cost). Only use real numbers the
+  owner provides — and never a price.
+
 ## Storage discipline ($0, free tiers only)
 - Dropbox account = `restoremarketingco@gmail.com` (Restore Marketing), free 2 GB target.
 - Keep Dropbox lean: original footage in `HP Content` / `HP Talking Content`, finished

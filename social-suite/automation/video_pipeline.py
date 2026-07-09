@@ -1970,16 +1970,18 @@ def cut_montage(spec: dict) -> dict | None:
         except ValueError:
             return 0.0
 
+    min_seg = float(spec.get("min_seg", 1.5))  # lower (e.g. 0.5) for velocity/fast cuts
+
     def _win(local_path, a, b):
-        """Clamp [a,b] to the clip; guarantee >=1.5s. Returns (a,b) or None if unusable."""
+        """Clamp [a,b] to the clip; guarantee >=min_seg. Returns (a,b) or None if unusable."""
         d = _clip_dur(local_path)
         if d <= 0:
             return float(a), float(b)
-        a = max(0.0, min(float(a), max(0.0, d - 1.5)))
+        a = max(0.0, min(float(a), max(0.0, d - min_seg)))
         b = min(float(b), d)
-        if b - a < 1.0:
-            b = min(d, a + 2.0)
-        return (a, b) if b - a >= 0.8 else None
+        if b - a < min_seg:
+            b = min(d, a + min_seg)
+        return (a, b) if b - a >= min(0.4, min_seg) else None
 
     def _equal_wins(shots):
         """Per-panel (local_path, a, b) all trimmed to the SAME length (min of the
