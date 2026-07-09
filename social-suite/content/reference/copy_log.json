@@ -28,5 +28,15 @@
     "folder": "HP Tiktok",
     "count": 0,
     "dir": "content/topost"
+  },
+  {
+    "folder": "HP Auto Post/Modern Pool",
+    "count": 1,
+    "dir": "content/topost"
+  },
+  {
+    "folder": "HP Tiktok",
+    "count": 1,
+    "dir": "content/topost"
   }
 ]
