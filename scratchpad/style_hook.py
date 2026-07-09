@@ -35,10 +35,12 @@ def esc(t):
     return t.replace("\\","").replace(":","\\:").replace("'","’").replace("%","\\%")
 
 def measure(font, s):
-    return font.getbbox(s)[2]
+    # advance width (includes leading/trailing spaces); getbbox() would drop them
+    return font.getlength(s)
 
 nodes, prev = [], "0:v"
 FI, FO = 0.14, 0.18  # quick pop in / out
+MAXW = W * 0.94       # keep text inside the frame with a small margin
 for k, ev in enumerate(events):
     txt = ev["text"].upper()
     hook = ev.get("hook", False)
@@ -46,6 +48,11 @@ for k, ev in enumerate(events):
     sf = ev.get("size", 0.11 if hook else 0.085)
     sz = int(W * sf)
     font = ImageFont.truetype(FONT, sz)
+    # auto-fit: shrink so the whole line stays on screen
+    full = measure(font, txt)
+    if full > MAXW:
+        sz = max(24, int(sz * MAXW / full))
+        font = ImageFont.truetype(FONT, sz)
     accent = (ev.get("accent") or "").upper().strip()
     start, end = float(ev["start"]), float(ev["end"])
     toutf = round(end + FO, 3)
@@ -55,27 +62,32 @@ for k, ev in enumerate(events):
     alpha = f"({fin})*({fout})"
     sh = max(6, int(W * 0.006))  # heavy stroke for muted legibility
 
-    # Split into [pre][accent][post] so the accent word gets the highlight color,
-    # keeping all three pieces on one centered baseline.
-    if accent and accent in txt:
-        i = txt.index(accent)
-        parts = [(txt[:i], "white"), (accent, ACCENT), (txt[i+len(accent):], "white")]
-    else:
-        parts = [(txt, "white")]
-    parts = [(p, c) for p, c in parts if p != ""]
+    # Word-based layout: draw each WORD separately with an explicit space gap
+    # (ffmpeg drawtext trims leading spaces, so we never bake spaces into a drawn
+    # string). Words inside the accent phrase get the highlight color.
+    tokens = txt.split()
+    acc = accent.split()
+    astart = -1
+    if acc:
+        for s in range(len(tokens) - len(acc) + 1):
+            if tokens[s:s + len(acc)] == acc:
+                astart = s
+                break
+    colors = [ACCENT if (astart >= 0 and astart <= idx < astart + len(acc)) else "white"
+              for idx in range(len(tokens))]
     space = measure(font, " ")
-    widths = [measure(font, p) for p, _ in parts]
-    total = sum(widths)
+    wws = [measure(font, t) for t in tokens]
+    total = sum(wws) + space * (len(tokens) - 1)
     x = (W - total) / 2.0
     y = f"(h*{yf})-({sz}*0.5)"
-    for (p, col), wd in zip(parts, widths):
-        dt = (f"drawtext=fontfile={FONT}:text='{esc(p)}':fontcolor={col}:fontsize={sz}:"
+    for wi, (tok, col, wd) in enumerate(zip(tokens, colors, wws)):
+        dt = (f"drawtext=fontfile={FONT}:text='{esc(tok)}':fontcolor={col}:fontsize={sz}:"
               f"x={int(x)}:y={y}:borderw={sh}:bordercolor=black@0.98:"
               f"shadowcolor=black@0.9:shadowx={sh//2}:shadowy={sh//2}:alpha='{alpha}'")
-        out = f"v{k}_{parts.index((p,col))}"
+        out = f"v{k}_{wi}"
         nodes.append(f"[{prev}]{dt}[{out}]")
         prev = out
-        x += wd
+        x += wd + space
 
 fc = ";".join(nodes)
 subprocess.run(["ffmpeg","-nostdin","-loglevel","error","-y","-i",inp,
