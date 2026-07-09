@@ -1,0 +1,16 @@
+{
+  "name": "drone-showcase-01",
+  "xfade": 0.3,
+  "transition": "fade",
+  "transitions": ["zoomin", "smoothleft", "zoomin", "smoothright", "zoomin", "smoothleft", "fade"],
+  "segments": [
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 51 36", 3.5, 5.5]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 51 36", 14.5, 16.5]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 51 36", 26.5, 28.5]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 13.3, 15.3]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 51 36", 38.5, 40.5]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 59 53", 17.5, 19.5]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 10 03 15", 6.5, 8.5]},
+    {"shot": ["bulk pool videos copy/video jun 07 2025, 9 51 36", 26.0, 29.0]}
+  ]
+}
