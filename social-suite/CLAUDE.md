@@ -15,6 +15,15 @@ let old versions pile up in Dropbox.
 - Never fabricate specifics (gallons, sq ft, weeks, cost). Only use real numbers the
   owner provides — and never a price.
 
+## Folder organization (keep it clean)
+- **HP Auto Post** is organized BY PROJECT/property subfolder (Alice, Barry Pool,
+  Waterfall Pool, Modern Pool, …). Save every finished clip into its project
+  subfolder — never loose at the HP Auto Post root, and never a format-type folder
+  (no "Reels"/"POV" folders — organize by PROJECT, not by video style).
+- The geometric checkerboard-deck pool ("bulk pool" raw footage) = project **"Modern Pool"**.
+- **HP Tiktok** stays FLAT (clips at its root) — mirror of the posted set.
+- Saving = `copy_styled dir:"HP Auto Post/<Project>|HP Tiktok"` (pipe = both folders).
+
 ## Storage discipline ($0, free tiers only)
 - Dropbox account = `restoremarketingco@gmail.com` (Restore Marketing), free 2 GB target.
 - Keep Dropbox lean: original footage in `HP Content` / `HP Talking Content`, finished
