@@ -1,0 +1,10 @@
+[
+ {"start":0.15,"end":1.85,"text":"WAIT FOR THE REVEAL","accent":"REVEAL","hook":true,"size":0.085},
+ {"start":2.00,"end":3.55,"text":"FROM THIS","accent":"FROM THIS","size":0.075},
+ {"start":3.85,"end":5.55,"text":"STONE BY STONE","accent":"BY STONE","size":0.07},
+ {"start":5.90,"end":7.45,"text":"PAVER BY PAVER","accent":"PAVER","size":0.07},
+ {"start":7.75,"end":9.45,"text":"TO THIS","accent":"TO THIS","size":0.075},
+ {"start":9.80,"end":11.35,"text":"BACKYARD GOALS","accent":"GOALS","size":0.07},
+ {"start":11.65,"end":13.50,"text":"MADE IN TEXAS","accent":"TEXAS","size":0.07},
+ {"start":14.00,"end":16.90,"text":"BOOK YOUR BUILD","accent":"BOOK","size":0.072}
+]

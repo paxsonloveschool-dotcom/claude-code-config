@@ -1,0 +1,51 @@
+[
+ {
+  "start": 0.15,
+  "end": 1.75,
+  "text": "THIS BACKYARD ISN'T REAL",
+  "accent": "ISN'T REAL",
+  "hook": true
+ },
+ {
+  "start": 2.0,
+  "end": 3.55,
+  "text": "HERE'S HOW WE BUILT IT",
+  "accent": "BUILT IT"
+ },
+ {
+  "start": 3.85,
+  "end": 5.55,
+  "text": "SET BY HAND",
+  "accent": "BY HAND"
+ },
+ {
+  "start": 5.9,
+  "end": 7.45,
+  "text": "PAVER BY PAVER",
+  "accent": "PAVER BY PAVER"
+ },
+ {
+  "start": 7.75,
+  "end": 9.45,
+  "text": "NOW WATCH THIS",
+  "accent": "WATCH"
+ },
+ {
+  "start": 9.8,
+  "end": 11.35,
+  "text": "A RESORT AT HOME",
+  "accent": "RESORT"
+ },
+ {
+  "start": 11.65,
+  "end": 13.5,
+  "text": "RIGHT HERE IN TEXAS",
+  "accent": "TEXAS"
+ },
+ {
+  "start": 14.0,
+  "end": 16.9,
+  "text": "DREAM BACKYARD, BUILT",
+  "accent": "BUILT"
+ }
+]
