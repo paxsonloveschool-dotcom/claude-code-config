@@ -59,8 +59,8 @@ on:
         description: "Set true to print the Dropbox folder tree and exit"
         required: false
         default: ""
-      dropbox_usage:
-        description: "Set true to report storage used + per-folder size breakdown"
+      delete_paths:
+        description: "Pipe-separated absolute Dropbox paths (files/folders) to DELETE (cleanup)"
         required: false
         default: ""
       dropbox_inventory:
@@ -164,7 +164,7 @@ jobs:
           CONTENT_FOLDER: ${{ inputs.content_folder }}
           POSTS_FOLDER: ${{ inputs.posts_folder }}
           DROPBOX_LS: ${{ inputs.dropbox_ls }}
-          DROPBOX_USAGE: ${{ inputs.dropbox_usage }}
+          DELETE_PATHS: ${{ inputs.delete_paths }}
           DROPBOX_INVENTORY: ${{ inputs.dropbox_inventory }}
           PURGE_EDITED: ${{ inputs.purge_edited }}
           DROPBOX_ORGANIZE: ${{ inputs.dropbox_organize }}

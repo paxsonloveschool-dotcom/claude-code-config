@@ -1599,7 +1599,17 @@ def copy_styled(dir_rel: str, folder: str) -> int:
             continue
         mp = e.get("media_path") or ""
         fname = mp.rsplit("/", 1)[-1] if mp else f"{cid}.mp4"
-        prefix = mp.rsplit("/", 2)[0] if mp.count("/") >= 2 else "/HP-Content Auto."
+        # Brand root = everything before the first staging/saved marker, so a clip
+        # whose media_path is 3 levels deep (HP Auto Post/<Project>/file) still maps
+        # to <brand>/<folder>/<fname> instead of nesting into a bogus folder.
+        prefix = None
+        for marker in ("/processed/", "/HP Auto Post/", "/HP Posts/", "/HP Tiktok/",
+                       "/HP Tik Tok/", f"/{READY_FOLDER}/"):
+            if marker in mp:
+                prefix = mp.split(marker, 1)[0]
+                break
+        if prefix is None:
+            prefix = mp.rsplit("/", 2)[0] if mp.count("/") >= 2 else "/HP-Content Auto."
         dest = f"{prefix}/{folder}/{fname}"
         dbx.upload(local, dest)
         n += 1
@@ -2506,6 +2516,33 @@ def main(argv: list[str] | None = None) -> int:
         for folder in folders.split("|"):
             if folder.strip():
                 copy_styled(d.strip(), folder.strip())
+        return 0
+
+    # DELETE_PATHS: pipe-separated absolute Dropbox paths (files or folders) to
+    # delete — used to clean up stray/bogus folders. Writes an audit log so the run
+    # commits (branch advances) and the action is observable.
+    delp = os.getenv("DELETE_PATHS", "").strip()
+    if delp:
+        from services.ingest import dropbox_client as _dbx  # lazy
+        results = []
+        for p in delp.split("|"):
+            p = p.strip()
+            if not p:
+                continue
+            try:
+                ok = _dbx.delete(p)
+                print(f"deleted {p}: {ok}")
+                results.append({"path": p, "deleted": ok})
+            except Exception as ex:  # noqa: BLE001
+                print(f"delete failed {p}: {ex}")
+                results.append({"path": p, "error": str(ex)})
+        try:
+            logp = os.path.join(ROOT, "content", "reference", "delete_log.json")
+            log = _load_json(logp, [])
+            log.extend(results)
+            _save_json(logp, log)
+        except Exception:  # noqa: BLE001
+            pass
         return 0
 
     # MOVE_SAVED: "src:dest" — move all saved clips from <Brand>/src into
