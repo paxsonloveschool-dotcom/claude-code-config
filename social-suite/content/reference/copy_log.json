@@ -38,5 +38,15 @@
     "folder": "HP Tiktok",
     "count": 1,
     "dir": "content/topost"
+  },
+  {
+    "folder": "HP Auto Post/Bob Willis",
+    "count": 2,
+    "dir": "content/topost/bw"
+  },
+  {
+    "folder": "HP Tiktok",
+    "count": 2,
+    "dir": "content/topost/bw"
   }
 ]
