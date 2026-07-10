@@ -9,6 +9,9 @@ every platform picks up the same change together.
 
 Rules:
   * Clips must be numbered: ``1.mp4, 2.mp4, ... 10.mp4`` (leading number = order).
+  * Subfolders are walked recursively, so clips organized into per-project
+    subfolders are all found — only the leading number decides order, no matter
+    which subfolder a clip lives in (keep numbers unique + always climbing).
   * State is just {"last_num": N} in content/fb_posted.json — rename-proof.
   * No added music (a Page can't); the video posts with its own audio.
 
@@ -67,7 +70,7 @@ def _hp_folder_path(dbx) -> str | None:
         for e in res.entries:
             if e.__class__.__name__ == "FolderMetadata":
                 name = getattr(e, "path_display", e.name).lower()
-                if "hp" in name and "tiktok" in name:
+                if "hp" in name and "auto" in name and "post" in name:
                     return getattr(e, "path_lower", "") or getattr(e, "path_display", "")
         if not getattr(res, "has_more", False):
             return None
@@ -95,10 +98,13 @@ def main() -> int:
 
     folder = _hp_folder_path(dbx)
     if not folder:
-        print("Could not find the HP Tiktok folder in Dropbox.")
+        print("Could not find the HP Auto Post folder in Dropbox.")
         return 1
 
-    files = [f for f in dbx.list_folder(folder) if f.name.lower().endswith(VIDEO_EXTS)]
+    files = [
+        f for f in dbx.list_folder(folder, recursive=True)
+        if f.name.lower().endswith(VIDEO_EXTS)
+    ]
     s = load_state()
     num, f = next_clip(files, s.get("last_num", 0))
     if not f:

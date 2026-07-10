@@ -1,0 +1,58 @@
+name: Trophy FB auto-post (Trophy videos -> FB Page)
+
+# Schedules Trophy Exteriors' Dropbox videos onto the Trophy Facebook Page as
+# native videos (own audio; no added library music — a Page can't). Pulls ONLY
+# from /TROPHY EXTERIOR/Trophy Social Auto in the team-root namespace. Uses
+# Facebook's server-side scheduling for the next Mon–Fri 2:00 PM CT slot, so
+# nothing needs to stay running. Cloud-only — no Mac.
+on:
+  schedule:
+    - cron: "0 15 * * *"   # daily 15:00 UTC (~10 AM CT) — queue today's clip onto the 2 PM slot
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Set 'true' to print the plan and post nothing"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  trophy-fb-post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install social-suite + Dropbox
+        run: pip install -e social-suite dropbox
+
+      - name: Schedule Trophy videos onto Facebook
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          DROPBOX_ROOT_NAMESPACE_ID: "13679018067"
+          BRAND_TROPHY_FB_PAGE_ID: ${{ secrets.BRAND_TROPHY_FB_PAGE_ID }}
+          BRAND_TROPHY_META_ACCESS_TOKEN: ${{ secrets.BRAND_TROPHY_META_ACCESS_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        working-directory: social-suite
+        run: python automation/trophy_fb_autopost.py
+
+      - name: Commit posted state (if changed)
+        run: |
+          git add social-suite/content/trophy_fb_posted.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No state change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(trophy-fb): update posted state [skip ci]"
+          git push
