@@ -103,8 +103,10 @@ def main() -> int:
     page_id = os.environ.get("BRAND_TROPHY_FB_PAGE_ID", "").strip()
     token = os.environ.get("BRAND_TROPHY_META_ACCESS_TOKEN", "").strip()
     if not page_id or not token:
-        print("Missing BRAND_TROPHY_FB_PAGE_ID / BRAND_TROPHY_META_ACCESS_TOKEN.")
-        return 1
+        # Not yet connected (client hasn't provided FB Page + token). Skip cleanly
+        # so the daily run is a no-op success, not a red failure, until it's set.
+        print("Trophy FB not connected yet (no Page id / token) — skipping.")
+        return 0
 
     files = [
         f for f in dbx.list_folder(FOLDER, recursive=True)
