@@ -36,9 +36,9 @@ FOLDER = os.getenv(
     "/Users/calebpittman/Library/CloudStorage/Dropbox-Restoremarketingco/"
     "Restore Marketing/Apps/hp-restore-suite-8472/HP Tiktok",
 )
-STATE = os.path.expanduser("~/Downloads/ig_autopost_state.json")
-SESSION = os.path.expanduser("~/Downloads/ig_session.json")
-CREDS = os.path.expanduser("~/Downloads/ig_creds.json")  # {"username":..,"password":..}
+STATE = os.path.expanduser(os.getenv("IG_STATE", "~/Downloads/ig_autopost_state.json"))
+SESSION = os.path.expanduser(os.getenv("IG_SESSION", "~/Downloads/ig_session.json"))
+CREDS = os.path.expanduser(os.getenv("IG_CREDS", "~/Downloads/ig_creds.json"))  # {"username":..,"password":..}
 
 SONGS = [
     "Luke Combs - Ain't No Love in Oklahoma", "Luke Combs - Lovin' On You",

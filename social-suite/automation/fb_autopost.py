@@ -30,7 +30,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.path.join(os.path.dirname(HERE), "content", "fb_posted.json")
 
 VIDEO_EXTS = (".mp4", ".mov", ".m4v")
-POST_WEEKDAYS = (0, 2, 4, 5)  # Mon, Wed, Fri, Sat
+POST_WEEKDAYS = (0, 2, 4)  # Mon, Wed, Fri
 POST_HOUR_UTC = 16            # 11:00 America/Chicago (CDT)
 CAPTION = "Higher Purpose Landscaping 🌿 Call (979) 777-8851 for a free quote!"
 
