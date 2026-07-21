@@ -34,8 +34,13 @@ import sys
 FOLDER = os.getenv(
     "IG_FOLDER",
     "/Users/calebpittman/Library/CloudStorage/Dropbox-Restoremarketingco/"
-    "Restore Marketing/Apps/hp-restore-suite-8472/HP Tiktok",
+    "Restore Marketing/Apps/hp-restore-suite-8472/HP Auto Post",
 )
+# The one subfolder of talking clips (no music); every other subfolder is "work".
+TALKING_SUBFOLDER = os.getenv("IG_TALKING_SUBFOLDER", "Talking Videos")
+# After this many work clips in a row, post one talking clip.
+WORK_PER_TALKING = int(os.getenv("IG_WORK_PER_TALKING", "3"))
+VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".MP4", ".MOV", ".M4V")
 STATE = os.path.expanduser(os.getenv("IG_STATE", "~/Downloads/ig_autopost_state.json"))
 SESSION = os.path.expanduser(os.getenv("IG_SESSION", "~/Downloads/ig_session.json"))
 CREDS = os.path.expanduser(os.getenv("IG_CREDS", "~/Downloads/ig_creds.json"))  # {"username":..,"password":..}
@@ -73,14 +78,102 @@ TAGS = ("#fyp #LandscapingTok #CollegeStation #Bryan #Navasota #Houston "
 CTA = "Call (979) 777-8851 for a free quote!"
 
 
+_DEFAULT_STATE = {
+    "posted": [],            # relative paths ("Subfolder/clip.mp4") already posted
+    "i": 0,                  # song rotation index (work clips only)
+    "nt_count": 0,           # work clips posted since the last talking clip
+    "folder_used_at": {},    # work subfolder -> seq when last used (round-robin)
+    "last_work_folder": "",  # to avoid the same subfolder back-to-back
+    "talking_i": 0,          # talking-clip rotation index
+    "seq": 0,                # monotonic post counter
+}
+
+
 def load():
     if os.path.exists(STATE):
-        return json.load(open(STATE))
-    return {"posted": [], "i": 0}
+        s = json.load(open(STATE))
+        for k, v in _DEFAULT_STATE.items():
+            s.setdefault(k, v.copy() if isinstance(v, (list, dict)) else v)
+        return s
+    return {k: (v.copy() if isinstance(v, (list, dict)) else v)
+            for k, v in _DEFAULT_STATE.items()}
 
 
 def save(s):
     json.dump(s, open(STATE, "w"), indent=2)
+
+
+def _rel(path):
+    return os.path.relpath(path, FOLDER)
+
+
+def _subfolders():
+    """Immediate subfolders of FOLDER, sorted by name."""
+    return sorted(e.name for e in os.scandir(FOLDER) if e.is_dir())
+
+
+def _videos_in(subfolder):
+    """All video files under one subfolder (recursive), sorted, as full paths."""
+    root = os.path.join(FOLDER, subfolder)
+    out = []
+    for dirpath, _dirs, files in os.walk(root):
+        for f in files:
+            if f.endswith(VIDEO_EXTS):
+                out.append(os.path.join(dirpath, f))
+    return sorted(out)
+
+
+def pick(s):
+    """Choose the next clip to post given state ``s`` (no side effects).
+
+    Returns dict {video, talking, folder, song} or None if nothing is left.
+    - Every WORK_PER_TALKING work clips, return a talking clip (no song).
+    - Work clips rotate the subfolders round-robin: never the same subfolder
+      twice in a row; the least-recently-used eligible subfolder is next; a clip
+      is never repeated.
+    """
+    subs = _subfolders()
+    work_subs = [x for x in subs if x != TALKING_SUBFOLDER]
+    posted = set(s["posted"])
+
+    # Talking slot?
+    if s["nt_count"] >= WORK_PER_TALKING and TALKING_SUBFOLDER in subs:
+        tvids = _videos_in(TALKING_SUBFOLDER)
+        if tvids:
+            video = tvids[s["talking_i"] % len(tvids)]  # cycle the talking clips
+            return {"video": video, "talking": True,
+                    "folder": TALKING_SUBFOLDER, "song": None}
+
+    # Work slot: round-robin the work subfolders.
+    def unposted(sub):
+        return [v for v in _videos_in(sub) if _rel(v) not in posted]
+
+    eligible = [sub for sub in work_subs if unposted(sub)
+                and sub != s["last_work_folder"]]
+    if not eligible:  # only the last-used folder has clips left (or all others empty)
+        eligible = [sub for sub in work_subs if unposted(sub)]
+    if not eligible:
+        return None  # every work clip has been posted
+
+    # Least-recently-used first (never used = -1 sorts first), tiebreak by name.
+    eligible.sort(key=lambda sub: (s["folder_used_at"].get(sub, -1), sub))
+    chosen = eligible[0]
+    return {"video": unposted(chosen)[0], "talking": False,
+            "folder": chosen, "song": SONGS[s["i"] % len(SONGS)]}
+
+
+def _apply(s, choice):
+    """Advance state ``s`` as if ``choice`` was just posted (used live + in preview)."""
+    s["posted"].append(_rel(choice["video"]))
+    if choice["talking"]:
+        s["talking_i"] += 1
+        s["nt_count"] = 0
+    else:
+        s["folder_used_at"][choice["folder"]] = s["seq"]
+        s["last_work_folder"] = choice["folder"]
+        s["nt_count"] += 1
+        s["i"] += 1
+    s["seq"] += 1
 
 
 def login():
@@ -124,61 +217,90 @@ def login():
         sys.exit(1)
 
 
-def main():
-    s = load()
-    vids = sorted(sum([glob.glob(FOLDER + "/*" + e)
-                       for e in (".mp4", ".mov", ".MP4", ".MOV")], []))
-    new = [v for v in vids if os.path.basename(v) not in s["posted"]]
-    if not new:
-        print("No new clips to post to Instagram.")
+def _caption(choice):
+    hook = HOOKS[choice.get("_hook_i", 0) % len(HOOKS)]
+    return f"{hook}\n\n{CTA}\n\n{TAGS}"
+
+
+def preview(n):
+    """Print the next ``n`` posts (folder / clip / song / talking) — posts nothing."""
+    import copy
+    s = copy.deepcopy(load())
+    print(f"Preview of the next {n} posts from:\n  {FOLDER}\n")
+    for k in range(1, n + 1):
+        c = pick(s)
+        if not c:
+            print(f"{k:>2}. (nothing left to post)")
+            break
+        kind = "🗣️ TALKING (no music)" if c["talking"] else f"🎵 {c['song']}"
+        print(f"{k:>2}. [{c['folder']}]  {os.path.basename(c['video'])}\n"
+              f"     {kind}")
+        _apply(s, c)
+
+
+def _install_music_patch():
+    """instagrapi crashes on a null track in music-search results — make it None-safe."""
+    try:
+        from instagrapi.mixins import fbsearch as _fb
+        if getattr(_fb.extract_track, "_hp_safe", False):
+            return
+        _orig = _fb.extract_track
+
+        def _safe(data, _orig=_orig):
+            if not data:
+                return None
+            try:
+                return _orig(data)
+            except Exception:  # noqa: BLE001 — skip a malformed track
+                return None
+
+        _safe._hp_safe = True
+        _fb.extract_track = _safe
+    except Exception:  # noqa: BLE001 — best effort
+        pass
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if "--preview" in argv:
+        i = argv.index("--preview")
+        n = int(argv[i + 1]) if i + 1 < len(argv) and argv[i + 1].isdigit() else 8
+        preview(n)
         return
 
-    video = new[0]  # one Reel per run (Instagram posts immediately)
-    song = SONGS[s["i"] % len(SONGS)]
-    hook = HOOKS[s["i"] % len(HOOKS)]
-    caption = f"{hook}\n\n{CTA}\n\n{TAGS}"
-    print(f"Instagram Reel: {os.path.basename(video)} | song: {song!r}")
-    print(f"  from folder: {FOLDER}")
+    s = load()
+    c = pick(s)
+    if not c:
+        print("No new clips left to post.")
+        return
 
-    dry = ("--dry-run" in sys.argv
+    video, talking, folder, song = c["video"], c["talking"], c["folder"], c["song"]
+    c["_hook_i"] = s["i"]
+    caption = _caption(c)
+    kind = "TALKING (no music)" if talking else f"song: {song!r}"
+    print(f"Next: [{folder}] {os.path.basename(video)} | {kind}")
+
+    dry = ("--dry-run" in argv
            or os.getenv("DRY_RUN", "").strip().lower() in ("1", "true", "yes"))
     if dry:
-        print("[dry-run] not posting — this is the clip + song that WOULD go out.")
+        print("[dry-run] not posting — this is what WOULD go out next.")
         return
 
     cl = login()
+    if talking:
+        cl.clip_upload(video, caption)  # talking clip: own audio, no song
+        print("POSTED talking clip (own audio, no music) ✅")
+    else:
+        _install_music_patch()
+        results = [t for t in cl.search_music(song) if t]
+        if not results:
+            print(f"Song '{song}' isn't available for this account — NOT posting. "
+                  "Pick a different song from the list (or add it in-app) and rerun.")
+            return
+        cl.clip_upload_as_reel_with_music(video, caption, results[0])
+        print(f"POSTED to Instagram with '{song}' ✅")
 
-    # instagrapi crashes if a music-search result has a null track; make the
-    # track extractor None-safe, then drop the Nones. (Library bug workaround.)
-    try:
-        from instagrapi.mixins import fbsearch as _fb
-        if not getattr(_fb.extract_track, "_hp_safe", False):
-            _orig_extract = _fb.extract_track
-
-            def _safe_extract_track(data, _orig=_orig_extract):
-                if not data:
-                    return None
-                try:
-                    return _orig(data)
-                except Exception:  # noqa: BLE001 — skip a malformed track
-                    return None
-
-            _safe_extract_track._hp_safe = True
-            _fb.extract_track = _safe_extract_track
-    except Exception:  # noqa: BLE001 — patch is best-effort
-        pass
-
-    results = [t for t in cl.search_music(song) if t]
-    if not results:
-        # Never post a clip without its song — bail so nothing wrong goes out.
-        print(f"Song '{song}' isn't available for this account — NOT posting. "
-              "Pick a different song from the list (or add it in-app) and rerun.")
-        return
-    cl.clip_upload_as_reel_with_music(video, caption, results[0])
-    print(f"POSTED to Instagram with '{song}' ✅")
-
-    s["posted"].append(os.path.basename(video))
-    s["i"] += 1
+    _apply(s, c)
     save(s)
 
 
