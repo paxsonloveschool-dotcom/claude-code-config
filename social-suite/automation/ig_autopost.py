@@ -84,24 +84,39 @@ def save(s):
 
 
 def login():
-    """Return a logged-in instagrapi Client, reusing a saved session if present."""
+    """Return a logged-in instagrapi Client, preferring a saved browser session.
+
+    Instagram rate-limits / blacklists the private password-login endpoint, so we
+    avoid it whenever possible:
+      1. IG_SESSIONID env (a live browser ``sessionid`` cookie) — most reliable.
+      2. The saved session file, validated with a cheap authenticated call (NOT a
+         password login).
+      3. Only as a last resort, username/password from CREDS.
+    """
     from instagrapi import Client  # lazy import so the file loads without the dep
 
+    cl = Client()
+
+    sid = os.getenv("IG_SESSIONID", "").strip()
+    if sid:
+        cl.login_by_sessionid(sid)
+        cl.dump_settings(SESSION)
+        return cl
+
+    if os.path.exists(SESSION):
+        cl.load_settings(SESSION)
+        try:
+            cl.get_timeline_feed()  # confirms the session is live, no password
+            return cl
+        except Exception:  # noqa: BLE001 — stale session, fall through
+            cl = Client()
+
     if not os.path.exists(CREDS):
-        print(f"Missing {CREDS} — create it as: "
-              '{"username": "HP_IG_USERNAME", "password": "HP_IG_PASSWORD"}')
+        print(f"No valid session and missing {CREDS}. Set IG_SESSIONID to a "
+              "browser sessionid, or create CREDS with username/password.")
         sys.exit(1)
     c = json.load(open(CREDS))
-    cl = Client()
-    if os.path.exists(SESSION):
-        try:
-            cl.load_settings(SESSION)
-            cl.login(c["username"], c["password"])
-        except Exception:  # noqa: BLE001 — stale session, log in fresh
-            cl = Client()
-            cl.login(c["username"], c["password"])
-    else:
-        cl.login(c["username"], c["password"])
+    cl.login(c["username"], c["password"])
     cl.dump_settings(SESSION)
     return cl
 
@@ -120,6 +135,13 @@ def main():
     hook = HOOKS[s["i"] % len(HOOKS)]
     caption = f"{hook}\n\n{CTA}\n\n{TAGS}"
     print(f"Instagram Reel: {os.path.basename(video)} | song: {song!r}")
+    print(f"  from folder: {FOLDER}")
+
+    dry = ("--dry-run" in sys.argv
+           or os.getenv("DRY_RUN", "").strip().lower() in ("1", "true", "yes"))
+    if dry:
+        print("[dry-run] not posting — this is the clip + song that WOULD go out.")
+        return
 
     cl = login()
     results = cl.search_music(song)
