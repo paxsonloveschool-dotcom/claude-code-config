@@ -147,7 +147,28 @@ def main():
         return
 
     cl = login()
-    results = cl.search_music(song)
+
+    # instagrapi crashes if a music-search result has a null track; make the
+    # track extractor None-safe, then drop the Nones. (Library bug workaround.)
+    try:
+        from instagrapi.mixins import fbsearch as _fb
+        if not getattr(_fb.extract_track, "_hp_safe", False):
+            _orig_extract = _fb.extract_track
+
+            def _safe_extract_track(data, _orig=_orig_extract):
+                if not data:
+                    return None
+                try:
+                    return _orig(data)
+                except Exception:  # noqa: BLE001 — skip a malformed track
+                    return None
+
+            _safe_extract_track._hp_safe = True
+            _fb.extract_track = _safe_extract_track
+    except Exception:  # noqa: BLE001 — patch is best-effort
+        pass
+
+    results = [t for t in cl.search_music(song) if t]
     if not results:
         # Never post a clip without its song — bail so nothing wrong goes out.
         print(f"Song '{song}' isn't available for this account — NOT posting. "
