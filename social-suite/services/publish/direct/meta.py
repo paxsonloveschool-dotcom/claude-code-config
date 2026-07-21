@@ -138,6 +138,39 @@ def post_facebook_video(
     return _post_form(url, params)
 
 
+def post_facebook_video_file(
+    page_id: str,
+    access_token: str,
+    description: str,
+    video_path: str,
+    timeout: float = 600.0,
+) -> dict:
+    """Upload a LOCAL video file to a Facebook Page (own audio, no added music).
+
+    Unlike ``post_facebook_video`` (which needs a public ``file_url``), this posts
+    the bytes directly via multipart to ``graph-video.facebook.com`` — so it works
+    from a laptop with a local Dropbox-synced file and no public URL. A Page keeps
+    the video's own audio (talking clips stay unmuted); Pages can't add music.
+
+    Requires ``requests`` (present in the laptop poster's environment).
+    """
+    import requests  # lazy — only the local poster needs it
+
+    url = f"https://graph-video.facebook.com/{GRAPH_VERSION}/{page_id}/videos"
+    with open(video_path, "rb") as fh:
+        resp = requests.post(
+            url,
+            data={"access_token": access_token, "description": description},
+            files={"source": fh},
+            timeout=timeout,
+        )
+    if resp.status_code >= 400:
+        raise RuntimeError(
+            f"Facebook video upload failed: HTTP {resp.status_code}: {resp.text}"
+        )
+    return resp.json()
+
+
 def post_instagram(
     ig_user_id: str,
     access_token: str,

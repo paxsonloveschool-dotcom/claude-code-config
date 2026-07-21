@@ -273,6 +273,24 @@ def _install_music_patch():
         pass
 
 
+def post(choice, caption):
+    """Log in and post one clip to Instagram. Returns a status string; raises on
+    failure so a caller (e.g. the post-to-all engine) can decide what to do.
+
+    Work clip -> Reel with the chosen song. Talking clip -> own audio, no music.
+    """
+    cl = login()
+    if choice["talking"]:
+        cl.clip_upload(choice["video"], caption)  # talking: own audio, unmuted
+        return "talking clip (own audio, no music)"
+    _install_music_patch()
+    results = [t for t in cl.search_music(choice["song"]) if t]
+    if not results:
+        raise RuntimeError(f"song '{choice['song']}' isn't available for this account")
+    cl.clip_upload_as_reel_with_music(choice["video"], caption, results[0])
+    return f"song {choice['song']!r}"
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if "--preview" in argv:
@@ -299,19 +317,12 @@ def main(argv=None):
         print("[dry-run] not posting — this is what WOULD go out next.")
         return
 
-    cl = login()
-    if talking:
-        cl.clip_upload(video, caption)  # talking clip: own audio, no song
-        print("POSTED talking clip (own audio, no music) ✅")
-    else:
-        _install_music_patch()
-        results = [t for t in cl.search_music(song) if t]
-        if not results:
-            print(f"Song '{song}' isn't available for this account — NOT posting. "
-                  "Pick a different song from the list (or add it in-app) and rerun.")
-            return
-        cl.clip_upload_as_reel_with_music(video, caption, results[0])
-        print(f"POSTED to Instagram with '{song}' ✅")
+    try:
+        status = post(c, caption)
+    except RuntimeError as e:
+        print(f"NOT posting — {e}. Pick a different song from the list and rerun.")
+        return
+    print(f"POSTED to Instagram ({status}) ✅")
 
     _apply(s, c)
     save(s)
