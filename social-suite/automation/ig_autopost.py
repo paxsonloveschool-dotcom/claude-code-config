@@ -86,6 +86,7 @@ _DEFAULT_STATE = {
     "last_work_folder": "",  # to avoid the same subfolder back-to-back
     "talking_i": 0,          # talking-clip rotation index
     "seq": 0,                # monotonic post counter
+    "used_songs": [],        # songs already used — skipped until all are used
 }
 
 
@@ -101,6 +102,14 @@ def load():
 
 def save(s):
     json.dump(s, open(STATE, "w"), indent=2)
+
+
+def _next_song(used_songs):
+    """Next song in list order that hasn't been used yet (skips used_songs)."""
+    for song in SONGS:
+        if song not in used_songs:
+            return song
+    return SONGS[0]  # all used — caller resets used_songs so it can cycle again
 
 
 def _rel(path):
@@ -159,7 +168,7 @@ def pick(s):
     eligible.sort(key=lambda sub: (s["folder_used_at"].get(sub, -1), sub))
     chosen = eligible[0]
     return {"video": unposted(chosen)[0], "talking": False,
-            "folder": chosen, "song": SONGS[s["i"] % len(SONGS)]}
+            "folder": chosen, "song": _next_song(set(s["used_songs"]))}
 
 
 def _apply(s, choice):
@@ -173,6 +182,10 @@ def _apply(s, choice):
         s["last_work_folder"] = choice["folder"]
         s["nt_count"] += 1
         s["i"] += 1
+        if choice.get("song"):
+            s["used_songs"].append(choice["song"])
+            if set(s["used_songs"]) >= set(SONGS):
+                s["used_songs"] = []  # all used — start the song cycle over
     s["seq"] += 1
 
 
