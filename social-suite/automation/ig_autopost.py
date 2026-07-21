@@ -148,14 +148,13 @@ def main():
 
     cl = login()
     results = cl.search_music(song)
-    if results:
-        cl.clip_upload_as_reel_with_music(video, caption, results[0])
-        print(f"POSTED to Instagram with '{song}' ✅")
-    else:
-        # Song not found in IG's library for this account — post without music
-        # rather than skip, so the clip still goes out.
-        cl.clip_upload(video, caption)
-        print(f"POSTED to Instagram (no matching track for '{song}') ⚠️")
+    if not results:
+        # Never post a clip without its song — bail so nothing wrong goes out.
+        print(f"Song '{song}' isn't available for this account — NOT posting. "
+              "Pick a different song from the list (or add it in-app) and rerun.")
+        return
+    cl.clip_upload_as_reel_with_music(video, caption, results[0])
+    print(f"POSTED to Instagram with '{song}' ✅")
 
     s["posted"].append(os.path.basename(video))
     s["i"] += 1
