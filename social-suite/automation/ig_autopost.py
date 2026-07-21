@@ -96,29 +96,32 @@ def login():
     from instagrapi import Client  # lazy import so the file loads without the dep
 
     cl = Client()
+    # Reuse saved device/UUIDs so Instagram sees a consistent "phone" each run.
+    if os.path.exists(SESSION):
+        try:
+            cl.load_settings(SESSION)
+        except Exception:  # noqa: BLE001 — corrupt file, ignore and continue
+            pass
 
+    # Authenticate ONLY via a browser session — never the password endpoint
+    # (Instagram blacklists it, and a failed password attempt kills live sessions).
     sid = os.getenv("IG_SESSIONID", "").strip()
     if sid:
         cl.login_by_sessionid(sid)
         cl.dump_settings(SESSION)
         return cl
 
-    if os.path.exists(SESSION):
-        cl.load_settings(SESSION)
-        try:
-            cl.get_timeline_feed()  # confirms the session is live, no password
-            return cl
-        except Exception:  # noqa: BLE001 — stale session, fall through
-            cl = Client()
-
-    if not os.path.exists(CREDS):
-        print(f"No valid session and missing {CREDS}. Set IG_SESSIONID to a "
-              "browser sessionid, or create CREDS with username/password.")
+    # No fresh sessionid given — try the saved session with a cheap probe.
+    try:
+        cl.get_timeline_feed()  # authenticated call, no password
+        return cl
+    except Exception as e:  # noqa: BLE001
+        print(
+            "Instagram session missing or expired. We never use the password "
+            "(Instagram blocks it). Grab a fresh `sessionid` from instagram.com "
+            f"and re-run with IG_SESSIONID set.\n  (detail: {type(e).__name__})"
+        )
         sys.exit(1)
-    c = json.load(open(CREDS))
-    cl.login(c["username"], c["password"])
-    cl.dump_settings(SESSION)
-    return cl
 
 
 def main():
