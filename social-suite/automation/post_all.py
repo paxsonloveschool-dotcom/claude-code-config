@@ -20,7 +20,10 @@ from __future__ import annotations
 import os
 import sys
 
-from automation import ig_autopost as ig
+# Make sibling packages (automation, services) importable however this is run.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from automation import ig_autopost as ig  # noqa: E402
 
 
 def _platforms():
