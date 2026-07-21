@@ -23,12 +23,12 @@ def test_split_caption_pulls_hashtags_out():
     assert "This is what happens" in desc and "979" in desc
 
 
-def test_next_post_slots_are_mwf_noon_future_within_window():
+def test_next_post_slots_are_mwf_11am_future_within_window():
     slots = next_post_slots(WED_9AM, 4)
-    # Today is Wed 9am -> today's 12:00 still counts, then Fri, Mon, Wed.
+    # Today is Wed 9am -> today's 11:00 still counts, then Fri, Mon, Wed.
     assert [d.weekday() for d in slots] == [2, 4, 0, 2]
     assert all(d > WED_9AM for d in slots)
-    assert all(d.hour == 12 and d.minute == 0 for d in slots)
+    assert all(d.hour == 11 and d.minute == 0 for d in slots)
     # 10-day horizon caps the count even if more are requested.
     assert len(next_post_slots(WED_9AM, 99)) <= 5
 
@@ -42,7 +42,7 @@ def test_plan_cycles_songs_and_assigns_slots():
     out = plan(posts, songs, WED_9AM)
     assert [i["sound"] for i in out] == ["Song One", "Song Two"]  # cycled in order
     assert out[0]["slot"] < out[1]["slot"]                        # different, ordered slots
-    assert out[0]["slot"].hour == 12
+    assert out[0]["slot"].hour == 11
 
 
 def test_plan_respects_explicit_sound_and_schedule():

@@ -1,4 +1,8 @@
 memory/
 
+# Machine-specific local-timer configs (paths only, but never commit them)
+social-suite/deploy/local-timers/config.env
+social-suite/deploy/local-timers/config.env.bat
+
 # Ephemeral git worktrees created by background agents
 .claude/worktrees/
