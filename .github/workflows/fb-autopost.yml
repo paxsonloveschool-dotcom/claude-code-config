@@ -1,12 +1,11 @@
 name: Facebook auto-post (HP videos -> FB Page)
 
-# Schedules HP's Dropbox videos onto the HP Facebook Page as native videos (own
-# audio / outro sound; no added library music — a Page can't). Uses Facebook's
-# server-side scheduling to queue each new clip onto the next Mon/Wed/Fri/Sat
-# 11:00-ish local slot, so nothing needs to stay running. Cloud-only — no Mac.
+# DISABLED cron: Facebook is now posted from the Mac by automation/post_all.py
+# (the unified same-clip rotation shared with Instagram). The cloud cron is off
+# so Facebook never double-posts. Left as workflow_dispatch for manual/backup use.
 on:
-  schedule:
-    - cron: "0 12 * * *"   # daily 12:00 UTC — pick up new clips, queue them onto FB
+  # schedule:
+  #   - cron: "0 12 * * *"   # (disabled — Mac's post_all.py posts Facebook now)
   workflow_dispatch:
     inputs:
       dry_run:
