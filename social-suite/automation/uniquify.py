@@ -24,6 +24,19 @@ import subprocess
 import tempfile
 
 
+def _ffmpeg_bin() -> str:
+    """Prefer a system ffmpeg; fall back to the one moviepy/imageio bundles."""
+    from shutil import which
+    exe = which("ffmpeg")
+    if exe:
+        return exe
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:  # noqa: BLE001
+        return "ffmpeg"
+
+
 def _knobs(seed: str) -> dict:
     """Deterministic tiny variations from a seed string."""
     h = int(hashlib.sha256(seed.encode("utf-8")).hexdigest(), 16)
@@ -61,7 +74,7 @@ def uniquify(src: str, dst: str | None = None, seed: str = "",
     vf.append(f"eq=brightness={k['bright']:.3f}:saturation={k['sat']:.3f}")
 
     cmd = [
-        "ffmpeg", "-y", "-ss", f"{k['trim']:.3f}", "-i", src,
+        _ffmpeg_bin(), "-y", "-ss", f"{k['trim']:.3f}", "-i", src,
         "-vf", ",".join(vf),
         "-map_metadata", "-1",
         "-metadata", f"comment=hp-{k['tag']}",
