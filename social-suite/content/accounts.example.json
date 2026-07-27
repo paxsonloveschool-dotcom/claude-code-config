@@ -9,7 +9,7 @@
 
   "accounts": [
     {"id": "hp-fb",       "platform": "facebook",  "brand": "Landscaping", "enabled": true,
-     "page_id": "103729542328773", "token_file": "~/hp-auto/hp_fb_token.txt",
+     "page_id": "103729542328773", "token_file": "~/hp-auto/fb_103729542328773.txt",
      "mirror": false, "time_offset_min": 0,  "song_offset": 0, "caption_variant": 0},
 
     {"id": "hp-ig",       "platform": "instagram", "brand": "Landscaping", "enabled": true,
@@ -24,8 +24,8 @@
      "sessionid_file": "~/hp-auto/pools_ig_sessionid.txt",
      "mirror": true,  "time_offset_min": 90, "song_offset": 5, "caption_variant": 1},
 
-    {"id": "pools-fb",    "platform": "facebook",  "brand": "Pools", "enabled": false,
-     "page_id": "REPLACE_POOLS_FB_PAGE_ID", "token_file": "~/hp-auto/pools_fb_token.txt",
+    {"id": "pools-fb",    "platform": "facebook",  "brand": "Pools", "enabled": true,
+     "page_id": "1279550441899328", "token_file": "~/hp-auto/fb_1279550441899328.txt",
      "mirror": false, "time_offset_min": 90, "song_offset": 5, "caption_variant": 1},
 
     {"id": "pools-tt-1",  "platform": "tiktok",    "brand": "Pools", "enabled": false,
@@ -44,8 +44,8 @@
      "sessionid_file": "~/hp-auto/design_ig_sessionid.txt",
      "mirror": false, "time_offset_min": 180, "song_offset": 17, "caption_variant": 2},
 
-    {"id": "design-fb",   "platform": "facebook",  "brand": "Design", "enabled": false,
-     "page_id": "REPLACE_DESIGN_FB_PAGE_ID", "token_file": "~/hp-auto/design_fb_token.txt",
+    {"id": "design-fb",   "platform": "facebook",  "brand": "Design", "enabled": true,
+     "page_id": "1220894204438767", "token_file": "~/hp-auto/fb_1220894204438767.txt",
      "mirror": false, "time_offset_min": 180, "song_offset": 17, "caption_variant": 2},
 
     {"id": "design-tt-1", "platform": "tiktok",    "brand": "Design", "enabled": false,
