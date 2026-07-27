@@ -24,6 +24,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# ig_autopost reads IG_STATE at import time. Default the shared rotation state to
+# ~/hp-auto (launchd-readable; ~/Downloads is TCC-blocked for background jobs) so
+# the multi-account poster never silently writes to the wrong file.
+os.environ.setdefault("IG_STATE", os.path.expanduser("~/hp-auto/ig_autopost_state.json"))
+
 from automation import ig_autopost as ig  # noqa: E402
 from automation import uniquify as uq      # noqa: E402
 
@@ -62,7 +67,10 @@ def _post_facebook(acct, video, caption):
 
 def _post_instagram(acct, video, caption, song):
     # Reuse ig_autopost.post via a per-account session, but on a UNIQUE file.
+    # Each IG account MUST get its own device-fingerprint session file — reusing
+    # one "phone" across several IG accounts is a ban trigger (Rule #1).
     os.environ["IG_SESSIONID"] = open(os.path.expanduser(acct["sessionid_file"])).read().strip()
+    os.environ["IG_SESSION"] = os.path.expanduser(f"~/hp-auto/ig_session_{acct['id']}.json")
     choice = {"video": video, "talking": song is None, "song": song}
     ig.post(choice, caption)
 

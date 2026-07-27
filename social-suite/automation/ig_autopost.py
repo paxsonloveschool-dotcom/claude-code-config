@@ -45,6 +45,14 @@ STATE = os.path.expanduser(os.getenv("IG_STATE", "~/Downloads/ig_autopost_state.
 SESSION = os.path.expanduser(os.getenv("IG_SESSION", "~/Downloads/ig_session.json"))
 CREDS = os.path.expanduser(os.getenv("IG_CREDS", "~/Downloads/ig_creds.json"))  # {"username":..,"password":..}
 
+
+def _session_path():
+    """Session file, read fresh each call so a multi-account caller can point each
+    Instagram account at its OWN device-fingerprint file. Reusing one device across
+    several IG accounts is itself a ban trigger, so every account gets a separate
+    session (set IG_SESSION before each post)."""
+    return os.path.expanduser(os.getenv("IG_SESSION", "~/Downloads/ig_session.json"))
+
 SONGS = [
     "Luke Combs - Ain't No Love in Oklahoma", "Luke Combs - Lovin' On You",
     "Luke Combs - When It Rains It Pours", "Jon Pardi - Night Shift",
@@ -201,11 +209,12 @@ def login():
     """
     from instagrapi import Client  # lazy import so the file loads without the dep
 
+    session = _session_path()
     cl = Client()
     # Reuse saved device/UUIDs so Instagram sees a consistent "phone" each run.
-    if os.path.exists(SESSION):
+    if os.path.exists(session):
         try:
-            cl.load_settings(SESSION)
+            cl.load_settings(session)
         except Exception:  # noqa: BLE001 — corrupt file, ignore and continue
             pass
 
@@ -214,7 +223,7 @@ def login():
     sid = os.getenv("IG_SESSIONID", "").strip()
     if sid:
         cl.login_by_sessionid(sid)
-        cl.dump_settings(SESSION)
+        cl.dump_settings(session)
         return cl
 
     # No fresh sessionid given — try the saved session with a cheap probe.
