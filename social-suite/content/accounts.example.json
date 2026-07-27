@@ -1,0 +1,59 @@
+{
+  "_comment": "All HP accounts. Every account posts the SAME rotation clip, but uniquify.py renders each its own copy (different fingerprint), and each has its own time_offset_min (stagger), song_offset (different song), caption_variant, and optional mirror — so multi-account posting doesn't read as spam. Copy to accounts.json and fill in the real cred file paths. enabled:false skips an account.",
+
+  "caption_variants": [
+    "Higher Purpose {brand} 🌿  Call (979) 777-8851 for a free quote!",
+    "{hook}  📞 (979) 777-8851",
+    "This is what {brand} looks like done right. (979) 777-8851"
+  ],
+
+  "accounts": [
+    {"id": "hp-fb",       "platform": "facebook",  "brand": "Landscaping", "enabled": true,
+     "page_id": "103729542328773", "token_file": "~/hp-auto/hp_fb_token.txt",
+     "mirror": false, "time_offset_min": 0,  "song_offset": 0, "caption_variant": 0},
+
+    {"id": "hp-ig",       "platform": "instagram", "brand": "Landscaping", "enabled": true,
+     "sessionid_file": "~/hp-auto/ig_sessionid.txt",
+     "mirror": false, "time_offset_min": 0,  "song_offset": 0, "caption_variant": 0},
+
+    {"id": "hp-tt",       "platform": "tiktok",    "brand": "Landscaping", "enabled": false,
+     "tiktok_account": "HigherPurposeLandscaping",
+     "mirror": false, "time_offset_min": 35, "song_offset": 0, "caption_variant": 1},
+
+    {"id": "pools-ig",    "platform": "instagram", "brand": "Pools", "enabled": false,
+     "sessionid_file": "~/hp-auto/pools_ig_sessionid.txt",
+     "mirror": true,  "time_offset_min": 90, "song_offset": 5, "caption_variant": 1},
+
+    {"id": "pools-fb",    "platform": "facebook",  "brand": "Pools", "enabled": false,
+     "page_id": "REPLACE_POOLS_FB_PAGE_ID", "token_file": "~/hp-auto/pools_fb_token.txt",
+     "mirror": false, "time_offset_min": 90, "song_offset": 5, "caption_variant": 1},
+
+    {"id": "pools-tt-1",  "platform": "tiktok",    "brand": "Pools", "enabled": false,
+     "tiktok_account": "HpPools",
+     "mirror": false, "time_offset_min": 120, "song_offset": 5,  "caption_variant": 1},
+
+    {"id": "pools-tt-2",  "platform": "tiktok",    "brand": "Pools", "enabled": false,
+     "tiktok_account": "HigherPurposePools",
+     "mirror": true,  "time_offset_min": 240, "song_offset": 11, "caption_variant": 2},
+
+    {"id": "pools-yt",    "platform": "youtube",   "brand": "Pools", "enabled": false,
+     "cookies_file": "~/hp-auto/pools_yt_cookies.json",
+     "mirror": false, "time_offset_min": 150, "song_offset": 5, "caption_variant": 2},
+
+    {"id": "design-ig",   "platform": "instagram", "brand": "Design", "enabled": false,
+     "sessionid_file": "~/hp-auto/design_ig_sessionid.txt",
+     "mirror": false, "time_offset_min": 180, "song_offset": 17, "caption_variant": 2},
+
+    {"id": "design-fb",   "platform": "facebook",  "brand": "Design", "enabled": false,
+     "page_id": "REPLACE_DESIGN_FB_PAGE_ID", "token_file": "~/hp-auto/design_fb_token.txt",
+     "mirror": false, "time_offset_min": 180, "song_offset": 17, "caption_variant": 2},
+
+    {"id": "design-tt-1", "platform": "tiktok",    "brand": "Design", "enabled": false,
+     "tiktok_account": "higherpurposedesign",
+     "mirror": false, "time_offset_min": 210, "song_offset": 17, "caption_variant": 0},
+
+    {"id": "design-tt-2", "platform": "tiktok",    "brand": "Design", "enabled": false,
+     "tiktok_account": "hpdesignn",
+     "mirror": true,  "time_offset_min": 300, "song_offset": 23, "caption_variant": 1}
+  ]
+}
