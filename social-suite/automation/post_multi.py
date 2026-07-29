@@ -35,6 +35,9 @@ from automation import uniquify as uq      # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 ACCOUNTS_PATH = os.path.join(os.path.dirname(HERE), "content", "accounts.json")
 TIKTOK_PY = os.path.expanduser(os.getenv("TIKTOK_VENV_PY", "~/tiktok-venv39/bin/python"))
+# TikTok cookie files (TK_cookies_<account>.json) are read relative to cwd, so the
+# poster must run from the SAME folder the logins saved them in.
+TIKTOK_COOKIE_DIR = os.path.expanduser(os.getenv("TIKTOK_COOKIE_DIR", "~/hp-auto/tiktok"))
 
 
 def _load_accounts() -> dict:
@@ -85,7 +88,9 @@ def _post_tiktok(acct, video, caption, song, minute_offset):
         args += ["--sound", song]
     if acct.get("mirror"):
         args += ["--mirror-already-applied"]  # informational
-    subprocess.run(args, check=True)
+    # Run from the cookie dir so tiktokautouploader finds TK_cookies_<account>.json.
+    os.makedirs(TIKTOK_COOKIE_DIR, exist_ok=True)
+    subprocess.run(args, check=True, cwd=TIKTOK_COOKIE_DIR)
 
 
 def main(argv=None):
