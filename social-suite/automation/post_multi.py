@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -38,6 +40,9 @@ TIKTOK_PY = os.path.expanduser(os.getenv("TIKTOK_VENV_PY", "~/tiktok-venv39/bin/
 # TikTok cookie files (TK_cookies_<account>.json) are read relative to cwd, so the
 # poster must run from the SAME folder the logins saved them in.
 TIKTOK_COOKIE_DIR = os.path.expanduser(os.getenv("TIKTOK_COOKIE_DIR", "~/hp-auto/tiktok"))
+# Seconds to space consecutive Instagram posts apart. Several IG posts in the same
+# instant from one connection is a bot/ban signal — spread them out (Rule #1).
+IG_STAGGER_SEC = int(os.getenv("IG_STAGGER_SEC", "120"))
 
 
 def _load_accounts() -> dict:
@@ -108,6 +113,7 @@ def main(argv=None):
           f"({'talking' if c['talking'] else c['song']})")
 
     posted_any = False
+    ig_posted = 0  # count of Instagram posts already sent this run (for spacing)
     for acct in cfg.get("accounts", []):
         if not acct.get("enabled"):
             continue
@@ -119,6 +125,12 @@ def main(argv=None):
             print(f"  [dry] {tag}: mirror={acct.get('mirror')} +{acct.get('time_offset_min',0)}m "
                   f"song={song!r}")
             continue
+        # Space out Instagram posts so several accounts don't post at the same
+        # instant from one IP (ban signal). First IG goes immediately.
+        if plat == "instagram" and ig_posted > 0:
+            delay = IG_STAGGER_SEC + random.randint(0, 45)
+            print(f"  ⏳ spacing Instagram {delay}s before {tag} (anti-spam)")
+            time.sleep(delay)
         try:
             # Unique copy for this account (skip re-render for a dry run).
             video = uq.uniquify(c["video"], seed=f"{acct['id']}:{os.path.basename(c['video'])}",
@@ -142,6 +154,8 @@ def main(argv=None):
                 except OSError:
                     pass
             posted_any = True
+            if plat == "instagram":
+                ig_posted += 1
             print(f"  ✅ {tag}")
         except Exception as e:  # noqa: BLE001 — one account failing shouldn't stop the rest
             print(f"  ❌ {tag}: {e}")
