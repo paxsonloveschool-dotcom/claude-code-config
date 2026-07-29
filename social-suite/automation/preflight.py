@@ -51,7 +51,11 @@ def _check(acct: dict) -> tuple[bool, str]:
         cookie = os.path.join(TIKTOK_COOKIE_DIR, f"TK_cookies_{name}.json")
         return (_nonempty(cookie), f"cookies {cookie}")
     if plat == "youtube":
-        return False, "youtube uploader not wired yet"
+        chan = acct.get("yt_channel", "")
+        if not chan:
+            return False, "no yt_channel"
+        token = os.path.expanduser(os.path.join("~/hp-auto/youtube", f"yt_{chan}.json"))
+        return (_nonempty(token), f"token {token}")
     return False, f"unknown platform {plat!r}"
 
 

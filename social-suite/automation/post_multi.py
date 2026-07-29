@@ -98,6 +98,17 @@ def _post_tiktok(acct, video, caption, song, minute_offset):
     subprocess.run(args, check=True, cwd=TIKTOK_COOKIE_DIR)
 
 
+def _post_youtube(acct, video, caption):
+    # Official YouTube API upload (hp-venv has the google libs). Same interpreter.
+    title = caption.split("\n", 1)[0][:90]
+    args = [sys.executable, os.path.join(HERE, "youtube_upload_one.py"),
+            "--channel", acct["yt_channel"], "--video", video,
+            "--title", title, "--description", caption,
+            "--tags", "landscaping,pools,outdoorliving,CollegeStation",
+            "--privacy", "public"]
+    subprocess.run(args, check=True)
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     dry = "--dry-run" in argv or os.getenv("DRY_RUN", "").strip().lower() in ("1", "true", "yes")
@@ -143,8 +154,7 @@ def main(argv=None):
                 elif plat == "tiktok":
                     _post_tiktok(acct, video, caption, song, acct.get("time_offset_min", 0))
                 elif plat == "youtube":
-                    print(f"  ⏭️  {tag}: youtube uploader not wired yet")
-                    continue
+                    _post_youtube(acct, video, caption)
                 else:
                     print(f"  ❓ {tag}: unknown platform")
                     continue
