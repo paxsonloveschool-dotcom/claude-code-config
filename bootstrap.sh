@@ -21,7 +21,7 @@ echo "╚═══════════════════════�
 echo ""
 
 # --- Prerequisite checks ---
-echo "[1/7] Checking prerequisites..."
+echo "[1/8] Checking prerequisites..."
 command -v git >/dev/null 2>&1 || { echo "ERROR: git not installed"; exit 1; }
 command -v claude >/dev/null 2>&1 || {
   # Try adding npm global bin to PATH
@@ -36,7 +36,7 @@ command -v claude >/dev/null 2>&1 || {
 echo "  ✔ git, claude CLI available"
 
 # --- Clone or update repo ---
-echo "[2/7] Cloning/updating canonical config repo..."
+echo "[2/8] Cloning/updating canonical config repo..."
 if [ -d "$REPO/.git" ]; then
   cd "$REPO"
   git pull --quiet --rebase origin main
@@ -48,17 +48,22 @@ else
 fi
 
 # --- Sync files to ~/.claude/ ---
-echo "[3/7] Syncing config files to $CLAUDE_DIR..."
-mkdir -p "$CLAUDE_DIR"
+echo "[3/8] Syncing config files to $CLAUDE_DIR..."
+mkdir -p "$CLAUDE_DIR" "$CLAUDE_DIR/skills"
 cp "$REPO/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
 cp "$REPO/SESSION_HANDOFF.md" "$CLAUDE_DIR/SESSION_HANDOFF.md"
 cp "$REPO/.claude/COMMON_MISTAKES.md" "$CLAUDE_DIR/COMMON_MISTAKES.md"
 cp "$REPO/.claude/QUICK_START.md" "$CLAUDE_DIR/QUICK_START.md"
 cp "$REPO/.claude/ARCHITECTURE_MAP.md" "$CLAUDE_DIR/ARCHITECTURE_MAP.md"
-echo "  ✔ 5 config files synced"
+if [ -d "$REPO/.claude/skills" ]; then
+  cp -r "$REPO/.claude/skills/." "$CLAUDE_DIR/skills/"
+  echo "  ✔ 5 config files + skills/ synced"
+else
+  echo "  ✔ 5 config files synced"
+fi
 
 # --- Install sync scripts ---
-echo "[4/7] Installing sync scripts..."
+echo "[4/8] Installing sync scripts..."
 cp "$REPO/scripts/sync-config.sh" "$CLAUDE_DIR/sync-config.sh" 2>/dev/null || {
   # Inline fallback if scripts/ doesn't exist in repo yet
   cat > "$CLAUDE_DIR/sync-config.sh" << 'SYNC_EOF'
@@ -88,7 +93,7 @@ chmod +x "$CLAUDE_DIR/sync-config.sh"
 echo "  ✔ sync-config.sh installed and executable"
 
 # --- Install Superpowers plugins ---
-echo "[5/7] Installing Superpowers plugin stack..."
+echo "[5/8] Installing Superpowers plugin stack..."
 if ! claude plugin marketplace list 2>/dev/null | grep -q "superpowers-marketplace"; then
   claude plugin marketplace add obra/superpowers-marketplace 2>&1 | tail -1
 fi
@@ -100,8 +105,36 @@ for plugin in superpowers episodic-memory elements-of-style; do
   fi
 done
 
+# --- Agent Reach (internet access skill: X, Reddit, YouTube, GitHub, etc.) ---
+echo "[6/8] Installing Agent Reach..."
+if command -v agent-reach >/dev/null 2>&1; then
+  echo "  ✔ agent-reach already installed ($(agent-reach --version 2>/dev/null || echo installed))"
+else
+  if ! command -v pipx >/dev/null 2>&1; then
+    if command -v pip3 >/dev/null 2>&1; then
+      pip3 install --user pipx >/dev/null 2>&1 && python3 -m pipx ensurepath >/dev/null 2>&1 || true
+    elif command -v pip >/dev/null 2>&1; then
+      pip install --user pipx >/dev/null 2>&1 && python -m pipx ensurepath >/dev/null 2>&1 || true
+    fi
+    export PATH="$HOME/.local/bin:$PATH"
+  fi
+  if command -v pipx >/dev/null 2>&1; then
+    pipx install --backend pip \
+      https://github.com/Panniantong/agent-reach/archive/main.zip 2>&1 | tail -1
+    echo "  ✔ agent-reach installed via pipx"
+  else
+    echo "  ⚠ pipx unavailable — install manually: pipx install agent-reach"
+  fi
+fi
+# Configure channels + skill registration (safe: skips already-configured items)
+if command -v agent-reach >/dev/null 2>&1; then
+  agent-reach install --env=auto 2>&1 | tail -3 || true
+  echo "  ℹ Run 'agent-reach doctor' to see per-channel status."
+  echo "  ℹ SKILL.md lives at $CLAUDE_DIR/skills/agent-reach/SKILL.md"
+fi
+
 # --- RTK binary (optional, Windows-friendly) ---
-echo "[6/7] Checking RTK..."
+echo "[7/8] Checking RTK..."
 if [ ! -f "$HOME/.local/bin/rtk.exe" ] && [ ! -f "$HOME/.local/bin/rtk" ]; then
   echo "  ℹ RTK not installed on this device. Install manually:"
   echo "    Windows: https://github.com/rtk-ai/rtk/releases"
@@ -112,7 +145,7 @@ else
 fi
 
 # --- Final report ---
-echo "[7/7] Bootstrap complete!"
+echo "[8/8] Bootstrap complete!"
 echo ""
 echo "╔════════════════════════════════════════════════════╗"
 echo "║   Still needs physical action (one-time setup):    ║"

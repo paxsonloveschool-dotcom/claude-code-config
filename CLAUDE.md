@@ -100,6 +100,10 @@ Do not interleave research and implementation. Complete all research first, then
 ## Skills & Specialization
 - Before starting niche work, check if a relevant skill is loaded or available via the Skill tool.
 - For recurring business workflows, build a custom skill with `anthropic-skills:skill-creator` instead of re-explaining each session.
+- **Custom skills live in `.claude/skills/<name>/SKILL.md`** in this repo; `bootstrap.sh` + `sync-config.sh` mirror them to `~/.claude/skills/`.
+
+### Installed custom skills
+- **agent-reach** — Internet-access skill (X/Twitter, Reddit, YouTube, GitHub, Bilibili, XiaoHongShu, Weibo, LinkedIn, RSS, Exa web search, any URL). Zero API keys for 8 channels; cookies/proxy needed for the rest. Skill file: `.claude/skills/agent-reach/SKILL.md`. CLI: `agent-reach doctor` to see channel status, `agent-reach install --env=auto --channels=all` to enable everything. Upstream: https://github.com/Panniantong/agent-reach
 
 ## GitHub Action on New Repos
 When starting work in a new git repo, run `/install-github-app` so `@claude` tagging works on PRs/Issues from any device.
