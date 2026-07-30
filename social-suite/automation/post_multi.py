@@ -99,6 +99,14 @@ def _post_tiktok(acct, video, caption, song, minute_offset):
     subprocess.run(args, check=True, cwd=TIKTOK_COOKIE_DIR)
 
 
+def _post_x(acct, video, caption):
+    # X posts via Playwright (hp-venv) using the saved session. Headless on schedule.
+    args = [sys.executable, os.path.join(HERE, "x_post_one.py"),
+            "--account", acct["x_account"], "--video", video,
+            "--caption", caption, "--headless"]
+    subprocess.run(args, check=True)
+
+
 def _post_youtube(acct, video, caption):
     # Official YouTube API upload (hp-venv has the google libs). Same interpreter.
     title = caption.split("\n", 1)[0][:90]
@@ -148,6 +156,8 @@ def _post_account(cfg, acct, c, ig_posted, dry):
                 _post_instagram(acct, video, caption, song)
             elif plat == "tiktok":
                 _post_tiktok(acct, video, caption, song, acct.get("time_offset_min", 0))
+            elif plat == "x":
+                _post_x(acct, video, caption)
             elif plat == "youtube":
                 _post_youtube(acct, video, caption)
             else:

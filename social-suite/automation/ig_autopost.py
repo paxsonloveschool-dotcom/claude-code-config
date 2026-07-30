@@ -150,6 +150,8 @@ def _subfolders():
     own "." group — so a brand folder works whether clips are nested in project
     subfolders or just dropped in directly."""
     folder = _folder()
+    if not os.path.isdir(folder):
+        return []  # company folder not created/filled yet — nothing to post
     subs = sorted(e.name for e in os.scandir(folder) if e.is_dir())
     has_loose = any(
         f.endswith(VIDEO_EXTS) and os.path.isfile(os.path.join(folder, f))

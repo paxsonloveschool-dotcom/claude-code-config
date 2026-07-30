@@ -50,6 +50,10 @@ def _check(acct: dict) -> tuple[bool, str]:
         name = acct.get("tiktok_account", "")
         cookie = os.path.join(TIKTOK_COOKIE_DIR, f"TK_cookies_{name}.json")
         return (_nonempty(cookie), f"cookies {cookie}")
+    if plat == "x":
+        name = acct.get("x_account", "")
+        state = os.path.expanduser(os.path.join("~/hp-auto/x", f"x_state_{name}.json"))
+        return (_nonempty(state), f"session {state}")
     if plat == "youtube":
         chan = acct.get("yt_channel", "")
         if not chan:
