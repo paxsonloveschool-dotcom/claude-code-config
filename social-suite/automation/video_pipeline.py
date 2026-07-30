@@ -1340,7 +1340,12 @@ def cut_windows(specs: list[dict]) -> list[dict]:
                     tmp.append(pp)
                 _f, local, base, brand, display = ctxs[0]
                 out_local = os.path.join(os.path.dirname(local), f"{base}-{nm}.mp4")
-                _stackN(tmp, out_local) if stack else _concat(tmp, out_local)
+                if stack:
+                    _stackN(tmp, out_local)
+                elif sp.get("mute"):
+                    _concat_v(tmp, out_local)   # silent stitch: video-only crossfade
+                else:
+                    _concat(tmp, out_local)
             else:
                 ctx = resolve(sp.get("video") or default_match)
                 if not ctx:
@@ -1358,7 +1363,10 @@ def cut_windows(specs: list[dict]) -> list[dict]:
                         _edit_short(local, float(w[0]), float(w[1]), pp, srt=None,
                                     mute=bool(sp.get("mute")))
                         pl.append(pp)
-                    _concat(pl, out_local)
+                    if sp.get("mute"):
+                        _concat_v(pl, out_local)   # silent stitch: video-only crossfade
+                    else:
+                        _concat(pl, out_local)
             # Brand pass (approved look: 130px logo top-right, optional serif
             # texts), then the outro end-card when the spec asks for it.
             logo = _brand_logo(brand[0])
