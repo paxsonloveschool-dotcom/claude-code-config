@@ -45,4 +45,16 @@ sync_file "$REPO/scripts/daily-log.sh"         "$HOME/.claude/daily-log.sh"
 chmod +x "$HOME/.claude/sync-config.sh" "$HOME/.claude/wsl-check.sh" \
          "$HOME/.claude/code-map.sh" "$HOME/.claude/daily-log.sh" 2>/dev/null
 
+# Skills — mirror the whole tree so new/removed files propagate
+if [ -d "$REPO/.claude/skills" ]; then
+  mkdir -p "$HOME/.claude/skills"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$REPO/.claude/skills/" "$HOME/.claude/skills/" 2>> "$LOG" \
+      && echo "[$(date '+%F %T')] synced: skills/" >> "$LOG"
+  else
+    cp -r "$REPO/.claude/skills/." "$HOME/.claude/skills/" 2>> "$LOG" \
+      && echo "[$(date '+%F %T')] synced: skills/ (cp fallback)" >> "$LOG"
+  fi
+fi
+
 exit 0

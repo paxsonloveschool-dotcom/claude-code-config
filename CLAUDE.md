@@ -73,8 +73,15 @@ Do not interleave research and implementation. Complete all research first, then
 
 ### Session Management
 - After completing a distinct task, suggest `/clear` if moving to something unrelated.
-- At ~60% context capacity, proactively suggest `/compact` with preservation notes.
+- At ~60% context capacity, invoke the `session-handoff` skill (prefer over `/compact`).
 - Batch instructions in one message — 3 separate prompts cost ~3x one combined prompt.
+
+### Prompt Cache Hygiene (cached tokens = 10% of standard price)
+- **TTL**: 1h on subscription, 5min on API / sub-agents / usage-limit fallback.
+- **Never continue a >1h idle session** — the whole prefix re-writes at full price. Handoff → new session.
+- **Don't `/model` toggle or use `opus plan` dual-model** — every switch invalidates the cache prefix. Pick one model per session.
+- **Editing `CLAUDE.md` mid-session is safe** — changes only apply on restart, so the current cache stays intact.
+- **Large docs** → `~/.claude/memory/` or a web-chat Project, not pasted into a turn.
 
 ### Avoid Waste
 - No comments, docstrings, or type annotations on unchanged code.
@@ -88,9 +95,11 @@ Do not interleave research and implementation. Complete all research first, then
 - Run `/context` periodically to see what's eating tokens (history vs files).
 - Run `/cost` to check session spend.
 - Keep `/status-line` on for live context-window usage.
+- `peak-hours -v` for peak/off-peak; auto-runs on SessionStart.
+- `usage-monitor --days 7` for API token spend (needs `ANTHROPIC_ADMIN_KEY`).
 
 ## Session Timing
-- Peak hours (8am–2pm ET) drain session windows faster — save big refactors and multi-agent work for evenings/weekends.
+- Peak hours (8am–2pm ET, Mon–Fri) drain session windows faster — save big refactors and multi-agent work for evenings/weekends. `peak-hours --exit-code` gates scripts.
 
 ## Sub-Agents
 - Delegate one-off tasks to sub-agents, especially Haiku-capable ones.
@@ -100,6 +109,19 @@ Do not interleave research and implementation. Complete all research first, then
 ## Skills & Specialization
 - Before starting niche work, check if a relevant skill is loaded or available via the Skill tool.
 - For recurring business workflows, build a custom skill with `anthropic-skills:skill-creator` instead of re-explaining each session.
+- **Custom skills live in `.claude/skills/<name>/SKILL.md`** in this repo; `bootstrap.sh` + `sync-config.sh` mirror them to `~/.claude/skills/`.
+
+### Installed custom skills
+- **agent-reach** — Internet-access skill (X/Twitter, Reddit, YouTube, GitHub, Bilibili, XiaoHongShu, Weibo, LinkedIn, RSS, Exa web search, any URL). Zero API keys for 8 channels; cookies/proxy needed for the rest. Skill file: `.claude/skills/agent-reach/SKILL.md`. CLI: `agent-reach doctor` to see channel status, `agent-reach install --env=auto --channels=all` to enable everything. Upstream: https://github.com/Panniantong/agent-reach
+- **cookie-guardian** — Playwright fetcher that blocks ~150 tracker hosts at the network layer and auto-clicks "reject" on GDPR/CCPA consent banners. Use for scraping pages behind cookie walls or with heavy tracker JS. Skill: `.claude/skills/cookie-guardian/SKILL.md`. CLI: `cookie-guardian doctor`, `cookie-guardian fetch <url> --out /tmp/page.html`. Code: `tools/cookie-guardian/`.
+- **session-handoff** — Migrate working context into a fresh session so the 1-hour cache TTL doesn't turn into a full-price re-read. Prefer over `/compact`. Skill: `.claude/skills/session-handoff/SKILL.md`. Trigger by saying "handoff" or when context hits ~60%.
+- **prompt-composer** — One-shot prompt template that batches questions + specifies format upfront to prevent iterative churn (every follow-up re-ships the full thread). Skill: `.claude/skills/prompt-composer/SKILL.md`. Trigger by saying "help me write a prompt" or "batch this".
+- **wat-init** — Scaffold a new WAT-architecture project (Workflows / Agents / Tools) with starter CLAUDE.md, `.gitignore`, `.env.example`, workflow + tool templates. Splits reasoning (agent + markdown SOPs) from deterministic execution (Python tools) so local runs and Modal cron/webhook deploys share one skeleton. Skill: `.claude/skills/wat-init/SKILL.md`. Trigger: "init this project", "scaffold WAT", "new automation project".
+- **modal-deploy** — Deploy a WAT workflow to Modal (cron or webhook) with a mandatory security-review gate, `.env` → Modal Secrets migration, and a `modal_deploy.py` template. Skill: `.claude/skills/modal-deploy/SKILL.md`. Trigger: "deploy to Modal", "run this on a schedule", "expose as webhook".
+
+### Helper CLIs (installed by bootstrap into ~/.local/bin)
+- `peak-hours` — is now peak (8am–2pm ET, weekdays)? Auto-prints on SessionStart. `--exit-code` for scripting, `--json` for structured, `-v` for next boundary. Code: `tools/peak-hours/`.
+- `usage-monitor` — pulls Anthropic API token spend by day + cache-hit rate. Requires `ANTHROPIC_ADMIN_KEY` (admin console key). Code: `tools/usage-monitor/`.
 
 ## GitHub Action on New Repos
 When starting work in a new git repo, run `/install-github-app` so `@claude` tagging works on PRs/Issues from any device.

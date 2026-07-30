@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""peak-hours — tell me whether I'm inside Claude's global peak window.
+
+Peak = 8:00–14:00 America/New_York, Mon–Fri. Weekends are always off-peak.
+During peak, Anthropic's global capacity is tighter, throttling and the
+5-hour rolling window bite harder. Defer big multi-agent runs and heavy
+refactors to off-peak.
+
+Usage:
+    peak-hours              # single-line status (SessionStart-friendly)
+    peak-hours --verbose    # + next window boundary
+    peak-hours --exit-code  # exit 0 if peak, 1 if off-peak (for scripts)
+    peak-hours --json       # machine-readable
+"""
+from __future__ import annotations
+import argparse
+import json
+import sys
+from datetime import datetime, time, timedelta, timezone
+
+try:
+    from zoneinfo import ZoneInfo
+    ET = ZoneInfo("America/New_York")
+except Exception:
+    ET = timezone(timedelta(hours=-5))  # fallback: EST no-DST
+
+PEAK_START = time(8, 0)
+PEAK_END = time(14, 0)
+
+
+def _in_peak(dt: datetime) -> bool:
+    if dt.weekday() >= 5:  # Sat/Sun
+        return False
+    return PEAK_START <= dt.time() < PEAK_END
+
+
+def _next_boundary(dt: datetime) -> datetime:
+    """Next transition from now (into or out of peak)."""
+    today_start = dt.replace(hour=PEAK_START.hour, minute=PEAK_START.minute,
+                             second=0, microsecond=0)
+    today_end = dt.replace(hour=PEAK_END.hour, minute=PEAK_END.minute,
+                           second=0, microsecond=0)
+    if dt.weekday() >= 5:
+        days_until_monday = (7 - dt.weekday()) % 7 or 1
+        return today_start + timedelta(days=days_until_monday)
+    if dt < today_start:
+        return today_start
+    if dt < today_end:
+        return today_end
+    days_ahead = 1
+    while (dt + timedelta(days=days_ahead)).weekday() >= 5:
+        days_ahead += 1
+    nb = (dt + timedelta(days=days_ahead)).replace(
+        hour=PEAK_START.hour, minute=PEAK_START.minute,
+        second=0, microsecond=0)
+    return nb
+
+
+def _humanize(delta: timedelta) -> str:
+    total = int(delta.total_seconds())
+    if total < 60:
+        return f"{total}s"
+    if total < 3600:
+        return f"{total // 60}m"
+    h, m = divmod(total // 60, 60)
+    return f"{h}h{m:02d}m"
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--verbose", "-v", action="store_true")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--exit-code", action="store_true",
+                    help="exit 0 if in peak, 1 if off-peak")
+    args = ap.parse_args()
+
+    now = datetime.now(ET)
+    peak = _in_peak(now)
+    nb = _next_boundary(now)
+    delta = nb - now
+    next_state = "off-peak" if peak else "peak"
+
+    if args.json:
+        print(json.dumps({
+            "in_peak": peak,
+            "now_et": now.isoformat(),
+            "next_boundary_et": nb.isoformat(),
+            "next_state": next_state,
+            "seconds_until_boundary": int(delta.total_seconds()),
+        }, indent=2))
+    elif args.verbose:
+        state = "🕐 PEAK (defer heavy work)" if peak else "🌙 off-peak (go big)"
+        print(f"{state} — next {next_state} in {_humanize(delta)} "
+              f"(at {nb.strftime('%a %I:%M %p ET')})")
+    else:
+        if peak:
+            print(f"🕐 peak hours — off-peak in {_humanize(delta)}")
+        else:
+            print(f"🌙 off-peak — peak in {_humanize(delta)}")
+
+    if args.exit_code:
+        return 0 if peak else 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
