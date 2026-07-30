@@ -95,9 +95,11 @@ Do not interleave research and implementation. Complete all research first, then
 - Run `/context` periodically to see what's eating tokens (history vs files).
 - Run `/cost` to check session spend.
 - Keep `/status-line` on for live context-window usage.
+- `peak-hours -v` for peak/off-peak; auto-runs on SessionStart.
+- `usage-monitor --days 7` for API token spend (needs `ANTHROPIC_ADMIN_KEY`).
 
 ## Session Timing
-- Peak hours (8am–2pm ET) drain session windows faster — save big refactors and multi-agent work for evenings/weekends.
+- Peak hours (8am–2pm ET, Mon–Fri) drain session windows faster — save big refactors and multi-agent work for evenings/weekends. `peak-hours --exit-code` gates scripts.
 
 ## Sub-Agents
 - Delegate one-off tasks to sub-agents, especially Haiku-capable ones.
@@ -113,6 +115,11 @@ Do not interleave research and implementation. Complete all research first, then
 - **agent-reach** — Internet-access skill (X/Twitter, Reddit, YouTube, GitHub, Bilibili, XiaoHongShu, Weibo, LinkedIn, RSS, Exa web search, any URL). Zero API keys for 8 channels; cookies/proxy needed for the rest. Skill file: `.claude/skills/agent-reach/SKILL.md`. CLI: `agent-reach doctor` to see channel status, `agent-reach install --env=auto --channels=all` to enable everything. Upstream: https://github.com/Panniantong/agent-reach
 - **cookie-guardian** — Playwright fetcher that blocks ~150 tracker hosts at the network layer and auto-clicks "reject" on GDPR/CCPA consent banners. Use for scraping pages behind cookie walls or with heavy tracker JS. Skill: `.claude/skills/cookie-guardian/SKILL.md`. CLI: `cookie-guardian doctor`, `cookie-guardian fetch <url> --out /tmp/page.html`. Code: `tools/cookie-guardian/`.
 - **session-handoff** — Migrate working context into a fresh session so the 1-hour cache TTL doesn't turn into a full-price re-read. Prefer over `/compact`. Skill: `.claude/skills/session-handoff/SKILL.md`. Trigger by saying "handoff" or when context hits ~60%.
+- **prompt-composer** — One-shot prompt template that batches questions + specifies format upfront to prevent iterative churn (every follow-up re-ships the full thread). Skill: `.claude/skills/prompt-composer/SKILL.md`. Trigger by saying "help me write a prompt" or "batch this".
+
+### Helper CLIs (installed by bootstrap into ~/.local/bin)
+- `peak-hours` — is now peak (8am–2pm ET, weekdays)? Auto-prints on SessionStart. `--exit-code` for scripting, `--json` for structured, `-v` for next boundary. Code: `tools/peak-hours/`.
+- `usage-monitor` — pulls Anthropic API token spend by day + cache-hit rate. Requires `ANTHROPIC_ADMIN_KEY` (admin console key). Code: `tools/usage-monitor/`.
 
 ## GitHub Action on New Repos
 When starting work in a new git repo, run `/install-github-app` so `@claude` tagging works on PRs/Issues from any device.

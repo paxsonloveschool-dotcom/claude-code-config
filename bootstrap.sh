@@ -142,12 +142,18 @@ if command -v python3 >/dev/null 2>&1; then
     python3 -m playwright install chromium >/dev/null 2>&1 || \
       echo "  ⚠ playwright install chromium failed — run manually"
   fi
-  # symlink CLI into ~/.local/bin so `cookie-guardian` is on PATH
+  # symlink CLIs into ~/.local/bin so they're on PATH
   mkdir -p "$HOME/.local/bin"
   ln -sf "$REPO/tools/cookie-guardian/cookie-guardian" \
          "$HOME/.local/bin/cookie-guardian"
-  echo "  ✔ cookie-guardian linked at ~/.local/bin/cookie-guardian"
+  ln -sf "$REPO/tools/peak-hours/peak-hours" \
+         "$HOME/.local/bin/peak-hours"
+  ln -sf "$REPO/tools/usage-monitor/usage-monitor" \
+         "$HOME/.local/bin/usage-monitor"
+  echo "  ✔ cookie-guardian, peak-hours, usage-monitor linked in ~/.local/bin"
   echo "  ℹ Run 'cookie-guardian doctor' to verify."
+  echo "  ℹ Run 'peak-hours -v' any time; auto-runs on SessionStart."
+  echo "  ℹ Set ANTHROPIC_ADMIN_KEY to enable 'usage-monitor'."
 else
   echo "  ⚠ python3 not found — skipped"
 fi
