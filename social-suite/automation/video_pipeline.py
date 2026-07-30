@@ -362,7 +362,7 @@ _HP_HOOKS = (
     "Built to stand out and thrive. \U0001F331",
     "Good landscaping starts below the surface. \U0001F331\U0001F4A7",
 )
-_HP_CTA = "Call (979) 777-8851!!"
+_HP_CTA = "Call (979) 701-2229!!"
 _HP_TAGS = (
     "#fyp #ForYouPage #Trending #LandscapingTok #WorkHardPlayHard "
     "#BeforeAndAfter #Timelapse #Craftsmanship #BuildIt #ServiceBusiness "
