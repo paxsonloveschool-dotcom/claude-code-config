@@ -1,0 +1,56 @@
+name: Instagram auto-post (HP videos -> IG Reels)
+
+# Publishes HP's next numbered Dropbox clip to Instagram as a Reel via the
+# official Graph API. Instagram has NO server-side scheduling, so this cron runs
+# AT the post time (Mon/Wed/Fri 16:00 UTC = 11:00 America/Chicago CDT) and posts
+# immediately. Same numbered-clip logic as the Facebook job. Cloud-only — no Mac.
+on:
+  schedule:
+    - cron: "0 16 * * 1,3,5"   # Mon/Wed/Fri 16:00 UTC (~11:00 AM CT)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Set 'true' to print the plan and post nothing"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  ig-post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install social-suite + Dropbox
+        run: pip install -e social-suite dropbox
+
+      - name: Post next HP clip to Instagram
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          BRAND_HP_IG_USER_ID: ${{ secrets.BRAND_HP_IG_USER_ID }}
+          BRAND_HP_META_ACCESS_TOKEN: ${{ secrets.BRAND_HP_META_ACCESS_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        working-directory: social-suite
+        run: python automation/ig_autopost_cloud.py
+
+      - name: Commit posted state (if changed)
+        run: |
+          git add social-suite/content/ig_posted.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No state change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(ig): update Instagram posted state [skip ci]"
+          git push

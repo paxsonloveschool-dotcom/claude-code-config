@@ -45,9 +45,9 @@ ACCOUNT_NAMES = {
 # 'main' (song replaces audio). 'mix' is the tested-reliable default.
 SOUND_VOLUME = os.getenv("TIKTOK_SOUND_VOLUME", "mix")
 
-# Posting cadence for auto-scheduling: Mon/Wed/Fri at 10:00 local time.
+# Posting cadence for auto-scheduling: Mon/Wed/Fri at 11:00 local time.
 POST_WEEKDAYS = (0, 2, 4)  # Mon, Wed, Fri
-POST_HOUR = 12  # noon (local)
+POST_HOUR = 11  # 11:00 AM (local)
 POST_MINUTE = 0
 # TikTok's native scheduler only accepts times within ~10 days out.
 SCHEDULE_HORIZON_DAYS = 10

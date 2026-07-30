@@ -138,6 +138,39 @@ def post_facebook_video(
     return _post_form(url, params)
 
 
+def post_facebook_video_file(
+    page_id: str,
+    access_token: str,
+    description: str,
+    video_path: str,
+    timeout: float = 600.0,
+) -> dict:
+    """Upload a LOCAL video file to a Facebook Page (own audio, no added music).
+
+    Unlike ``post_facebook_video`` (which needs a public ``file_url``), this posts
+    the bytes directly via multipart to ``graph-video.facebook.com`` — so it works
+    from a laptop with a local Dropbox-synced file and no public URL. A Page keeps
+    the video's own audio (talking clips stay unmuted); Pages can't add music.
+
+    Requires ``requests`` (present in the laptop poster's environment).
+    """
+    import requests  # lazy — only the local poster needs it
+
+    url = f"https://graph-video.facebook.com/{GRAPH_VERSION}/{page_id}/videos"
+    with open(video_path, "rb") as fh:
+        resp = requests.post(
+            url,
+            data={"access_token": access_token, "description": description},
+            files={"source": fh},
+            timeout=timeout,
+        )
+    if resp.status_code >= 400:
+        raise RuntimeError(
+            f"Facebook video upload failed: HTTP {resp.status_code}: {resp.text}"
+        )
+    return resp.json()
+
+
 def post_instagram(
     ig_user_id: str,
     access_token: str,
@@ -191,3 +224,92 @@ def post_instagram(
     publish_url = f"{GRAPH_BASE}/{ig_user_id}/media_publish"
     publish_params = {"access_token": access_token, "creation_id": creation_id}
     return _post_form(publish_url, publish_params)
+
+
+def _get(url: str, params: dict, timeout: float = 30.0) -> dict:
+    """GET ``url?params`` and return the parsed JSON (same error surfacing as _post_form)."""
+    import urllib.error  # lazy, stdlib
+    import urllib.parse
+    import urllib.request
+
+    req = urllib.request.Request(f"{url}?{urllib.parse.urlencode(params)}", method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        try:
+            err_body = e.read().decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001
+            err_body = ""
+        raise RuntimeError(
+            f"Meta Graph GET {url} failed: HTTP {e.code} {e.reason}: {err_body}"
+        ) from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Meta Graph GET {url} failed: {e.reason}") from e
+    return json.loads(raw) if raw else {}
+
+
+def post_instagram_reel(
+    ig_user_id: str,
+    access_token: str,
+    caption: str,
+    video_url: str,
+    poll_seconds: int = 180,
+    poll_interval: int = 5,
+) -> dict:
+    """Publish a Reel, waiting for Instagram to finish processing the video first.
+
+    ``post_instagram`` publishes the container immediately, which fails for videos
+    that Instagram hasn't finished ingesting ("Media ID is not available"). This
+    variant creates the REELS container, polls ``status_code`` until ``FINISHED``
+    (up to ``poll_seconds``), then publishes — the reliable flow for a cron job.
+
+    Args:
+        ig_user_id: The Instagram Professional account user id.
+        access_token: Token with ``instagram_content_publish``.
+        caption: Post caption (text + hashtags).
+        video_url: PUBLIC video URL Instagram can fetch (e.g. a Dropbox raw link).
+        poll_seconds: Max seconds to wait for processing before giving up.
+        poll_interval: Seconds between status checks.
+
+    Returns:
+        The ``media_publish`` response dict (e.g. ``{"id": "<media-id>"}``).
+    """
+    import time  # lazy, stdlib
+
+    container = _post_form(
+        f"{GRAPH_BASE}/{ig_user_id}/media",
+        {
+            "access_token": access_token,
+            "caption": caption,
+            "video_url": video_url,
+            "media_type": "REELS",
+        },
+    )
+    creation_id = container.get("id")
+    if not creation_id:
+        raise RuntimeError(f"IG Reel container creation returned no id: {container!r}")
+
+    waited = 0
+    status = "?"
+    while waited < poll_seconds:
+        info = _get(
+            f"{GRAPH_BASE}/{creation_id}",
+            {"fields": "status_code", "access_token": access_token},
+        )
+        status = info.get("status_code", "?")
+        if status == "FINISHED":
+            break
+        if status == "ERROR":
+            raise RuntimeError(f"IG Reel processing failed: {info!r}")
+        time.sleep(poll_interval)
+        waited += poll_interval
+    else:
+        raise RuntimeError(
+            f"IG Reel not ready after {poll_seconds}s (last status: {status})."
+        )
+
+    return _post_form(
+        f"{GRAPH_BASE}/{ig_user_id}/media_publish",
+        {"access_token": access_token, "creation_id": creation_id},
+    )
