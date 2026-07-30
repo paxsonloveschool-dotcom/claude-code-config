@@ -104,6 +104,7 @@ Do not interleave research and implementation. Complete all research first, then
 
 ### Installed custom skills
 - **agent-reach** — Internet-access skill (X/Twitter, Reddit, YouTube, GitHub, Bilibili, XiaoHongShu, Weibo, LinkedIn, RSS, Exa web search, any URL). Zero API keys for 8 channels; cookies/proxy needed for the rest. Skill file: `.claude/skills/agent-reach/SKILL.md`. CLI: `agent-reach doctor` to see channel status, `agent-reach install --env=auto --channels=all` to enable everything. Upstream: https://github.com/Panniantong/agent-reach
+- **cookie-guardian** — Playwright fetcher that blocks ~150 tracker hosts at the network layer and auto-clicks "reject" on GDPR/CCPA consent banners. Use for scraping pages behind cookie walls or with heavy tracker JS. Skill: `.claude/skills/cookie-guardian/SKILL.md`. CLI: `cookie-guardian doctor`, `cookie-guardian fetch <url> --out /tmp/page.html`. Code: `tools/cookie-guardian/`.
 
 ## GitHub Action on New Repos
 When starting work in a new git repo, run `/install-github-app` so `@claude` tagging works on PRs/Issues from any device.

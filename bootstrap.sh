@@ -21,7 +21,7 @@ echo "╚═══════════════════════�
 echo ""
 
 # --- Prerequisite checks ---
-echo "[1/8] Checking prerequisites..."
+echo "[1/9] Checking prerequisites..."
 command -v git >/dev/null 2>&1 || { echo "ERROR: git not installed"; exit 1; }
 command -v claude >/dev/null 2>&1 || {
   # Try adding npm global bin to PATH
@@ -36,7 +36,7 @@ command -v claude >/dev/null 2>&1 || {
 echo "  ✔ git, claude CLI available"
 
 # --- Clone or update repo ---
-echo "[2/8] Cloning/updating canonical config repo..."
+echo "[2/9] Cloning/updating canonical config repo..."
 if [ -d "$REPO/.git" ]; then
   cd "$REPO"
   git pull --quiet --rebase origin main
@@ -48,7 +48,7 @@ else
 fi
 
 # --- Sync files to ~/.claude/ ---
-echo "[3/8] Syncing config files to $CLAUDE_DIR..."
+echo "[3/9] Syncing config files to $CLAUDE_DIR..."
 mkdir -p "$CLAUDE_DIR" "$CLAUDE_DIR/skills"
 cp "$REPO/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
 cp "$REPO/SESSION_HANDOFF.md" "$CLAUDE_DIR/SESSION_HANDOFF.md"
@@ -63,7 +63,7 @@ else
 fi
 
 # --- Install sync scripts ---
-echo "[4/8] Installing sync scripts..."
+echo "[4/9] Installing sync scripts..."
 cp "$REPO/scripts/sync-config.sh" "$CLAUDE_DIR/sync-config.sh" 2>/dev/null || {
   # Inline fallback if scripts/ doesn't exist in repo yet
   cat > "$CLAUDE_DIR/sync-config.sh" << 'SYNC_EOF'
@@ -93,7 +93,7 @@ chmod +x "$CLAUDE_DIR/sync-config.sh"
 echo "  ✔ sync-config.sh installed and executable"
 
 # --- Install Superpowers plugins ---
-echo "[5/8] Installing Superpowers plugin stack..."
+echo "[5/9] Installing Superpowers plugin stack..."
 if ! claude plugin marketplace list 2>/dev/null | grep -q "superpowers-marketplace"; then
   claude plugin marketplace add obra/superpowers-marketplace 2>&1 | tail -1
 fi
@@ -106,7 +106,7 @@ for plugin in superpowers episodic-memory elements-of-style; do
 done
 
 # --- Agent Reach (internet access skill: X, Reddit, YouTube, GitHub, etc.) ---
-echo "[6/8] Installing Agent Reach..."
+echo "[6/9] Installing Agent Reach..."
 if command -v agent-reach >/dev/null 2>&1; then
   echo "  ✔ agent-reach already installed ($(agent-reach --version 2>/dev/null || echo installed))"
 else
@@ -133,8 +133,27 @@ if command -v agent-reach >/dev/null 2>&1; then
   echo "  ℹ SKILL.md lives at $CLAUDE_DIR/skills/agent-reach/SKILL.md"
 fi
 
+# --- cookie-guardian (Playwright-based blocker + consent-banner dismisser) ---
+echo "[7/9] Installing cookie-guardian..."
+if command -v python3 >/dev/null 2>&1; then
+  python3 -m pip install --quiet --user playwright 2>&1 | tail -1 || true
+  # chromium browser binary — silent if already there
+  if [ ! -d "$HOME/.cache/ms-playwright" ] && [ ! -d "/opt/pw-browsers" ]; then
+    python3 -m playwright install chromium >/dev/null 2>&1 || \
+      echo "  ⚠ playwright install chromium failed — run manually"
+  fi
+  # symlink CLI into ~/.local/bin so `cookie-guardian` is on PATH
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$REPO/tools/cookie-guardian/cookie-guardian" \
+         "$HOME/.local/bin/cookie-guardian"
+  echo "  ✔ cookie-guardian linked at ~/.local/bin/cookie-guardian"
+  echo "  ℹ Run 'cookie-guardian doctor' to verify."
+else
+  echo "  ⚠ python3 not found — skipped"
+fi
+
 # --- RTK binary (optional, Windows-friendly) ---
-echo "[7/8] Checking RTK..."
+echo "[8/9] Checking RTK..."
 if [ ! -f "$HOME/.local/bin/rtk.exe" ] && [ ! -f "$HOME/.local/bin/rtk" ]; then
   echo "  ℹ RTK not installed on this device. Install manually:"
   echo "    Windows: https://github.com/rtk-ai/rtk/releases"
@@ -145,7 +164,7 @@ else
 fi
 
 # --- Final report ---
-echo "[8/8] Bootstrap complete!"
+echo "[9/9] Bootstrap complete!"
 echo ""
 echo "╔════════════════════════════════════════════════════╗"
 echo "║   Still needs physical action (one-time setup):    ║"

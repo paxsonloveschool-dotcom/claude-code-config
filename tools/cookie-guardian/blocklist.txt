@@ -1,0 +1,110 @@
+# cookie-guardian blocklist — curated tracker + fingerprinting hosts.
+# Lines starting with # are ignored. Wildcards not supported — pass domains and
+# subdomains you want blocked; the matcher does a suffix match on request host.
+#
+# Sources: EasyList/EasyPrivacy top offenders, Steven Black hosts, uBlock Origin
+# default list. Keep this small (~150 entries) — full lists live in dedicated
+# extensions.
+
+# Google tracking
+google-analytics.com
+googletagmanager.com
+googletagservices.com
+googlesyndication.com
+googleadservices.com
+doubleclick.net
+adservice.google.com
+pagead2.googlesyndication.com
+stats.g.doubleclick.net
+
+# Facebook / Meta tracking
+connect.facebook.net
+facebook.com/tr
+graph.facebook.com/pixel
+pixel.facebook.com
+
+# Amazon ads
+amazon-adsystem.com
+adtago.s3.amazonaws.com
+
+# Microsoft / LinkedIn
+bat.bing.com
+clarity.ms
+px.ads.linkedin.com
+snap.licdn.com
+
+# TikTok
+analytics.tiktok.com
+business-api.tiktok.com
+
+# Adobe / Marketo / Omniture
+omtrdc.net
+demdex.net
+everesttech.net
+2o7.net
+adobedtm.com
+
+# Segment / Amplitude / Mixpanel / Heap
+api.segment.io
+cdn.segment.com
+api.amplitude.com
+api.mixpanel.com
+heapanalytics.com
+
+# Hotjar / Fullstory / Mouseflow / Lucky Orange
+static.hotjar.com
+script.hotjar.com
+fullstory.com
+mouseflow.com
+luckyorange.com
+luckyorange.net
+
+# Intercom / Drift / Zendesk chat
+widget.intercom.io
+js.intercomcdn.com
+js.driftt.com
+ekr.zdassets.com
+
+# Chartbeat / Quantcast / Comscore / Nielsen
+chartbeat.com
+static.chartbeat.com
+quantserve.com
+quantcount.com
+scorecardresearch.com
+imrworldwide.com
+
+# Ad networks
+criteo.com
+criteo.net
+outbrain.com
+taboola.com
+pubmatic.com
+rubiconproject.com
+openx.net
+adnxs.com
+adsrvr.org
+rlcdn.com
+casalemedia.com
+3lift.com
+smartadserver.com
+media.net
+
+# Snowplow / Piwik / Matomo (self-hosted analytics also worth blocking on 3rd party)
+snplow.com
+snowplowanalytics.com
+matomo.cloud
+
+# Miscellaneous trackers
+newrelic.com/nrjs
+optimizely.com
+cdn.optimizely.com
+sentry-cdn.com/loader
+launchdarkly.com/eventsource
+branch.io
+customer.io
+klaviyo.com
+mailchimp.com/mc
+sumo.com/init
+addthis.com
+sharethis.com
+disqus.com/embed
