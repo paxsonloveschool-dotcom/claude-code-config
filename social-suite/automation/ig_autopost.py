@@ -31,17 +31,34 @@ import json
 import os
 import sys
 
-FOLDER = os.getenv(
-    "IG_FOLDER",
+FOLDER_DEFAULT = (
     "/Users/calebpittman/Library/CloudStorage/Dropbox-Restoremarketingco/"
-    "Restore Marketing/Apps/hp-restore-suite-8472/HP Auto Post",
+    "Restore Marketing/Apps/hp-restore-suite-8472/HP Auto Post"
 )
+
+
+def _folder():
+    """Content folder, read fresh each call so a multi-brand caller can point each
+    company at its OWN folder (set IG_FOLDER before load/pick each brand)."""
+    return os.path.expanduser(os.getenv("IG_FOLDER", FOLDER_DEFAULT))
+
+
+FOLDER = FOLDER_DEFAULT  # back-compat alias for callers that read a static default
 # The one subfolder of talking clips (no music); every other subfolder is "work".
 TALKING_SUBFOLDER = os.getenv("IG_TALKING_SUBFOLDER", "Talking Videos")
 # After this many work clips in a row, post one talking clip.
 WORK_PER_TALKING = int(os.getenv("IG_WORK_PER_TALKING", "3"))
 VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".MP4", ".MOV", ".M4V")
-STATE = os.path.expanduser(os.getenv("IG_STATE", "~/Downloads/ig_autopost_state.json"))
+STATE_DEFAULT = "~/Downloads/ig_autopost_state.json"
+
+
+def _state_path():
+    """Rotation-state file, read fresh each call so each company keeps its OWN
+    rotation memory (set IG_STATE before load/save each brand)."""
+    return os.path.expanduser(os.getenv("IG_STATE", STATE_DEFAULT))
+
+
+STATE = os.path.expanduser(os.getenv("IG_STATE", STATE_DEFAULT))  # back-compat alias
 SESSION = os.path.expanduser(os.getenv("IG_SESSION", "~/Downloads/ig_session.json"))
 CREDS = os.path.expanduser(os.getenv("IG_CREDS", "~/Downloads/ig_creds.json"))  # {"username":..,"password":..}
 
@@ -99,8 +116,9 @@ _DEFAULT_STATE = {
 
 
 def load():
-    if os.path.exists(STATE):
-        s = json.load(open(STATE))
+    state = _state_path()
+    if os.path.exists(state):
+        s = json.load(open(state))
         for k, v in _DEFAULT_STATE.items():
             s.setdefault(k, v.copy() if isinstance(v, (list, dict)) else v)
         return s
@@ -109,7 +127,9 @@ def load():
 
 
 def save(s):
-    json.dump(s, open(STATE, "w"), indent=2)
+    state = _state_path()
+    os.makedirs(os.path.dirname(state), exist_ok=True)
+    json.dump(s, open(state, "w"), indent=2)
 
 
 def _next_song(used_songs):
@@ -121,19 +141,34 @@ def _next_song(used_songs):
 
 
 def _rel(path):
-    return os.path.relpath(path, FOLDER)
+    return os.path.relpath(path, _folder())
 
 
 def _subfolders():
-    """Immediate subfolders of FOLDER, sorted by name."""
-    return sorted(e.name for e in os.scandir(FOLDER) if e.is_dir())
+    """Immediate subfolders of the content folder, sorted by name. If the folder
+    also has clips sitting loose in it (not in any subfolder), those count as their
+    own "." group — so a brand folder works whether clips are nested in project
+    subfolders or just dropped in directly."""
+    folder = _folder()
+    subs = sorted(e.name for e in os.scandir(folder) if e.is_dir())
+    has_loose = any(
+        f.endswith(VIDEO_EXTS) and os.path.isfile(os.path.join(folder, f))
+        for f in os.listdir(folder)
+    )
+    return (subs + ["."]) if has_loose else subs
 
 
 def _videos_in(subfolder):
-    """All video files under one subfolder (recursive), sorted, as full paths."""
-    root = os.path.join(FOLDER, subfolder)
+    """Video files for one group, sorted, as full paths. "." = clips directly in
+    the content folder (top level only); a named subfolder is scanned recursively."""
+    folder = _folder()
+    if subfolder == ".":
+        return sorted(
+            os.path.join(folder, f) for f in os.listdir(folder)
+            if f.endswith(VIDEO_EXTS) and os.path.isfile(os.path.join(folder, f))
+        )
     out = []
-    for dirpath, _dirs, files in os.walk(root):
+    for dirpath, _dirs, files in os.walk(os.path.join(folder, subfolder)):
         for f in files:
             if f.endswith(VIDEO_EXTS):
                 out.append(os.path.join(dirpath, f))
@@ -248,7 +283,7 @@ def preview(n):
     """Print the next ``n`` posts (folder / clip / song / talking) — posts nothing."""
     import copy
     s = copy.deepcopy(load())
-    print(f"Preview of the next {n} posts from:\n  {FOLDER}\n")
+    print(f"Preview of the next {n} posts from:\n  {_folder()}\n")
     for k in range(1, n + 1):
         c = pick(s)
         if not c:

@@ -1,16 +1,17 @@
-"""Post the current rotation clip to MANY HP accounts — safely.
+"""Post to MANY HP accounts — grouped by company, each pulling its OWN folder.
 
-Every account gets the SAME rotation clip, but:
+Accounts are grouped by ``brand`` (Landscaping / Pools / Design). Each company:
+  * pulls clips ONLY from its own folder (content_root/brand_folders[brand])
+  * keeps its OWN rotation memory (~/hp-auto/rotation_<brand>.json) — its own
+    no-repeat history, its own talking-every-3, its own song cycle
+Within a company, every account posts that company's picked clip, but:
   * uniquify.py renders each account its own copy (different fingerprint)
-  * each account has its own caption variant, song offset, and time offset
+  * each account has its own caption variant, song offset, and mirror flag
 so it never looks like the same file spammed across accounts (the ban trigger).
 
-Runs the shared rotation once (same clip everywhere), advances state once.
-
-Venvs: Facebook + Instagram post from THIS process (hp-venv: meta + instagrapi).
-TikTok posts via the tiktok-venv39 helper (tiktokautouploader) — scheduled at the
-account's time_offset so the several TikToks don't all fire together. YouTube is
-wired the same way once its browser uploader is set up.
+Venvs: Facebook + Instagram + YouTube post from THIS process (hp-venv). TikTok
+posts via the tiktok-venv39 helper (tiktokautouploader), scheduled at the
+account's time_offset so several TikToks don't all fire together.
 
 Config: content/accounts.json (see accounts.example.json). DRY_RUN=1 previews.
 """
@@ -109,72 +110,102 @@ def _post_youtube(acct, video, caption):
     subprocess.run(args, check=True)
 
 
+def _brand_folder(cfg: dict, brand: str) -> str:
+    """The Dropbox folder a company pulls from: content_root / brand_folders[brand]."""
+    content_root = os.path.expanduser(cfg.get("content_root") or ig.FOLDER_DEFAULT)
+    folders = cfg.get("brand_folders") or {}
+    return os.path.join(content_root, folders.get(brand, brand))
+
+
+def _brand_state(brand: str) -> str:
+    """Per-company rotation memory file (its own no-repeat / talking / song state)."""
+    safe = brand.replace(" ", "_").replace("/", "_")
+    return os.path.expanduser(f"~/hp-auto/rotation_{safe}.json")
+
+
+def _post_account(cfg, acct, c, ig_posted, dry):
+    """Post the company's picked clip ``c`` to one account. Returns (posted, ig_posted)."""
+    song = _song_for(acct, c)          # per-account song variant
+    caption = _caption(cfg, acct, c)
+    plat = acct["platform"]
+    tag = f"{acct['id']} ({plat})"
+    if dry:
+        print(f"  [dry] {tag}: mirror={acct.get('mirror')} song={song!r}")
+        return False, ig_posted
+    # Space out Instagram posts so several accounts don't post the same instant
+    # from one IP (ban signal). First IG of the run goes immediately.
+    if plat == "instagram" and ig_posted > 0:
+        delay = IG_STAGGER_SEC + random.randint(0, 45)
+        print(f"  ⏳ spacing Instagram {delay}s before {tag} (anti-spam)")
+        time.sleep(delay)
+    try:
+        video = uq.uniquify(c["video"], seed=f"{acct['id']}:{os.path.basename(c['video'])}",
+                            mirror=bool(acct.get("mirror")))
+        try:
+            if plat == "facebook":
+                _post_facebook(acct, video, caption)
+            elif plat == "instagram":
+                _post_instagram(acct, video, caption, song)
+            elif plat == "tiktok":
+                _post_tiktok(acct, video, caption, song, acct.get("time_offset_min", 0))
+            elif plat == "youtube":
+                _post_youtube(acct, video, caption)
+            else:
+                print(f"  ❓ {tag}: unknown platform")
+                return False, ig_posted
+        finally:
+            try:
+                os.remove(video)
+            except OSError:
+                pass
+        if plat == "instagram":
+            ig_posted += 1
+        print(f"  ✅ {tag}")
+        return True, ig_posted
+    except Exception as e:  # noqa: BLE001 — one account failing shouldn't stop the rest
+        print(f"  ❌ {tag}: {e}")
+        return False, ig_posted
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     dry = "--dry-run" in argv or os.getenv("DRY_RUN", "").strip().lower() in ("1", "true", "yes")
 
     cfg = _load_accounts()
-    s = ig.load()
-    c = ig.pick(s)
-    if not c:
-        print("No new clips left to post.")
+    accounts = [a for a in cfg.get("accounts", []) if a.get("enabled")]
+    if not accounts:
+        print("No enabled accounts.")
         return
-    c["_hook_i"] = s["i"]
-    print(f"Clip: [{c['folder']}] {os.path.basename(c['video'])} "
-          f"({'talking' if c['talking'] else c['song']})")
 
-    posted_any = False
-    ig_posted = 0  # count of Instagram posts already sent this run (for spacing)
-    for acct in cfg.get("accounts", []):
-        if not acct.get("enabled"):
-            continue
-        song = _song_for(acct, c)  # per-account song variant
-        caption = _caption(cfg, acct, c)
-        plat = acct["platform"]
-        tag = f"{acct['id']} ({plat})"
-        if dry:
-            print(f"  [dry] {tag}: mirror={acct.get('mirror')} +{acct.get('time_offset_min',0)}m "
-                  f"song={song!r}")
-            continue
-        # Space out Instagram posts so several accounts don't post at the same
-        # instant from one IP (ban signal). First IG goes immediately.
-        if plat == "instagram" and ig_posted > 0:
-            delay = IG_STAGGER_SEC + random.randint(0, 45)
-            print(f"  ⏳ spacing Instagram {delay}s before {tag} (anti-spam)")
-            time.sleep(delay)
-        try:
-            # Unique copy for this account (skip re-render for a dry run).
-            video = uq.uniquify(c["video"], seed=f"{acct['id']}:{os.path.basename(c['video'])}",
-                                mirror=bool(acct.get("mirror")))
-            try:
-                if plat == "facebook":
-                    _post_facebook(acct, video, caption)
-                elif plat == "instagram":
-                    _post_instagram(acct, video, caption, song)
-                elif plat == "tiktok":
-                    _post_tiktok(acct, video, caption, song, acct.get("time_offset_min", 0))
-                elif plat == "youtube":
-                    _post_youtube(acct, video, caption)
-                else:
-                    print(f"  ❓ {tag}: unknown platform")
-                    continue
-            finally:
-                try:
-                    os.remove(video)
-                except OSError:
-                    pass
-            posted_any = True
-            if plat == "instagram":
-                ig_posted += 1
-            print(f"  ✅ {tag}")
-        except Exception as e:  # noqa: BLE001 — one account failing shouldn't stop the rest
-            print(f"  ❌ {tag}: {e}")
+    # Group accounts by company so each pulls from its OWN folder + rotation memory.
+    brands: dict[str, list] = {}
+    for a in accounts:
+        brands.setdefault(a.get("brand", "Landscaping"), []).append(a)
 
-    if posted_any and not dry:
-        ig._apply(s, c)
-        ig.save(s)
-    elif not dry:
-        print("Nothing posted — rotation left unchanged.")
+    ig_posted = 0  # Instagram spacing counter across the WHOLE run (all companies)
+    for brand, accts in brands.items():
+        folder = _brand_folder(cfg, brand)
+        os.environ["IG_FOLDER"] = folder
+        os.environ["IG_STATE"] = _brand_state(brand)
+        s = ig.load()
+        c = ig.pick(s)
+        if not c:
+            print(f"[{brand}] no new clips in {folder} — skipping (add clips to that folder).")
+            continue
+        c["_hook_i"] = s["i"]
+        kind = "talking" if c["talking"] else c["song"]
+        print(f"[{brand}] {os.path.basename(c['video'])} ({kind})")
+
+        posted_any = False
+        for acct in accts:
+            posted, ig_posted = _post_account(cfg, acct, c, ig_posted, dry)
+            posted_any = posted_any or posted
+
+        if posted_any and not dry:
+            ig._apply(s, c)
+            ig.save(s)
+        elif not dry and not posted_any:
+            print(f"[{brand}] nothing posted — rotation left unchanged.")
 
 
 if __name__ == "__main__":
