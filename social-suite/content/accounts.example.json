@@ -58,7 +58,7 @@
      "tiktok_account": "higherpurposedesign",
      "mirror": false, "time_offset_min": 35, "song_offset": 19, "caption_variant": 0},
     {"id": "design-x", "platform": "x", "brand": "Design", "enabled": false,
-     "x_account": "HigherPurposeDesign_CONFIRM",
+     "x_account": "HigherPurposeDesign",
      "mirror": false, "time_offset_min": 60, "song_offset": 20, "caption_variant": 1},
     {"id": "design-yt", "platform": "youtube", "brand": "Design", "enabled": false,
      "yt_channel": "Design",
