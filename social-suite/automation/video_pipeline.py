@@ -211,6 +211,104 @@ def _brand_logo(brand_key: str) -> str | None:
     return p if os.path.exists(p) else None
 
 
+def _outro_path() -> str | None:
+    """Path to the brand outro end-card (``content/brand/outro.mp4``) or None."""
+    p = os.path.join(ROOT, "content", "brand", "outro.mp4")
+    return p if os.path.exists(p) else None
+
+
+# Serif overlay font (locked montage recipe — Libre Baskerville, white + shadow).
+_FONT_URL = ("https://raw.githubusercontent.com/google/fonts/main/ofl/"
+             "librebaskerville/LibreBaskerville%5Bwght%5D.ttf")
+_FONT_FALLBACK = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
+
+
+def _brand_font() -> str:
+    """Local path to the serif overlay font; downloads it once, else DejaVu Serif."""
+    p = os.path.join(ROOT, "content", "brand", "LibreBaskerville-Regular.ttf")
+    if os.path.exists(p):
+        return p
+    try:
+        import urllib.request  # lazy, stdlib
+        urllib.request.urlretrieve(_FONT_URL, p)
+        return p
+    except Exception as ex:  # noqa: BLE001 — offline/blocked: fall back
+        print(f"font: could not fetch Libre Baskerville ({ex}); using DejaVu Serif")
+        return _FONT_FALLBACK
+
+
+def _dt_escape(s: str) -> str:
+    """Escape a string for use inside an ffmpeg drawtext ``text=`` value."""
+    s = (s or "").replace("'", "’")   # curly apostrophe: avoids quote-escaping
+    for ch in ("\\", ":", ",", ";", "[", "]", "="):
+        s = s.replace(ch, "\\" + ch)
+    return s
+
+
+def _drawtext_chain(texts: list[dict]) -> str:
+    """Comma-joined drawtext filters for ``texts`` = [{text, start, end}].
+
+    Each line sits centered at ~44% height in white serif with a soft shadow and
+    fades in/out over ~0.4s (the approved crossfading-lines look).
+    """
+    font = _brand_font().replace("\\", "/").replace(":", "\\:")
+    parts = []
+    for t in texts:
+        a, b = float(t["start"]), float(t["end"])
+        fade = min(0.4, max(0.1, (b - a) / 4))
+        alpha = (f"if(lt(t,{a}),0,if(lt(t,{a + fade:.3f}),(t-{a})/{fade:.3f},"
+                 f"if(lt(t,{b - fade:.3f}),1,if(lt(t,{b}),({b}-t)/{fade:.3f},0))))")
+        color = t.get("color", "white")   # newest posts: green title lines, white accents
+        edge = ("bordercolor=black@0.85:borderw=4" if t.get("border")
+                else "shadowcolor=black@0.55:shadowx=2:shadowy=2")
+        parts.append(
+            "drawtext=fontfile='{f}':text='{tx}':fontsize={fs}:fontcolor={c}:{e}"
+            ":x=(w-text_w)/2:y=(h-text_h)*{yp}:alpha='{al}'".format(
+                f=font, tx=_dt_escape(t["text"]), fs=int(t.get("size", 72)),
+                c=color, e=edge, yp=float(t.get("y", 0.44)), al=alpha))
+    return ",".join(parts)
+
+
+def _overlay_branding(src: str, out_path: str, logo: str | None = None,
+                      texts: list[dict] | None = None, keep_audio: bool = False) -> str:
+    """Brand pass over a finished 1080x1920 clip: logo top-right (~130px, 30px
+    margin — the approved montage look) plus optional serif text overlays."""
+    import subprocess  # lazy, stdlib
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    vchain = _drawtext_chain(texts) if texts else None
+    cmd = ["ffmpeg", "-y", "-i", src]
+    if logo:
+        cmd += ["-i", logo]
+        fc = "[1:v]scale=130:-1[lg];[0:v][lg]overlay=W-w-30:30" + (
+            f",{vchain}[v]" if vchain else "[v]")
+        cmd += ["-filter_complex", fc, "-map", "[v]"]
+    elif vchain:
+        cmd += ["-vf", vchain]
+    if keep_audio:
+        cmd += ["-map", "0:a?", "-c:a", "aac", "-b:a", "128k"]
+    else:
+        cmd += ["-an"]
+    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-movflags", "+faststart", out_path]
+    subprocess.run(cmd, check=True, capture_output=True)
+    return out_path
+
+
+def _append_outro(src: str, out_path: str, keep_audio: bool = False) -> str:
+    """Crossfade the brand outro end-card onto ``src``. Silent path uses the
+    video-only concat (montages); ``keep_audio`` uses the A/V crossfade concat
+    (talking clips — the outro's slam audio rides along)."""
+    outro = _outro_path()
+    if not outro:
+        import shutil  # lazy
+        shutil.copy(src, out_path)
+        return out_path
+    if keep_audio:
+        return _concat([src, outro], out_path, xfade=0.4)
+    return _concat_v([src, outro], out_path, xfade=0.4)
+
+
 def _edit_short(src: str, a: float, b: float, out_path: str, srt: str | None = None,
                 mute: bool = False, music: str | None = None, logo: str | None = None) -> str:
     """Cut [a,b], reframe vertical 1080x1920. Optional bold captions, mute audio,
@@ -264,7 +362,7 @@ _HP_HOOKS = (
     "Built to stand out and thrive. \U0001F331",
     "Good landscaping starts below the surface. \U0001F331\U0001F4A7",
 )
-_HP_CTA = "Call (979) 777-8851!!"
+_HP_CTA = "Call (979) 701-2229!!"
 _HP_TAGS = (
     "#fyp #ForYouPage #Trending #LandscapingTok #WorkHardPlayHard "
     "#BeforeAndAfter #Timelapse #Craftsmanship #BuildIt #ServiceBusiness "
@@ -1148,9 +1246,22 @@ def cut_montage(spec: dict) -> dict | None:
         print("cut_montage: no segments rendered.")
         return None
     _f, local, base, brand, display = base_ctx
-    out_local = os.path.join(workdir, f"{base}-{name}.mp4")
-    _concat_v(seg_clips, out_local, xfade=float(spec.get("xfade", 0.4)))
     brand_key, dispname, tags = brand
+    out_local = os.path.join(workdir, f"{base}-{name}.mp4")
+    cur = os.path.join(workdir, f"mraw-{name}.mp4")
+    _concat_v(seg_clips, cur, xfade=float(spec.get("xfade", 0.4)))
+    # Approved montage recipe: logo top-right + serif text overlays + outro card.
+    logo = _brand_logo(brand_key)
+    texts = spec.get("texts") or None
+    if logo or texts:
+        nxt = os.path.join(workdir, f"mbrand-{name}.mp4")
+        _overlay_branding(cur, nxt, logo=logo, texts=texts)
+        cur = nxt
+    if spec.get("outro"):
+        _append_outro(cur, out_local)
+    else:
+        import shutil  # lazy
+        shutil.copy(cur, out_local)
     out_path = f"{display.rstrip('/')}/processed/{base}-{name}.mp4"
     dbx.upload(out_local, out_path)
     url = dbx.shared_link(out_path, raw=True)
@@ -1158,7 +1269,7 @@ def cut_montage(spec: dict) -> dict | None:
              if e.get("id") != f"{brand_key}-{name}"]
     entry = {
         "id": f"{brand_key}-{name}", "brand": brand_key,
-        "text": _hp_caption(name) if brand_key == "hp" else "",
+        "text": spec.get("caption") or (_hp_caption(name) if brand_key == "hp" else ""),
         "media_url": url, "media_path": out_path,
         "platforms": list(REVIEW_PLATFORMS), "schedule": None,
         "status": "review", "error": None,
@@ -1225,41 +1336,59 @@ def cut_windows(specs: list[dict]) -> list[dict]:
                     else:
                         pp = os.path.join(os.path.dirname(plocal), f"xv-{nm}-{j}.mp4")
                         _edit_short(plocal, float(part["start"]), float(part["end"]), pp,
-                                    srt=None, mute=bool(sp.get("mute")), logo=_brand_logo(ctx[3][0]))
+                                    srt=None, mute=bool(sp.get("mute")))
                     tmp.append(pp)
                 _f, local, base, brand, display = ctxs[0]
                 out_local = os.path.join(os.path.dirname(local), f"{base}-{nm}.mp4")
-                _stackN(tmp, out_local) if stack else _concat(tmp, out_local)
+                if stack:
+                    _stackN(tmp, out_local)
+                elif sp.get("mute"):
+                    _concat_v(tmp, out_local)   # silent stitch: video-only crossfade
+                else:
+                    _concat(tmp, out_local)
             else:
                 ctx = resolve(sp.get("video") or default_match)
                 if not ctx:
                     raise RuntimeError("video not found")
                 _f, local, base, brand, display = ctx
-                lg = _brand_logo(brand[0])
                 out_local = os.path.join(os.path.dirname(local), f"{base}-{nm}.mp4")
                 wins = sp.get("segments") or [[sp["start"], sp["end"]]]
                 if len(wins) == 1:
                     _edit_short(local, float(wins[0][0]), float(wins[0][1]), out_local, srt=None,
-                                mute=bool(sp.get("mute")), music=(music_path if sp.get("music") else None),
-                                logo=lg)
+                                mute=bool(sp.get("mute")), music=(music_path if sp.get("music") else None))
                 else:
                     pl = []
                     for j, w in enumerate(wins):
                         pp = os.path.join(os.path.dirname(local), f"{base}-{nm}-p{j}.mp4")
                         _edit_short(local, float(w[0]), float(w[1]), pp, srt=None,
-                                    mute=bool(sp.get("mute")), logo=lg)
+                                    mute=bool(sp.get("mute")))
                         pl.append(pp)
-                    _concat(pl, out_local)
+                    if sp.get("mute"):
+                        _concat_v(pl, out_local)   # silent stitch: video-only crossfade
+                    else:
+                        _concat(pl, out_local)
+            # Brand pass (approved look: 130px logo top-right, optional serif
+            # texts), then the outro end-card when the spec asks for it.
+            logo = _brand_logo(brand[0])
+            texts = sp.get("texts") or None
+            if logo or texts:
+                bb = os.path.join(os.path.dirname(out_local), f"br-{nm}.mp4")
+                _overlay_branding(out_local, bb, logo=logo, texts=texts, keep_audio=True)
+                out_local = bb
+            if sp.get("outro"):
+                oo = os.path.join(os.path.dirname(out_local), f"{_slug(os.path.basename(out_local))}-final.mp4")
+                _append_outro(out_local, oo, keep_audio=not sp.get("mute"))
+                out_local = oo
         except Exception as ex:  # noqa: BLE001
             print(f"cut {nm} failed: {ex}")
             continue
 
         brand_key, dispname, tags = brand
-        out_name = os.path.basename(out_local)
+        out_name = f"{base}-{nm}.mp4"
         out_path = f"{display.rstrip('/')}/processed/{out_name}"
         dbx.upload(out_local, out_path)
         url = dbx.shared_link(out_path, raw=True)
-        caption = _hp_caption(nm) if brand_key == "hp" else caption_for(local, base, dispname, tags)
+        caption = sp.get("caption") or (_hp_caption(nm) if brand_key == "hp" else caption_for(local, base, dispname, tags))
         keep = []
         for e in queue:
             if e.get("brand") == brand_key and e["id"] == f"{brand_key}-{nm}":
@@ -1325,8 +1454,10 @@ def main(argv: list[str] | None = None) -> int:
     montage = os.getenv("MONTAGE_SPEC", "").strip()
     if montage:
         import json as _json
-        made = cut_montage(_json.loads(montage))
-        print(f"\nDone: montage {'created' if made else 'failed'}. Nothing posted (review only).")
+        data = _json.loads(montage)
+        specs = data if isinstance(data, list) else [data]
+        made = [m for m in (cut_montage(s) for s in specs) if m]
+        print(f"\nDone: {len(made)}/{len(specs)} montage(s). Nothing posted (review only).")
         return 0
 
     # INGEST_CLIP "name:relpath": save a ready-made local clip into Dropbox +
@@ -1378,6 +1509,13 @@ def main(argv: list[str] | None = None) -> int:
     if specs:
         import json as _json
 
+        # Accept either inline JSON or a repo-relative path to a .json spec file,
+        # so big batches live in the repo (reviewable) instead of a huge input.
+        if not specs.startswith(("[", "{")):
+            spec_path = specs if os.path.isabs(specs) else os.path.join(ROOT, specs)
+            with open(spec_path, encoding="utf-8") as fh:
+                specs = fh.read()
+            print(f"RECUT_SPECS loaded from {spec_path}")
         data = _json.loads(specs)
         if data and ("parts" in data[0] or "segments" in data[0] or ("start" in data[0] and "end" in data[0])):
             made = cut_windows(data)
