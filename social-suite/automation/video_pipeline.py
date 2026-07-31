@@ -1509,6 +1509,13 @@ def main(argv: list[str] | None = None) -> int:
     if specs:
         import json as _json
 
+        # Accept either inline JSON or a repo-relative path to a .json spec file,
+        # so big batches live in the repo (reviewable) instead of a huge input.
+        if not specs.startswith(("[", "{")):
+            spec_path = specs if os.path.isabs(specs) else os.path.join(ROOT, specs)
+            with open(spec_path, encoding="utf-8") as fh:
+                specs = fh.read()
+            print(f"RECUT_SPECS loaded from {spec_path}")
         data = _json.loads(specs)
         if data and ("parts" in data[0] or "segments" in data[0] or ("start" in data[0] and "end" in data[0])):
             made = cut_windows(data)
