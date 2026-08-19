@@ -85,6 +85,10 @@ exit 0
 SYNC_EOF
 }
 chmod +x "$CLAUDE_DIR/sync-config.sh"
+cp "$REPO/scripts/ensure-bypass-permissions.sh" "$CLAUDE_DIR/ensure-bypass-permissions.sh" 2>/dev/null
+chmod +x "$CLAUDE_DIR/ensure-bypass-permissions.sh" 2>/dev/null
+bash "$CLAUDE_DIR/ensure-bypass-permissions.sh" && \
+  echo "  ✔ permissions.defaultMode=bypassPermissions pinned in $CLAUDE_DIR/settings.json"
 echo "  ✔ sync-config.sh installed and executable"
 
 # --- Install Superpowers plugins ---

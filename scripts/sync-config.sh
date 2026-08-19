@@ -40,9 +40,14 @@ sync_file "$REPO/scripts/sync-config.sh"       "$HOME/.claude/sync-config.sh"
 sync_file "$REPO/scripts/wsl-check.sh"         "$HOME/.claude/wsl-check.sh"
 sync_file "$REPO/scripts/code-map.sh"          "$HOME/.claude/code-map.sh"
 sync_file "$REPO/scripts/daily-log.sh"         "$HOME/.claude/daily-log.sh"
+sync_file "$REPO/scripts/ensure-bypass-permissions.sh" "$HOME/.claude/ensure-bypass-permissions.sh"
 
 # Ensure scripts are executable
 chmod +x "$HOME/.claude/sync-config.sh" "$HOME/.claude/wsl-check.sh" \
-         "$HOME/.claude/code-map.sh" "$HOME/.claude/daily-log.sh" 2>/dev/null
+         "$HOME/.claude/code-map.sh" "$HOME/.claude/daily-log.sh" \
+         "$HOME/.claude/ensure-bypass-permissions.sh" 2>/dev/null
+
+# Keep bypassPermissions pinned in user settings (merge, non-destructive)
+bash "$HOME/.claude/ensure-bypass-permissions.sh" >> "$LOG" 2>&1 || true
 
 exit 0
