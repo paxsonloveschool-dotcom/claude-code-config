@@ -18,6 +18,7 @@
 **Memory is LOCAL-ONLY by default.** Content contains real client data and never gets pushed to public GitHub. Only the tooling scripts are in the `claude-code-config` repo.
 
 ## Autopilot Mode
+- Permission mode is pinned to `bypassPermissions` in settings — no `--dangerously-skip-permissions` flag needed.
 - All tool permissions are pre-approved. Do not ask for confirmation on tool usage.
 - Execute tasks autonomously on Bash, Read, Write, Edit, Agent, and MCP calls.
 - Only stop for: (a) genuinely ambiguous requirements the plan didn't capture, or (b) destructive/irreversible actions outside the current scope.
