@@ -1,0 +1,45 @@
+name: Scheduled Claude task
+
+# Run a Claude task on a schedule or on demand — the "24/7 in the cloud" path.
+#
+# How it works:
+#   - Manual:    Actions tab -> "Scheduled Claude task" -> Run workflow (type a prompt).
+#   - Automatic: uncomment the `schedule` block below to run unattended on a cron.
+#
+# Safe by default: the cron is commented out, so this costs nothing and fires
+# nothing until you enable it. Requires the ANTHROPIC_API_KEY secret (already set,
+# same one claude.yml uses) and the Claude GitHub App (already installed).
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Task for Claude to run"
+        required: true
+        default: "Audit the repo for stale notes and open an issue summarizing findings. Do not push code changes."
+  # schedule:
+  #   - cron: "0 11 * * 1-5"   # weekdays 11:00 UTC — uncomment to run automatically
+
+# Default prompt used for scheduled (cron) runs, where there is no input.
+env:
+  DEFAULT_PROMPT: "Daily check-in: review recent commits and open issues, then post a one-paragraph status summary as a new issue. Do not push code changes."
+
+jobs:
+  task:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: ${{ github.event.inputs.prompt || env.DEFAULT_PROMPT }}
