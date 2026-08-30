@@ -31,11 +31,14 @@ PROCESSED_PATH = os.path.join(ROOT, "content", "processed.json")
 VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv")
 
 # Brand classification by keyword in the folder name + that brand's look. Order
-# matters: check "restore" before "hp" so "Restore" never falls through to hp.
+# matters: check "restore"/"trophy" before "hp" so those never fall through to hp.
 BRAND_RULES = [
     ("restore", "restore", "Restore Marketing",
      ["RestoreMarketing", "marketingagency", "smallbusinessmarketing",
       "contentcreator", "socialmediamarketing", "digitalmarketing"]),
+    ("trophy", "trophy", "Trophy Exteriors",
+     ["TrophyExteriors", "Roofing", "RoofingContractor", "BeforeAndAfter",
+      "RoofMakeover", "StormDamage", "RoofReplacement", "CollegeStation", "Austin"]),
     ("hp", "hp", "HP Landscaping",
      ["HPLandscaping", "landscaping", "hardscape", "patiodesign", "backyardgoals",
       "outdoorliving", "stampedconcrete", "curbappeal"]),
@@ -44,6 +47,7 @@ BRAND_RULES = [
 BRANDS = {
     "HP": ("hp", "HP Landscaping", ["HPLandscaping", "landscaping", "lawncare"]),
     "Restore": ("restore", "Restore Marketing", ["RestoreMarketing", "marketing"]),
+    "Trophy": ("trophy", "Trophy Exteriors", ["TrophyExteriors", "Roofing", "BeforeAndAfter"]),
 }
 REVIEW_PLATFORMS = [p.strip() for p in os.getenv("REVIEW_PLATFORMS", "instagram,facebook").split(",") if p.strip()]
 
@@ -278,6 +282,45 @@ def _hp_caption(seed: str) -> str:
     import zlib
     hook = _HP_HOOKS[zlib.crc32(seed.encode()) % len(_HP_HOOKS)]
     return f"{hook}\n\n{_HP_CTA}\n•\n•\n{_HP_TAGS}"
+
+
+# Trophy Exteriors house caption voice. Rotates a hook per clip. CTA is a
+# placeholder ("link in bio") until a real phone number is confirmed — swap
+# _TROPHY_CTA once that's decided (single number, per-location, or none).
+_TROPHY_HOOKS = (
+    "Another roof done right. \U0001F3D7️",
+    "Storm damage? We've got you covered. ⛈️",
+    "This is what a real roof replacement looks like. \U0001F4AA",
+    "Before and after — no filter needed. \U0001F504",
+    "Built to take on Texas weather. \U0001F31E",
+    "Old roof out, new roof in. ✅",
+    "Your roof shouldn't be an afterthought. \U0001F3E0",
+    "Quality you can see from the ground. \U0001F441️",
+)
+_TROPHY_CTA = "Free inspection — link in bio."
+_TROPHY_TAGS = (
+    "#fyp #ForYouPage #Trending #Roofing #RoofingContractor "
+    "#BeforeAndAfter #RoofMakeover #StormDamage #RoofReplacement #Timelapse "
+    "#ContractorLife #ServiceBusiness #InsuranceRestoration #CurbAppeal "
+    "#CollegeStation #Austin #TexasRoofing"
+)
+
+
+def _trophy_caption(seed: str) -> str:
+    """Trophy Exteriors house-style post caption: rotating hook -> CTA -> hashtags."""
+    import zlib
+    hook = _TROPHY_HOOKS[zlib.crc32(seed.encode()) % len(_TROPHY_HOOKS)]
+    return f"{hook}\n\n{_TROPHY_CTA}\n•\n•\n{_TROPHY_TAGS}"
+
+
+# Brands with a fixed rotating-hook house caption (no transcript needed).
+_HOUSE_CAPTION = {"hp": _hp_caption, "trophy": _trophy_caption}
+
+
+def _house_caption(brand_key: str, seed: str) -> str | None:
+    """House-style caption for ``brand_key``, or None if it has no fixed voice."""
+    fn = _HOUSE_CAPTION.get(brand_key)
+    return fn(seed) if fn else None
 
 
 def _concat(parts: list[str], out_path: str, xfade: float = 0.8) -> str:
@@ -534,8 +577,9 @@ def _process_one(f, folder_display, brand_key, display, default_tags, dbx) -> li
     # song -> hits post. One review item = the full clip. (Set FULL_VIDEO=1.)
     if os.getenv("FULL_VIDEO", "").strip().lower() in ("1", "true", "yes"):
         stamp = _dt.datetime.utcnow().strftime("%Y%m%d%H%M%S")
-        if brand_key == "hp":
-            caption = _hp_caption(base)
+        house = _house_caption(brand_key, base)
+        if house is not None:
+            caption = house
         else:
             tags = " ".join("#" + t.lstrip("#") for t in default_tags)
             caption = f"{display}\n\n{tags}".strip()
@@ -934,7 +978,7 @@ def ingest_clip(name: str, src_path: str, brand_key: str = "hp") -> dict | None:
     queue = [e for e in _load_json(QUEUE_PATH, []) if e.get("id") != f"{brand_key}-{nm}"]
     entry = {
         "id": f"{brand_key}-{nm}", "brand": brand_key,
-        "text": _hp_caption(nm) if brand_key == "hp" else "",
+        "text": _house_caption(brand_key, nm) or "",
         "media_url": url, "media_path": out_path,
         "platforms": list(REVIEW_PLATFORMS), "schedule": None,
         "status": "review", "error": None,
@@ -1158,7 +1202,7 @@ def cut_montage(spec: dict) -> dict | None:
              if e.get("id") != f"{brand_key}-{name}"]
     entry = {
         "id": f"{brand_key}-{name}", "brand": brand_key,
-        "text": _hp_caption(name) if brand_key == "hp" else "",
+        "text": _house_caption(brand_key, name) or "",
         "media_url": url, "media_path": out_path,
         "platforms": list(REVIEW_PLATFORMS), "schedule": None,
         "status": "review", "error": None,
@@ -1259,7 +1303,7 @@ def cut_windows(specs: list[dict]) -> list[dict]:
         out_path = f"{display.rstrip('/')}/processed/{out_name}"
         dbx.upload(out_local, out_path)
         url = dbx.shared_link(out_path, raw=True)
-        caption = _hp_caption(nm) if brand_key == "hp" else caption_for(local, base, dispname, tags)
+        caption = _house_caption(brand_key, nm) or caption_for(local, base, dispname, tags)
         keep = []
         for e in queue:
             if e.get("brand") == brand_key and e["id"] == f"{brand_key}-{nm}":
