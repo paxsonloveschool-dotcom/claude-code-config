@@ -28,6 +28,19 @@ sync_file() {
   fi
 }
 
+# Sync all files in a directory (non-recursive)
+sync_dir() {
+  local src_dir="$1"
+  local dst_dir="$2"
+  if [ -d "$src_dir" ]; then
+    mkdir -p "$dst_dir"
+    for src in "$src_dir"/*; do
+      [ -f "$src" ] || continue
+      sync_file "$src" "$dst_dir/$(basename "$src")"
+    done
+  fi
+}
+
 # Config docs
 sync_file "$REPO/CLAUDE.md"                    "$HOME/.claude/CLAUDE.md"
 sync_file "$REPO/SESSION_HANDOFF.md"           "$HOME/.claude/SESSION_HANDOFF.md"
@@ -40,6 +53,9 @@ sync_file "$REPO/scripts/sync-config.sh"       "$HOME/.claude/sync-config.sh"
 sync_file "$REPO/scripts/wsl-check.sh"         "$HOME/.claude/wsl-check.sh"
 sync_file "$REPO/scripts/code-map.sh"          "$HOME/.claude/code-map.sh"
 sync_file "$REPO/scripts/daily-log.sh"         "$HOME/.claude/daily-log.sh"
+
+# JARVIS skills
+sync_dir "$REPO/skills/jarvis"  "$HOME/.claude/skills/jarvis"
 
 # Ensure scripts are executable
 chmod +x "$HOME/.claude/sync-config.sh" "$HOME/.claude/wsl-check.sh" \
