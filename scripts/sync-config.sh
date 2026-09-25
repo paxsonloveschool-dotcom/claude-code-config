@@ -54,8 +54,10 @@ sync_file "$REPO/scripts/wsl-check.sh"         "$HOME/.claude/wsl-check.sh"
 sync_file "$REPO/scripts/code-map.sh"          "$HOME/.claude/code-map.sh"
 sync_file "$REPO/scripts/daily-log.sh"         "$HOME/.claude/daily-log.sh"
 
-# JARVIS skills
-sync_dir "$REPO/skills/jarvis"  "$HOME/.claude/skills/jarvis"
+# JARVIS skills (each in its own directory with SKILL.md)
+sync_dir "$REPO/skills/jarvis-constitution"  "$HOME/.claude/skills/jarvis-constitution"
+sync_dir "$REPO/skills/jarvis-task-manager"  "$HOME/.claude/skills/jarvis-task-manager"
+sync_dir "$REPO/skills/jarvis-agent-roster"  "$HOME/.claude/skills/jarvis-agent-roster"
 
 # Ensure scripts are executable
 chmod +x "$HOME/.claude/sync-config.sh" "$HOME/.claude/wsl-check.sh" \
