@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '=== SESSION START ===' && echo 'Date:' $(date '+%Y-%m-%d %H:%M') && echo '---' && echo 'Token budget: monitor context usage. Compact at 70%.' && echo '---' && cat ~/.claude/ARCHITECTURE_MAP.md 2>/dev/null || true"
+            "command": "echo '=== SESSION START ===' && echo 'Date:' $(date '+%Y-%m-%d %H:%M') && ([ -x ~/.local/bin/peak-hours ] && ~/.local/bin/peak-hours --verbose) || true && echo '---' && echo 'Token budget: batch questions, one-shot prompts (see /prompt-composer). Handoff at ~60% (see /session-handoff).' && echo '---' && cat ~/.claude/ARCHITECTURE_MAP.md 2>/dev/null || true"
           }
         ]
       }

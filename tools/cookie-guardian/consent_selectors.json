@@ -1,0 +1,81 @@
+{
+  "_meta": {
+    "description": "Consent-banner selectors, reject-first. Each entry is tried in order per page load. The FIRST match on the page fires and stops the chain. Text matches are case-insensitive and match substring.",
+    "priority": ["reject", "manage_reject", "accept"],
+    "note": "Prefer reject over accept for privacy. Accept is a fallback only when reject isn't offered."
+  },
+  "css_selectors": {
+    "reject": [
+      "button[id*='reject' i]",
+      "button[class*='reject' i]",
+      "button[data-testid*='reject' i]",
+      "button[aria-label*='reject' i]",
+      "button[id*='decline' i]",
+      "button[class*='decline' i]",
+      "a[id*='reject' i]",
+      "#onetrust-reject-all-handler",
+      ".ot-pc-refuse-all-handler",
+      "#truste-consent-required",
+      "button.iubenda-cs-reject-btn",
+      "button.cmp-btn-reject",
+      "#didomi-notice-disagree-button",
+      ".didomi-continue-without-agreeing",
+      "button[data-cy='cookie-banner-reject-all']",
+      "button[data-role='reject_consent']",
+      ".fc-cta-do-not-consent",
+      "#W0wltc",
+      "button[aria-label*='Reject all' i]"
+    ],
+    "accept": [
+      "#onetrust-accept-btn-handler",
+      "button#accept-all",
+      "button[id*='accept' i][id*='all' i]",
+      "button[class*='accept-all' i]",
+      "button[data-testid*='accept-all' i]",
+      "button[aria-label*='accept all' i]",
+      "#truste-consent-button",
+      "button.iubenda-cs-accept-btn",
+      "button.cmp-btn-accept-all",
+      "#didomi-notice-agree-button",
+      ".fc-cta-consent",
+      "#L2AGLb"
+    ]
+  },
+  "text_fallback": {
+    "reject": [
+      "reject all",
+      "reject non-essential",
+      "decline all",
+      "decline optional",
+      "refuse all",
+      "only necessary",
+      "necessary only",
+      "essential only",
+      "continue without accepting",
+      "do not consent",
+      "opt out"
+    ],
+    "accept": [
+      "accept all",
+      "allow all",
+      "agree and continue",
+      "i agree",
+      "got it",
+      "ok"
+    ]
+  },
+  "banner_container_hints": [
+    "[id*='cookie' i][id*='banner' i]",
+    "[id*='consent' i]",
+    "[class*='cookie-banner' i]",
+    "[class*='consent-banner' i]",
+    ".cc-window",
+    "#CybotCookiebotDialog",
+    "#onetrust-banner-sdk",
+    "#didomi-host",
+    ".truste_box_overlay",
+    ".iubenda-cs-container",
+    ".osano-cm-dialog",
+    ".fides-consent-container"
+  ]
+}

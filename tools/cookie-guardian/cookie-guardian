@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# cookie-guardian CLI shim — thin wrapper so `cookie-guardian` works from PATH.
+set -e
+HERE="$(cd "$(dirname "$0")" && pwd)"
+exec python3 "$HERE/cookie_guardian.py" "$@"
