@@ -30,3 +30,5 @@ venv/
 *.mp3
 *.ass
 *.srt
+# Exception: keep verified preview/test clips for delivery
+!content/preview/*.mp4
