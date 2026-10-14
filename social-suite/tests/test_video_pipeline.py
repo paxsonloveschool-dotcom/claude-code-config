@@ -49,6 +49,7 @@ def test_compose_builds_hook_caption_hashtags():
 def test_brands_map_folders_to_keys():
     assert vp.BRANDS["HP"][0] == "hp"
     assert vp.BRANDS["Restore"][0] == "restore"
+    assert vp.BRANDS["Trophy"][0] == "trophy"
 
 
 def test_classify_brand_matches_messy_folder_names():
@@ -56,8 +57,19 @@ def test_classify_brand_matches_messy_folder_names():
     assert vp.classify_brand("HP-Content Auto.")[0] == "hp"
     assert vp.classify_brand("Restore- Content Auto")[0] == "restore"
     assert vp.classify_brand("hp")[0] == "hp"
+    assert vp.classify_brand("Trophy Exteriors Content")[0] == "trophy"
     # "restore" is checked first so a folder mentioning both routes to restore
     assert vp.classify_brand("Restore")[0] == "restore"
+
+
+def test_house_caption_covers_hp_and_trophy_but_not_others():
+    hp_caption = vp._house_caption("hp", "seed-1")
+    trophy_caption = vp._house_caption("trophy", "seed-1")
+    assert hp_caption and "Call" in hp_caption
+    assert trophy_caption and "inspection" in trophy_caption.lower()
+    assert vp._house_caption("restore", "seed-1") is None
+    # deterministic per seed (rotates by a hash of the seed, not randomly)
+    assert vp._house_caption("trophy", "seed-1") == trophy_caption
     # unrecognized -> None (skipped, never mis-tagged)
     assert vp.classify_brand("Random Folder") is None
 
