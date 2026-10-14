@@ -25,5 +25,30 @@
     "meta_access_token": "REPLACE_WITH_RESTORE_PAGE_TOKEN",
     "ig_user_id": "REPLACE_WITH_RESTORE_IG_USER_ID",
     "fb_page_id": "REPLACE_WITH_RESTORE_FB_PAGE_ID"
+  },
+  "trophy": {
+    "meta_access_token": "REPLACE_WITH_TROPHY_PAGE_TOKEN",
+    "ig_user_id": "REPLACE_WITH_TROPHY_IG_USER_ID",
+    "fb_page_id": "REPLACE_WITH_TROPHY_FB_PAGE_ID",
+    "brand_name": "Trophy Exteriors",
+    "colors": {
+      "primary_black": "#0A0A0A",
+      "accent_gold": "#C8A04B",
+      "white": "#FFFFFF",
+      "off_white": "#F5F5F3"
+    },
+    "contact": {
+      "phone_default": "(979) 217-2748",
+      "phone_locations": {
+        "college_station": "(979) 217-2748",
+        "conroe": "(936) 524-9594",
+        "houston_south": "(469) 530-8545",
+        "austin_bee_cave": "(512) 270-8643",
+        "san_antonio": "(512) 270-8643"
+      },
+      "email": "CONTACT@trophyexteriors.com",
+      "cta": "Get a Free Inspection"
+    },
+    "dropbox_folder": "/Trophy"
   }
 }

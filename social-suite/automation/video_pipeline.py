@@ -297,7 +297,7 @@ _TROPHY_HOOKS = (
     "Your roof shouldn't be an afterthought. \U0001F3E0",
     "Quality you can see from the ground. \U0001F441️",
 )
-_TROPHY_CTA = "Free inspection — link in bio."
+_TROPHY_CTA = "Get a Free Inspection: (979) 217-2748 • CONTACT@trophyexteriors.com"
 _TROPHY_TAGS = (
     "#fyp #ForYouPage #Trending #Roofing #RoofingContractor "
     "#BeforeAndAfter #RoofMakeover #StormDamage #RoofReplacement #Timelapse "

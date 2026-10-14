@@ -1,0 +1,10 @@
+<svg viewBox="0 0 400 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Placeholder: Gold TROPHY ROOFING wordmark on black background -->
+  <rect width="400" height="120" fill="#0A0A0A"/>
+  <text x="200" y="75" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="#C8A04B" text-anchor="middle">
+    TROPHY ROOFING
+  </text>
+  <text x="200" y="105" font-family="Arial, sans-serif" font-size="12" fill="#F5F5F3" text-anchor="middle" opacity="0.7">
+    [Placeholder — replace with actual mark from trophy-roofing-site repo]
+  </text>
+</svg>
