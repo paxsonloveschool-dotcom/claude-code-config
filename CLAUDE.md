@@ -121,7 +121,17 @@ RTK v0.36.0 binary at `~/.local/bin/rtk.exe`. On native Windows, the transparent
 - Scripts and docs committed at `tools/voxcpm/` in this repo
 - For real-time: use HF Spaces demo at https://huggingface.co/spaces/OpenBMB/VoxCPM-Demo
 
+## Auth: Subscription Plan, Not API Key
+Stray `ANTHROPIC_API_KEY` overrides the Pro/Max plan and bills the API. Check in order:
+1. `/status` — must show Pro/Max plan, not "API key".
+2. `echo $ANTHROPIC_API_KEY` (PowerShell: `echo $env:ANTHROPIC_API_KEY`) — must print nothing.
+3. Remove it: Windows → System Properties > Environment Variables (User + System), restart terminal; Mac/Linux → delete export in `~/.zshrc`/`~/.bashrc`, open new terminal.
+4. Check `~/.claude/settings.json` and project `.claude/settings.json` for `env` block or `apiKeyHelper` holding a key; delete.
+5. `/logout`, then `/login` → choose Claude subscription (not Console/API).
+6. `/status` again to confirm plan.
+(`ANTHROPIC_API_KEY` as a GitHub repo secret for the Action is fine — that's CI only.)
+
 ## Applied Learning
 Add a one-line bullet (under 15 words) whenever something fails repeatedly, I have to re-explain, or a workaround is found. No explanations.
 
-- (none yet)
+- Stray ANTHROPIC_API_KEY env/settings overrides subscription login; see Auth section.
