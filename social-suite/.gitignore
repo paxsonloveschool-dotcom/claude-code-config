@@ -30,3 +30,32 @@ venv/
 *.mp3
 *.ass
 *.srt
+
+# Keep the reusable HP end-card deliverables (brand assets, not throwaway content)
+!content/brand/outro/hp-outro.mp4
+!content/brand/outro/hp-outro-silent.mp4
+# Throwaway build artifacts from the outro render
+content/brand/outro/frames/
+content/brand/outro/sting.wav
+content/brand/outro/_contact_sheet.png
+content/brand/outro/*/frames/
+content/brand/outro/*/sting.wav
+content/brand/outro/_styles_sheet.png
+content/brand/outro/_action_sheet.png
+content/preview/_with_outro/
+content/brand/_logo_on_black.png
+content/brand/outro/_slam_new.png
+content/brand/_logo_white.png
+content/brand/_logo_black.png
+!content/brand/outro/restore/slam/restore-outro-slam.mp4
+!content/brand/outro/restore/slam/restore-outro-slam-silent.mp4
+content/brand/outro/restore/**/frames/
+content/brand/outro/restore/**/sting.wav
+# Experimental colour-variant renders (the chosen one is finalized separately)
+content/brand/outro/restore-*/
+!content/brand/outro/restore/assemble/restore-assemble-4k.mp4
+content/brand/outro/restore/assemble/frames/
+content/brand/outro/restore/assemble/sting.wav
+content/brand/outro/restore/*/frames/
+content/brand/outro/restore/*/sting.wav
+!content/brand/outro/restore/**/restore-*-4k.mp4
