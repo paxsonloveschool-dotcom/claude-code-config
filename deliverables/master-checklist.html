@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paxson Berkey | Master Operations Checklist</title>
+<style>
+  :root{
+    --paper:#F7F5F0; --card:#FFFFFF; --ink:#21261F; --pine:#2E4B3C;
+    --pine-deep:#1F3529; --saddle:#8C5A33; --signal:#A63B2A; --slate:#6B7266;
+    --line:#E4E0D6; --done:#9BA394;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--paper);color:var(--ink);font-family:"Public Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px;line-height:1.5;padding-bottom:80px;}
+  .display{font-family:"Fraunces",Georgia,"Iowan Old Style",serif;}
+
+  header{background:var(--pine-deep);color:#F1EEE6;padding:28px 20px 22px;position:sticky;top:0;z-index:50;box-shadow:0 2px 12px rgba(31,53,41,.25);}
+  .hwrap{max-width:860px;margin:0 auto;}
+  .eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#B8C4B0;margin-bottom:4px;}
+  h1{font-size:clamp(22px,4vw,30px);font-weight:600;line-height:1.15;}
+  .progress-row{display:flex;align-items:center;gap:14px;margin-top:14px;}
+  .bar{flex:1;height:8px;background:rgba(255,255,255,.15);border-radius:99px;overflow:hidden;}
+  .bar-fill{height:100%;background:#C9A227;border-radius:99px;width:0%;transition:width .35s ease;}
+  .count{font-size:13px;font-variant-numeric:tabular-nums;color:#DDE3D6;white-space:nowrap;}
+
+  .filters{max-width:860px;margin:16px auto 0;padding:0 20px;display:flex;gap:8px;flex-wrap:wrap;}
+  .chip{border:1.5px solid var(--line);background:var(--card);color:var(--slate);border-radius:99px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;}
+  .chip:hover{border-color:var(--pine);color:var(--pine);}
+  .chip.active{background:var(--pine);border-color:var(--pine);color:#fff;}
+  .chip.urgent-chip.active{background:var(--signal);border-color:var(--signal);}
+
+  main{max-width:860px;margin:0 auto;padding:8px 20px 40px;}
+  section{margin-top:34px;}
+  .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:8px;margin-bottom:6px;}
+  .sec-title{font-size:clamp(19px,3vw,24px);font-weight:600;}
+  .sec-count{font-size:12px;color:var(--slate);font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .sec-note{font-size:13px;color:var(--slate);margin:6px 0 14px;}
+  .urgent .sec-head{border-bottom-color:var(--signal);}
+  .urgent .sec-title{color:var(--signal);}
+
+  .group{margin-top:18px;}
+  .group-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--saddle);font-weight:700;margin-bottom:8px;}
+
+  .task{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;gap:12px;cursor:pointer;transition:border-color .15s, background .2s;}
+  .task:hover{border-color:var(--pine);}
+  .task.checked{background:#F2F1EB;border-color:var(--line);}
+  .box{flex-shrink:0;width:22px;height:22px;border:2px solid var(--pine);border-radius:6px;margin-top:2px;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+  .task.checked .box{background:var(--pine);border-color:var(--pine);}
+  .box svg{width:14px;height:14px;stroke:#fff;stroke-width:3;fill:none;opacity:0;transition:opacity .15s;}
+  .task.checked .box svg{opacity:1;}
+  .task-body{flex:1;min-width:0;}
+  .task-title{font-weight:700;font-size:15px;line-height:1.35;}
+  .task.checked .task-title{color:var(--done);text-decoration:line-through;text-decoration-thickness:1.5px;}
+  .task-desc{font-size:13px;color:var(--slate);margin-top:3px;line-height:1.45;}
+  .task.checked .task-desc{color:#B4B9AC;}
+  .tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:99px;margin-top:6px;margin-right:5px;}
+  .tag.urgent{background:#F6E3DE;color:var(--signal);}
+  .tag.agent{background:#E5EBE2;color:var(--pine);}
+  .tag.co{background:#F0E8DE;color:var(--saddle);}
+
+  .empty{color:var(--slate);font-size:14px;padding:24px 0;text-align:center;}
+  footer{max-width:860px;margin:40px auto 0;padding:0 20px;font-size:12px;color:var(--slate);text-align:center;}
+  @media(max-width:520px){.task{padding:11px 12px;} .filters{gap:6px;} .chip{padding:6px 11px;font-size:12px;}}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Public+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<header>
+  <div class="hwrap">
+    <div class="eyebrow">Restore Companies, HP Companies, Personal</div>
+    <h1 class="display">Master Operations Checklist</h1>
+    <div class="progress-row">
+      <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+      <div class="count" id="totalCount">0 of 0 knocked out</div>
+    </div>
+  </div>
+</header>
+
+<div class="filters" id="filters"></div>
+<main id="main"></main>
+<footer>Compiled from voice dictation, July 22, 2026. Checkmarks save automatically to this device.</footer>
+
+<script>
+const DATA = [
+{sec:"Urgent: This Week", id:"urgent", cls:"urgent", note:"Time-boxed items. These come before everything else.", groups:[
+ {g:"Deadlines", items:[
+  {t:"File the dispute for Succi within 24 hours", d:"HP Landscaping. Hard deadline. Handle first.", tags:["urgent","HP"]},
+  {t:"Collect from Lance", d:"HP Landscaping. He owes a large balance. Get it moving today.", tags:["urgent","HP"]},
+  {t:"Collect all outstanding balances on Jobber and QuickBooks", d:"Roughly $5,000 in unpaid invoices across clients. Go account by account and clear it out.", tags:["urgent","HP"]},
+  {t:"Send the Trophy contract", d:"$10,000 per month with the $4,000 ad discount for the two locations. It can change later, get something on paper now so work can start.", tags:["urgent","Restore"]},
+  {t:"First week of August installs: Medina, Lazy Cozy Homes, Rush", d:"Medina deposit $1.4k. Lazy Cozy Homes $2.8k, possibly the same job, confirm. Rush job also lands first week of August. Lock the schedule.", tags:["urgent","HP"]}
+ ]}
+]},
+
+{sec:"Personal", id:"personal", groups:[
+ {g:"San Francisco Move and Trip", items:[
+  {t:"Find a safe area to stay in San Francisco", d:"Close to the Anthropic office. Moving out of the truck.", tags:[]},
+  {t:"Plan the California route and adventure", d:"Stops on the drive, national forests, what to see. Make the next two weeks and the coming months the best adventure possible.", tags:[]},
+  {t:"Connect with people in SF and capitalize on the two weeks", d:"Full push before Colorado, August 2 through 10, then back for the Extrapreneur pitch.", tags:[]},
+  {t:"Follow up with the Capital Wraps owner in Sacramento", d:"Add him to the California route. Personal and marketing crossover.", tags:[]}
+ ]},
+ {g:"Anthropic Pursuit", items:[
+  {t:"Apply to every open Anthropic role", d:"Get a foot in the door with someone who can help in person once in SF.", tags:[]},
+  {t:"Study the target roles", d:"Manager AE GSIs. Manager AE Strategic Sales (SF and NYC). Scaled Enterprise AE Industries (NYC and SF). Startup Partnership Lead. Strategic AE Tech. Preference: strategic sales manager or AE, with real love for the startup team.", tags:[]},
+  {t:"Update and buff LinkedIn", d:"Make it perfect for the Anthropic roles and how you present yourself.", tags:[]},
+  {t:"Deep study of Anthropic", d:"Anthropic Academy plus the full site: models, solutions, government work, resources, company, platform, products. Learn the mission and the why, and how you fit it.", tags:[]},
+  {t:"Get trained and coached by Claude", d:"Claude knowledge, Anthropic knowledge, corporate jargon, job prep, interview prep, presenting yourself well.", tags:["agent"]},
+  {t:"Backup plan: go deep into the SF founder scene", d:"Underground founders, just-funded and YC-stage companies. Build the plan for meeting them and capitalizing while in SF.", tags:[]},
+  {t:"Forbes 30 Under 30 push and more entrepreneurship events", d:"Keep building the public track record.", tags:[]},
+  {t:"Get plugged into the A&M entrepreneurship world", d:"Angel network, founder programs, helping the next generation succeed. Reach out to Ben Wiggins' friends, Levi and others. Ben is a key point of contact for the A&M bubble.", tags:[]}
+ ]},
+ {g:"Extrapreneur (Extraco Bank, Waco)", items:[
+  {t:"Schedule calls with mentors", d:"Number one priority for the event.", tags:["urgent"]},
+  {t:"Give all information to the mentors", d:"Number two priority. Very important.", tags:["urgent"]},
+  {t:"Pull event details from the Higher Purpose Landscaping email", d:"All Extrapreneur emails live there.", tags:[]}
+ ]},
+ {g:"Learning Queue: Videos", items:[
+  {t:"How AI Agents and Claude Skills Work, Clearly Explained", d:"Greg Isenberg.", tags:[]},
+  {t:"Stop Prompting Claude, Use This Method Instead", d:"Austin Marquessy (name as dictated).", tags:[]},
+  {t:"I Got a Private Lesson on Claude Code", d:"Claude Code workflow lesson.", tags:[]},
+  {t:"Build Anything with Claude Code", d:"Greg Isenberg with the head engineer from Anthropic.", tags:[]},
+  {t:"My Claude Code Workflow to A/B Startups in Seconds", d:"Greg Isenberg.", tags:[]},
+  {t:"Claude Fable 5 video", d:"Greg Isenberg. Title approximate from dictation.", tags:[]},
+  {t:"Hermes Desktop app video", d:"", tags:[]},
+  {t:"Hermes Agent Desktop: Full Setup and Real Use Cases", d:"", tags:[]},
+  {t:"Hermes Agent: Zero to Personal Assistant", d:"By Haiku.", tags:[]},
+  {t:"Chris Koner, The Corner Office", d:"Watch more of his interviews.", tags:[]},
+  {t:"Chris Koner: landing pages and dominating markets as brand middlemen", d:"Feeds the vision of multiple marketing agencies in different locations, each specialized, growing into a conglomerate.", tags:[]},
+  {t:"4 Ways to Force Claude Code to Build Beautiful Websites", d:"", tags:[]},
+  {t:"Build and Sell Claude Code Operating Systems", d:"", tags:[]},
+  {t:"Claude Code and Agentic OS Is Insane", d:"Jack Roberts.", tags:[]}
+ ]},
+ {g:"Faith, Habits and Relationships", items:[
+  {t:"Daily habit stack", d:"In the Word every day. Duolingo and Spanish every day. Workout. Time with the Lord and with Leah.", tags:[]},
+  {t:"Study the EOS model and the EOS wheel", d:"Business operating system for structuring the companies.", tags:[]},
+  {t:"Fight for relationships at home while in California", d:"Intentional follow-ups and calls with team members and people at home. Set calendar reminders so it actually happens.", tags:[]},
+  {t:"Review the whiteboard and capture everything on it", d:"Organize every item from it into this system.", tags:[]},
+  {t:"Keep building the Master Class AI and tools system", d:"Continue the work already started.", tags:[]}
+ ]},
+ {g:"Money, Legal and Admin", items:[
+  {t:"Debt payoff plan", d:"Leah $6.5k. Gage and Friendly (Spain trip). SiteOne $23k house account. Hillcrest $7k. Chevron $5k. Chase $9.6k. Daniel Sod $11k for the Houston projects.", tags:[]},
+  {t:"Repay yourself and build the marriage fund", d:"Restore the $50k pulled from the mutual fund, rebuild $100k in the mutual fund, and put $100k in the bank or investments heading into marriage.", tags:[]},
+  {t:"SR-11 form, complete in October", d:"Form name as dictated. Calendar it.", tags:[]},
+  {t:"Organize taxes and calculate what is owed", d:"Should not owe anything, verify and structure it properly. ASAP.", tags:[]},
+  {t:"Sell the truck to Daniel Rodriguez", d:"", tags:[]},
+  {t:"Fix the title for Christian Venegas", d:"", tags:[]},
+  {t:"Clear all tickets and follow up with Van Alstyne PD", d:"Handle when the time comes.", tags:[]},
+  {t:"Set Leah up for sales and boating", d:"Train her for sales, possibly consultations on the side. Network hard to land her a job at a boating company.", tags:[]}
+ ]}
+]},
+
+{sec:"HP Companies", id:"hp", note:"HP Landscaping, HP Pools, HP Design. Priority order: debt and cash in, then structure and systems, then the full rebrand.", groups:[
+ {g:"Cash In and Billing", items:[
+  {t:"Get paid from Knight Contracting", d:"Send them pictures and project updates alongside the ask.", tags:["co"]},
+  {t:"Close out William Adams", d:"", tags:["co"]},
+  {t:"Confirm the Joanna project payment landed", d:"Marked as accomplished, verify it cleared.", tags:["co"]},
+  {t:"Stop recurring billing for canceled maintenance clients", d:"Anyone who canceled lawn maintenance should not be charged again.", tags:["co"]},
+  {t:"Reach out to clients complaining about billing", d:"Confirm every billing update has actually been taken care of.", tags:["co"]},
+  {t:"Update the client list", d:"", tags:["co"]}
+ ]},
+ {g:"Jeff McDougal Pool Build", items:[
+  {t:"Compile all project information and set it in stone", d:"The biggest single HP priority. Everything ready to rock and roll.", tags:["co"]},
+  {t:"Deliver the 2D plans and final quote to Jeff", d:"So the project can start.", tags:["co"]},
+  {t:"Hand Christian the full project package", d:"Everything he needs to manage and run the job.", tags:["co"]}
+ ]},
+ {g:"Open Client Jobs", items:[
+  {t:"Jeremy Smith: rock relocation", d:"Somerville and Caldwell area.", tags:["co"]},
+  {t:"Granbury client: lights and additional fixes", d:"Name as dictated.", tags:["co"]},
+  {t:"Duke: concrete repair", d:"", tags:["co"]},
+  {t:"Tom Salem: plant fixes", d:"", tags:["co"]}
+ ]},
+ {g:"Contracts, SOPs and Structure", items:[
+  {t:"Update the master service agreement", d:"Bring it fully current.", tags:["co"]},
+  {t:"Merge the agreements into one structure", d:"Residential MSA, subcontractor MSA, and the commercial agreement compiled together. Finalize the residential MSA. Keep the contract development log current.", tags:["co"]},
+  {t:"Build HP Landscaping SOPs and company structure", d:"Line out the org so it runs without you.", tags:["co"]},
+  {t:"Employee handbook and full documentation set", d:"New design client checklist, install checklist, design project prep checklist, design equipment docs. Recover earlier drafts from ChatGPT. Add winter adjustments, financing research, and the KPI set to track.", tags:["co"]},
+  {t:"Build an employee portal and a contractor portal", d:"Two portals to keep everyone organized.", tags:["co","agent"]},
+  {t:"Offer letters for Kyle and Caroline", d:"Responsibilities split across the two companies, plus employee plans.", tags:["co"]},
+  {t:"Prepare client transition messages for De Luna Lawn Care", d:"For every maintenance client whose contract was sold. Not today, but drafted and ready.", tags:["co"]},
+  {t:"Reorganize the legal structure across all companies", d:"Everything up to date and qualified.", tags:["co"]},
+  {t:"Get off Jobber", d:"Consolidate to QuickBooks or a Claude-built portal. Running both is not effective.", tags:["co"]}
+ ]},
+ {g:"Brand, Website and Marketing", items:[
+  {t:"Rebrand HP Landscaping as premium luxury construction only", d:"No maintenance. Hit this hard.", tags:["co"]},
+  {t:"Fix and update the HP site", d:"Add the recent shoot videos, more pictures, and redo the SEO from scratch.", tags:["co"]},
+  {t:"Build the HP Pools site and the HP Design site", d:"Each with its own distinct branding and logo.", tags:["co"]},
+  {t:"High-quality client presentation folder", d:"Something premium to walk clients through. Fix the existing HP folder too.", tags:["co"]},
+  {t:"Handwritten-style paid ads", d:"The mailers that look handwritten but are not. Front-door and feed placements.", tags:["co"]},
+  {t:"Scout Guide and Chamber of Commerce", d:"Get the businesses into the Scout Guide for the Brazos Valley and every company into the Chamber, then use Claude to run outreach to fellow chamber businesses.", tags:["co","agent"]}
+ ]},
+ {g:"Sales Team and People", items:[
+  {t:"Fix door-to-door recruitment and training", d:"Both sides: training the sellers and training the team. Clarify what the product actually is, not just how to sell it.", tags:["co"]},
+  {t:"Get recruitment locked and loaded", d:"", tags:["co"]},
+  {t:"Rebuild the Wesley Wolf relationship", d:"Update him on all transactions, set a communication schedule, build the full working suite together, sort SOPs, 1099s, W-9s, and contracts. Transfer the domain from Wesley and fix all domains.", tags:["co"]},
+  {t:"Sell the skid steers, trailer, and remaining equipment", d:"Everything out.", tags:["co"]}
+ ]}
+]},
+
+{sec:"Restore Companies", id:"restore", note:"Restore Marketing, Restore AI, Restore Consulting, AI Cowboy, Pack Scales. Restore AI serves small and medium businesses while you pursue enterprise at Anthropic.", groups:[
+ {g:"Trophy Exteriors", items:[
+  {t:"Attach the corrected quote to the Trophy contract", d:"Fix it and get it bound in.", tags:["co"]},
+  {t:"Deliver the multi-market ad plan", d:"How to scale through LSA, Meta, and beyond across the two locations. A plan they can follow.", tags:["co"]},
+  {t:"Create all of Trophy's Google Business pages", d:"", tags:["co","agent"]},
+  {t:"Shoot more Trophy content and organize what exists", d:"Get all project footage taken care of.", tags:["co"]},
+  {t:"Update the master task tracker, Trophy client list, and shoot itinerary", d:"All three current and properly maintained.", tags:["co"]}
+ ]},
+ {g:"Wolfpack Advantage", items:[
+  {t:"Finish the Wolfpack website and brand design", d:"Roughly $7,500 of value to deliver.", tags:["co"]},
+  {t:"Get Wolfpack socials dialed", d:"", tags:["co","agent"]},
+  {t:"Raise Wolfpack ad spend monthly", d:"With clear proof of the returns being brought in.", tags:["co"]},
+  {t:"Fix the trade agreement and realign", d:"", tags:["co"]},
+  {t:"Weekly Wolfpack meetings with calendar reminders", d:"Communication broke down before. A standing cadence fixes it.", tags:["co"]}
+ ]},
+ {g:"New Clients and Quotes", items:[
+  {t:"Onboard Shot by Taylor", d:"Add to the client list. Build the website. Full marketing service.", tags:["co"]},
+  {t:"Onboard Double R Photography", d:"Add to the client list. Build the website. Full marketing service.", tags:["co"]},
+  {t:"Onboard GS Window Tint", d:"Add to the client list. Edit his videos. Build the website. Full marketing service.", tags:["co"]},
+  {t:"Quote Brod's Headwear on the AI suite marketing package", d:"", tags:["co"]},
+  {t:"Quote Riley Brighton's group on the AI suite marketing package", d:"Name as dictated.", tags:["co"]},
+  {t:"Texas Landmen automation", d:"Brokerage connected to Riley's group. Build automations for them and find the way into the land business through it.", tags:["co","agent"]},
+  {t:"Follow up and onboard Charlie Ray", d:"Separate website, social pages, automation, and frequent posting.", tags:["co"]},
+  {t:"Follow up Top Three Services in the Tri-County area", d:"Start services.", tags:["co"]}
+ ]},
+ {g:"Sales Pipeline", items:[
+  {t:"Follow up every texted prospect", d:"Matthias, Tyler's Tree Service, local guys, and everyone you were going to build websites for.", tags:["co"]},
+  {t:"Recover iMessages from iCloud", d:"The follow-up list lives in those texts. Restore them to rebuild it.", tags:["co"]},
+  {t:"Organize the current client list and run callbacks", d:"Call back and follow up with everyone on it. Sales is behind, this closes the gap.", tags:["co"]},
+  {t:"Reach out to Mike Andes and all podcast contacts", d:"Plus outreach to the Turnaround show clients for marketing and networking. Document everything learned from Andes and organize his videos.", tags:["co"]}
+ ]},
+ {g:"Brand and Content", items:[
+  {t:"Launch the Restore podcast", d:"Get it on Spotify, get it on YouTube, and build the YouTube channel for the Restore podcast specifically.", tags:["co"]},
+  {t:"Buy camera gear and podcast setup gear", d:"Eventually. Note it for budgeting.", tags:["co"]},
+  {t:"Shoot the Paxson welcome video", d:"About Restore, business, and what it means to you.", tags:["co"]},
+  {t:"Shoot the hero video for the homepage", d:"What we do, why we do it, and what we love doing.", tags:["co"]},
+  {t:"Update the Restore site with team photos", d:"HP site gets the same treatment.", tags:["co"]},
+  {t:"Finish the Restore Consulting and Restore AI websites", d:"Triple-check domain names and buy the right domains for AI and Consulting.", tags:["co"]},
+  {t:"Logos and branding for the new companies", d:"Barnes (as dictated) and the other new brands, each with distinct identity.", tags:["co"]}
+ ]},
+ {g:"Operations and Systems", items:[
+  {t:"Streamline the master marketing agreement", d:"So it plugs straight into the system for every new client.", tags:["co"]},
+  {t:"Build the closed-client package system", d:"Client closes, here is your package, everything handled. Full task book per client: Google Business setup, website, the whole onboarding path.", tags:["co"]},
+  {t:"Build full systems for every company", d:"Documented, exact, repeatable. This is the core problem to solve: there are no systems, and there need to be.", tags:["co"]},
+  {t:"GoHighLevel overhaul", d:"Upgrade it, fix it, clean out old HP and Restore clients, add more automations, and update the portal. Use it to its full ability.", tags:["co","agent"]},
+  {t:"Update all passwords and usernames in Google Sheets", d:"Every company account current.", tags:["co"]},
+  {t:"Respond to all emails and clean both Gmail accounts", d:"HP and Restore inboxes both fixed.", tags:["co","agent"]},
+  {t:"Organize Google Drive across both accounts", d:"Restore and HP, everything filed properly.", tags:["co"]},
+  {t:"Organize Dropbox completely", d:"Company photos for HP, Restore, and Trophy in their folders. Personal pictures sorted. All website media organized. Needed yesterday.", tags:["co"]},
+  {t:"Clean up the calendar", d:"", tags:["co"]},
+  {t:"Audit and clear all subscriptions", d:"Restore and HP both, including all cloud services billing.", tags:["co"]},
+  {t:"Finish recruitment across all companies", d:"Evaluate every member, reach out to everyone not yet messaged, fill the holes, and figure out where the money comes from to hire better talent. Run it through Indeed.", tags:["co"]},
+  {t:"Hire an AI specialist", d:"For all the companies, especially Restore AI. Salespeople still needed too.", tags:["co"]},
+  {t:"Hire a developer and a designer to support Caroline", d:"", tags:["co"]},
+  {t:"Optimize every Google Business profile and post daily", d:"All companies, HP included. Fix the failing scheduled tasks so posting never misses a day. Includes the Amenity app work (as dictated).", tags:["co","agent"]}
+ ]}
+]},
+
+{sec:"Agentic Systems: Build List", id:"agents", note:"The automation layer. No time or money to hire two people, so Claude, Hermes, and orchestrations do this work. Build these so the companies run while you are gone.", groups:[
+ {g:"Core Infrastructure", items:[
+  {t:"Finish Hermes Agent and run it 24/7/365", d:"On the cloud and on the desktop, across all devices, working for HP Landscaping and every company at all times.", tags:["agent"]},
+  {t:"Personal assistants through Hermes for the whole team", d:"Paxson, Caroline, Kyle, and Caleb each get one: schedulers, task managers, productivity, email sharing.", tags:["agent"]},
+  {t:"Copy this compiled plan into Claude Code", d:"Stand up the agents and orchestrations from it. Claude automates more of daily life.", tags:["agent"]},
+  {t:"Connect QuickBooks to Claude", d:"Books automation across the companies.", tags:["agent"]}
+ ]},
+ {g:"Voice and Front Desk", items:[
+  {t:"AI receptionist that answers calls and books appointments", d:"ElevenLabs voice. The script matters: consultants are booked three weeks out, that is the bad news, but the good news is the estimators can start early. She must know this cold.", tags:["agent"]},
+  {t:"Remove Google appointment scheduling", d:"A standing problem. The receptionist replaces it.", tags:["agent"]},
+  {t:"AI voice responding to calls and messages for every company", d:"One layer across all of them.", tags:["agent"]}
+ ]},
+ {g:"Sales and Growth Automation", items:[
+  {t:"Recruitment bot for HP", d:"", tags:["agent"]},
+  {t:"Lead capture and appointment booker for HP", d:"", tags:["agent"]},
+  {t:"AI sales consultant for HP", d:"An agent that can carry outbound sales.", tags:["agent"]},
+  {t:"Cold call, email, text, and social automations", d:"The full outbound stack for HP and beyond.", tags:["agent"]},
+  {t:"Backend follow-up automation that sells", d:"An insane follow-up machine doing sales on the backside for HP Landscaping.", tags:["agent"]},
+  {t:"Email and message manager agent", d:"", tags:["agent"]}
+ ]},
+ {g:"Content and Web Automation", items:[
+  {t:"All social accounts on full autopilot", d:"HP Landscaping, HP Pools, HP Design, Restore, Pack Scales, AI Cowboy, Restore AI, Restore Marketing, Restore Consulting. Roughly eight pages, each managed separately, fully automated with Claude, Hermes, and whatever else it takes.", tags:["agent"]},
+  {t:"AI blogger posting across all sites", d:"", tags:["agent"]},
+  {t:"AI SEO auditor and implementer", d:"Continuously auditing and fixing SEO across every property.", tags:["agent"]}
+ ]},
+ {g:"Estimating", items:[
+  {t:"Construction estimator built on Claude", d:"Speak a job in, get an accurate quote on materials and labor out. Tied to your vendors, SiteOne, and suppliers.", tags:["agent"]}
+ ]}
+]},
+
+{sec:"Content Strategy: All Brands", id:"content", note:"Cross-company growth. Applies to all eight-plus sub-brands.", groups:[
+ {g:"Strategy", items:[
+  {t:"Build a content plan for every sub-brand", d:"What to shoot, how often, and for which platform, for each of the brands.", tags:[]},
+  {t:"Research what is trending and working", d:"What is winning on social right now, what is not, and how to dominate the local market with it.", tags:[]},
+  {t:"Organize all shot footage from projects", d:"Every project's footage filed and ready to publish.", tags:[]}
+ ]}
+]}
+];
+
+let checked = {};
+let activeFilter = "all";
+
+function taskId(si,gi,ti){return si+"-"+gi+"-"+ti;}
+
+function render(){
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+  let total=0, done=0;
+  DATA.forEach((sec,si)=>{
+    if(activeFilter!=="all" && activeFilter!==sec.id) return;
+    const secEl = document.createElement("section");
+    if(sec.cls) secEl.className = sec.cls;
+    let secTotal=0, secDone=0, groupsHtml="";
+    sec.groups.forEach((grp,gi)=>{
+      let itemsHtml="";
+      grp.items.forEach((it,ti)=>{
+        const id = taskId(si,gi,ti);
+        const isC = !!checked[id];
+        secTotal++; if(isC) secDone++;
+        const tags = (it.tags||[]).map(tg=>{
+          if(tg==="urgent") return '<span class="tag urgent">Urgent</span>';
+          if(tg==="agent") return '<span class="tag agent">Agent-ready</span>';
+          return '<span class="tag co">'+tg+'</span>';
+        }).join("");
+        itemsHtml += '<div class="task'+(isC?" checked":"")+'" data-id="'+id+'">'
+          +'<div class="box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>'
+          +'<div class="task-body"><div class="task-title">'+it.t+'</div>'
+          +(it.d?'<div class="task-desc">'+it.d+'</div>':'')
+          +(tags?'<div>'+tags+'</div>':'')
+          +'</div></div>';
+      });
+      groupsHtml += '<div class="group"><div class="group-label">'+grp.g+'</div>'+itemsHtml+'</div>';
+    });
+    total+=secTotal; done+=secDone;
+    secEl.innerHTML = '<div class="sec-head"><div class="sec-title display">'+sec.sec+'</div>'
+      +'<div class="sec-count">'+secDone+' / '+secTotal+'</div></div>'
+      +(sec.note?'<div class="sec-note">'+sec.note+'</div>':'')
+      +groupsHtml;
+    main.appendChild(secEl);
+  });
+  if(activeFilter==="all"){
+    total=0;done=0;
+    DATA.forEach((sec,si)=>sec.groups.forEach((grp,gi)=>grp.items.forEach((it,ti)=>{total++;if(checked[taskId(si,gi,ti)])done++;})));
+  } else {
+    total=0;done=0;
+    DATA.forEach((sec,si)=>sec.groups.forEach((grp,gi)=>grp.items.forEach((it,ti)=>{total++;if(checked[taskId(si,gi,ti)])done++;})));
+  }
+  document.getElementById("totalCount").textContent = done+" of "+total+" knocked out";
+  document.getElementById("barFill").style.width = (total? (done/total*100):0)+"%";
+}
+
+function renderFilters(){
+  const wrap = document.getElementById("filters");
+  const defs = [["all","Everything"],["urgent","Urgent"],["personal","Personal"],["hp","HP Companies"],["restore","Restore"],["agents","Agentic Builds"],["content","Content"]];
+  wrap.innerHTML = defs.map(([id,label])=>'<button class="chip'+(id==="urgent"?" urgent-chip":"")+(activeFilter===id?" active":"")+'" data-f="'+id+'">'+label+'</button>').join("");
+  wrap.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{activeFilter=b.dataset.f;renderFilters();render();window.scrollTo({top:0,behavior:"smooth"});}));
+}
+
+function save(){
+  try{ localStorage.setItem("master-checklist-v1", JSON.stringify(checked)); }catch(e){}
+}
+function load(){
+  try{
+    const r = localStorage.getItem("master-checklist-v1");
+    if(r) checked = JSON.parse(r);
+  }catch(e){ checked = {}; }
+}
+
+document.getElementById("main").addEventListener("click",(e)=>{
+  const t = e.target.closest(".task");
+  if(!t) return;
+  const id = t.dataset.id;
+  checked[id] = !checked[id];
+  if(!checked[id]) delete checked[id];
+  render();
+  save();
+});
+
+load(); renderFilters(); render();
+</script>
+</body>
+</html>
