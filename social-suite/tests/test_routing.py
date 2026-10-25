@@ -30,6 +30,13 @@ def test_separators_and_whitespace_normalised():
     assert brand_for_path("/  HP  /clip.mp4") == "hp"  # stray spaces trimmed
 
 
+def test_restore_prefix_folders_route_to_restore():
+    # The real Dropbox folder is named "Restore Marketing Content", not "Restore".
+    assert brand_for_path("/Restore Marketing Content/clip.mp4") == "restore"
+    assert brand_for_path("restore marketing content/sub/x.mov") == "restore"
+    assert brand_for_path("\\Restore Marketing Content\\2026\\jun\\y.mp4") == "restore"
+
+
 def _run():
     passed = 0
     for name, fn in sorted(globals().items()):
