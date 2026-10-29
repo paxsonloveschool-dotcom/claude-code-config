@@ -32,12 +32,12 @@ Pulled 30 of HP's posts (`content/reference/hp/`). The established look:
 - **No burned subtitles** — clean footage + just the logo. Caption lives in post.
 - Founder-led selfie/talking clips appear too (owner in straw hat).
 - **Caption voice (very consistent):** hook line (transformation/luxury) → a
-  feeling/benefit line → CTA **"Call (979) 777-8851!!"** (or "DM us 'YARD' for a
+  feeling/benefit line → CTA **"Call (979) 701-2229!!"** (or "DM us 'YARD' for a
   free quote" / "Ready for yours?") → optional "📍 Serving Texas" → `•`/`•`
   separator → hashtags. Emojis: ✨🌿🌸💧🔥💯🌱📍📲.
 - **Hashtag core set:** #TXOutdoorLiving #DreamBackyard #OutdoorLiving
   #backyardgoals (sometimes +#PatioGoal #BackyardBlissTX #landscape #landscaping).
-- Phone: **(979) 777-8851**. Brand reads faith-based ("Higher Purpose", cross).
+- Phone: **(979) 701-2229**. Brand reads faith-based ("Higher Purpose", cross).
 
 ## Hard rules (learned, do every time)
 - **Owner's clip target: 7–20s each** (vary it, not exact). Stitch different

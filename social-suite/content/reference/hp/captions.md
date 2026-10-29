@@ -71,7 +71,7 @@ Poolside perfection!!!!
 
 Nothing beats kicking back in a clean, comfortable setup after a long day. From fresh landscaping to the perfect lounge chairs, this is what outdoor living should feel like.
 
-Call (979) 777-8851!!
+Call (979) 701-2229!!
 •
 •
 #TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals
@@ -84,7 +84,7 @@ This is what happens when vision meets execution. ✨🌿
 
 Every detail, from the layout to the finishing touches, was designed to turn this backyard into a space that feels like an escape, without ever leaving home.
 
-Call (979) 777-8851 to start your dream today!!
+Call (979) 701-2229 to start your dream today!!
 •
 •
 #TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals
@@ -96,7 +96,7 @@ https://www.instagram.com/reel/DWo-1DvjzBR/
 A garden done right just hits different. 🌸🌿
 Color, texture, and life all coming together to create something that feels peaceful, vibrant, and completely yours.
 
-This isn’t just landscaping, it’s a space you can slow down and enjoy. Call (979) 777-8851!!
+This isn’t just landscaping, it’s a space you can slow down and enjoy. Call (979) 701-2229!!
 •
 •
 #TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals
@@ -111,7 +111,7 @@ Because a great yard isn’t just about how it looks, it’s about how it perfor
 
 We installed fresh, healthy grass AND fixed the drainage underneath so this lawn stays green, dry, and built to last. No more puddles, no more problems.
 
-Good landscaping starts below the surface. 🌱💧Call (979) 777-8851!!
+Good landscaping starts below the surface. 🌱💧Call (979) 701-2229!!
 •
 •
 #TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals
@@ -124,7 +124,7 @@ Backyard goals, upgraded 🔥🌿
 
 From a simple space to a full outdoor experience: custom granite, a built-in grilling setup, and a backyard designed to bring people together. This is where memories are made.
 
-Ready to turn your yard into your favorite place? 💯 Call (979) 777-8851.
+Ready to turn your yard into your favorite place? 💯 Call (979) 701-2229.
 •
 •
 #TXOutdoorLiving #DreamBackyard #PatioGoal # OutdoorLiving #backyardgoals
@@ -137,7 +137,7 @@ Bring Your Dream Luxury Pool to Life with HP Landscaping!
 
 At HP Landscaping, we specialize in custom luxury pools that enhance your outdoor living experience. Every pool is designed to provide comfort, beauty, and luxury-turning your backyard into the perfect escape.
 
-Call (979) 777-8851 to make your luxury pool dream a reality!
+Call (979) 701-2229 to make your luxury pool dream a reality!
 •
 •
 #TXOutdoorLiving #BackyardBlissTX #TXGardenDesign #backyardgoals
@@ -227,7 +227,7 @@ Great & Stunning Landscapes Start with HP Landscaping!
 
 We handle your project with precision and excellent planning-from concept to completion. Every detail is carefully managed to ensure a smooth process and breathtaking results.
 
-Call (979) 777-8851 to elevate your outdoor space!
+Call (979) 701-2229 to elevate your outdoor space!
 •
 •
 🌐 hplandscapingllc.com
@@ -240,7 +240,7 @@ https://www.instagram.com/reel/DV6oEUdia2-/
 
 Reflecting on this service, here is another way how we are blessed to live out our higher purpose, if you’d like to see more check out the ‘Our Giving’ section on our website  https://www.hplandscapingllc.com/
 
-Call (979) 777-8851 to start your project today!
+Call (979) 701-2229 to start your project today!
 •
 •
 🌐 hplandscapingllc.com
@@ -253,7 +253,7 @@ https://www.instagram.com/reel/DV4AdyoCfxx/
 
 Elevating outdoor living. Luxury lives in the backyard. 🌿
 
-Call (979) 777-8851 to start your project today!
+Call (979) 701-2229 to start your project today!
 •
 •
 🌐 hplandscapingllc.com
@@ -268,7 +268,7 @@ Your Trusted Experts in Outdoor Living!
 
 At HP Landscaping, we bring together creativity and precision to design landscapes that balance beauty and practicality. Every detail matters.
 
-Call (979) 777-8851 to start your project today!
+Call (979) 701-2229 to start your project today!
 •
 •
 🌐 hplandscapingllc.com
@@ -283,7 +283,7 @@ Your Landscape, Elevated by Excellence with Us!
 
 Every project by HP Landscaping reflects craftsmanship, care, and creativity. We design spaces that thrive, connect, and leave a lasting impression on your property.
 
-Call (979) 777-8851 to start your backyard transformation today.
+Call (979) 701-2229 to start your backyard transformation today.
 •
 •
 🌐 hplandscapingllc.com
@@ -298,7 +298,7 @@ Pools Designed for Living And Built to Last!
 
 At HP Landscaping, we do more than just build pools — we create spaces where beauty and functionality come together seamlessly. From custom pool design and landscaping integration to stonework, decking, and water features, our team ensures your pool is as practical as it is breathtaking.
 
-Call (979) 777-8851 to start your project today!
+Call (979) 701-2229 to start your project today!
 •
 •
 🌐 hplandscapingllc.com
@@ -312,7 +312,7 @@ https://www.instagram.com/reel/DVwtAwACcmy/
 Reflecting on this service, here is another way how we are blessed to live out our higher purpose, if you’d like to see more check out the ‘Our Giving’ section on our website 
 https://www.hplandscapingllc.com/
 
-Call (979) 777-8851 to get started on your luxury landscaping project!
+Call (979) 701-2229 to get started on your luxury landscaping project!
 •
 •
 🌐 hplandscapingllc.com
@@ -323,7 +323,7 @@ Call (979) 777-8851 to get started on your luxury landscaping project!
 ## 18078214145090148  [VIDEO/REELS]  ❤ 11 💬 0
 https://www.instagram.com/reel/DVwdfw1CVKc/
 
-Call us at (979) 777-8851 to book your landscaping project today!
+Call us at (979) 701-2229 to book your landscaping project today!
 •
 •
 🌐 hplandscapingllc.com
@@ -338,7 +338,7 @@ Excellence Isn’t Our Option. It’s Our Standard.
 
 At HP Landscaping, we craft breathtaking outdoor spaces that blend beauty and functionality. From vibrant gardens to elegant stone features, every backyard we design becomes a showpiece.
 
-Call us at (979) 777-8851 to book your landscaping project
+Call us at (979) 701-2229 to book your landscaping project
 today!
 •
 •
@@ -354,7 +354,7 @@ HP Landscaping is helping homeowners across Texas transform their outdoor spaces
 
 Let us transform your outdoor space with high-end landscaping that’s engineered for both beauty and durability. Our attention to detail will elevate your yard into something truly special.
 
-Call (979) 777-8851 to get started on your luxury landscaping project!
+Call (979) 701-2229 to get started on your luxury landscaping project!
 •
 •
 🌐 hplandscapingllc.com
@@ -370,7 +370,7 @@ Landscaping Designed to Last Every Season!
 At HP Landscaping, we specialize in designing landscapes that thrive throughout the year, combining beauty with durability.
 Every detail is meticulously planned to ensure long-lasting results.
 
-Call (979) 777-8851 to begin your project today!
+Call (979) 701-2229 to begin your project today!
 •
 •
 🌐 hplandscapingllc.com
@@ -385,7 +385,7 @@ Complete Backyard Makeovers
 
 HP Landscaping solved drainage issues on turf areas and elevated the space with pink molly plants, purple fountain grass, and junipers. A composite deck ties it all together for a beautiful outdoor retreat.
 
-Call (979) 777-8851 to start your project today!
+Call (979) 701-2229 to start your project today!
 •
 •
 🌐 hplandscapingllc.com

@@ -39,7 +39,7 @@ GitHub code/fork = higherpurpose.
 3. Confirm Instagram business account is linked to the Page.
 
 **PENDING DECISIONS (owner, next session):**
-- Alert recipients requested: text to **979-777-8851**, email to
+- Alert recipients requested: text to **{{URGENT_ALERT_NUMBER}}**, email to
   **higherpurposelandscaping@gmail.com**. Not yet wired. Email needs a free **Resend**
   account; real SMS needs paid **Twilio** (or just install ntfy on that phone, free).
   Store these as Cloudflare **secrets** (env), NOT in committed code (public repo).

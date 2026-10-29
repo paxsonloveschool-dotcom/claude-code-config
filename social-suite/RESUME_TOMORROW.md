@@ -29,7 +29,7 @@ more luxury/finished-project footage (cleanup b-roll ≠ HP's polished reveals).
    Pass it automatically from `cut_windows` (and `auto_highlights` via cut_windows).
 2. **HP caption voice**, baked in. For `brand_key=="hp"`, set caption to:
    hook (rotating, e.g. "Turned this backyard into a place you actually want to be.")
-   → `Call (979) 777-8851!!` → `•`/`•` →
+   → `Call (979) 701-2229!!` → `•`/`•` →
    `#TXOutdoorLiving #DreamBackyard #OutdoorLiving #backyardgoals`.
    (Also fixes the garbage Whisper-hallucinated b-roll captions, and skips
    transcription for HP captions entirely.)

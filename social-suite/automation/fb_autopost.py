@@ -32,7 +32,7 @@ STATE_PATH = os.path.join(os.path.dirname(HERE), "content", "fb_posted.json")
 VIDEO_EXTS = (".mp4", ".mov", ".m4v")
 POST_WEEKDAYS = (0, 2, 4, 5)  # Mon, Wed, Fri, Sat
 POST_HOUR_UTC = 16            # 11:00 America/Chicago (CDT)
-CAPTION = "Higher Purpose Landscaping 🌿 Call (979) 777-8851 for a free quote!"
+CAPTION = "Higher Purpose Landscaping 🌿 Call (979) 701-2229 for a free quote!"
 
 
 def load_state() -> dict:
