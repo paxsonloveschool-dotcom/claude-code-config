@@ -12,9 +12,9 @@
 |------|---------|-------|
 | Bison Metal Building | 14801 S Dowling Rd | 979-571-1241 |
 | Blacktop Towing | 2009 Avenue A | 979-595-8524 |
-| HP Landscaping | 14801 S Dowling St | 979-777-8851 |
+| HP Landscaping | 14801 S Dowling St | 979-701-2229 |
 | Language Learning Center | 943 William D. Fitch Pkwy | 979-260-5400 |
-| Restore Marketing | 14801 S Dowling Rd | 979-777-8851 |
+| Restore Marketing | 14801 S Dowling Rd | {{RESTORE_PUBLIC_NUMBER}} |
 
 ## Current Status
 - Workflow is "already working and built"

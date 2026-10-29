@@ -16,7 +16,7 @@ WED_9AM = datetime(2026, 7, 1, 9, 0)  # a Wednesday, before 10am
 
 
 def test_split_caption_pulls_hashtags_out():
-    text = "This is what happens. ✨\n\nCall (979) 777-8851!!\n•\n•\n#fyp #LandscapingTok #Bryan"
+    text = "This is what happens. ✨\n\nCall (979) 701-2229!!\n•\n•\n#fyp #LandscapingTok #Bryan"
     desc, tags = split_caption(text)
     assert tags == ["#fyp", "#LandscapingTok", "#Bryan"]
     assert "#" not in desc and "•" not in desc

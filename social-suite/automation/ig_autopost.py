@@ -70,7 +70,7 @@ HOOKS = [
 ]
 TAGS = ("#fyp #LandscapingTok #CollegeStation #Bryan #Navasota #Houston "
         "#OutdoorLiving #backyardgoals")
-CTA = "Call (979) 777-8851 for a free quote!"
+CTA = "Call (979) 701-2229 for a free quote!"
 
 
 def load():
